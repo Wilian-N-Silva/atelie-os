@@ -62,7 +62,7 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
     return () => { clearTimeout(id); document.removeEventListener("click", h); };
   }, [acctOpen]);
 
-  const me = user || { name: "Camila Ribeiro", email: "camila@instanteambar.com.br", role: "owner" as const };
+  const me = user || { name: "Atelie Admin", email: "admin@example.com", role: "owner" as const };
   const roleLabel = ROLE_LABELS[me.role] || me.role;
   const brandName = company || "Instante Âmbar";
 
