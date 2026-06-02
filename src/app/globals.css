@@ -1,0 +1,152 @@
+/* ============================================================
+   Ateliê OS — design tokens (shadcn/ui "new-york", white-label)
+   Flat colors only, no gradients. Geist Sans + Geist Mono.
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* neutral zinc base */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 6% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5% 65%;
+    --radius: 0.5rem;
+
+    /* neutral accents (white-label — generic zinc, no brand hue) */
+    --brand-amber: 240 6% 10%;
+    --brand-amber-soft: 240 4.8% 95.9%;
+    --brand-umber: 240 6% 10%;
+
+    /* flat semantic states */
+    --ok: 142 50% 36%;
+    --ok-bg: 142 52% 94%;
+    --warn: 38 80% 42%;
+    --warn-bg: 41 80% 92%;
+    --info: 214 70% 46%;
+    --info-bg: 214 80% 95%;
+    --bad: 0 72% 48%;
+    --bad-bg: 0 80% 96%;
+    --cure: 262 52% 52%;            /* "em cura" — generic violet (distinct from warn) */
+    --cure-bg: 262 58% 96%;
+    --neutral-bg: 240 5% 96%;
+
+    --sidebar: 240 5% 98%;
+    --sidebar-foreground: 240 10% 12%;
+    --sidebar-muted: 240 3.8% 46.1%;
+    --shadow-sm: 0 1px 2px 0 hsl(240 10% 10% / 0.04);
+    --shadow-md: 0 1px 3px 0 hsl(240 10% 10% / 0.06), 0 1px 2px -1px hsl(240 10% 10% / 0.05);
+    --shadow-lg: 0 4px 16px -4px hsl(240 10% 10% / 0.10), 0 2px 6px -2px hsl(240 10% 10% / 0.06);
+  }
+
+  .dark {
+    --background: 240 10% 6%;
+    --foreground: 0 0% 96%;
+    --card: 240 8% 9%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 8% 9%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 0 0% 96%;
+    --primary-foreground: 240 6% 10%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 240 5% 16%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 17%;
+    --input: 240 5% 18%;
+    --ring: 240 5% 40%;
+
+    --brand-amber: 0 0% 90%;
+    --brand-amber-soft: 240 5% 16%;
+    --brand-umber: 0 0% 90%;
+
+    --ok: 142 45% 55%;
+    --ok-bg: 142 35% 16%;
+    --warn: 38 75% 60%;
+    --warn-bg: 38 40% 16%;
+    --info: 214 75% 65%;
+    --info-bg: 214 45% 18%;
+    --bad: 0 70% 62%;
+    --bad-bg: 0 45% 18%;
+    --cure: 262 70% 72%;
+    --cure-bg: 262 32% 20%;
+    --neutral-bg: 240 5% 16%;
+
+    --sidebar: 240 9% 8%;
+    --sidebar-foreground: 0 0% 94%;
+    --sidebar-muted: 240 5% 60%;
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.30);
+    --shadow-md: 0 1px 3px 0 hsl(0 0% 0% / 0.40);
+    --shadow-lg: 0 8px 24px -6px hsl(0 0% 0% / 0.55);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 14px;
+  line-height: 1.5;
+}
+#root, #__next { height: 100%; }
+
+.mono { font-family: 'Geist Mono', ui-monospace, monospace; font-feature-settings: "tnum" 1; }
+
+/* ---- density ---- */
+:root {
+  --pad-y: 10px; --pad-x: 14px; --row-h: 54px; --gap: 16px;
+  --card-pad: 20px; --fs-base: 14px;
+}
+[data-density="compact"] {
+  --pad-y: 6px; --pad-x: 10px; --row-h: 40px; --gap: 12px;
+  --card-pad: 14px; --fs-base: 13px;
+}
+[data-density="compact"] body, [data-density="compact"] { font-size: 13px; }
+
+/* ---- scrollbars ---- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; border: 2px solid hsl(var(--background)); }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- focus ---- */
+:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+/* ---- utility animations ---- */
+@keyframes fadeIn { from { transform: translateY(5px); } to { transform: none; } }
+@keyframes flashOk { 0% { background: hsl(var(--ok-bg)); } 100% { background: transparent; } }
+@keyframes flashBad { 0%, 60% { background: hsl(var(--bad-bg)); } 100% { background: transparent; } }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(1000%); } }
+.fade-in { animation: fadeIn 0.24s ease; }
+
+::selection { background: hsl(var(--ring) / 0.4); }

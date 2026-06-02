@@ -1,0 +1,2057 @@
+# PRD — Ateliê OS: Backoffice Artesanal para Instante Âmbar
+
+> **Versão otimizada para agente de IA / Codex**  
+> Documento criado para orientar o desenvolvimento de um novo projeto do zero.  
+> Não assumir existência de código legado. Conversas e documentos anteriores servem apenas como referência conceitual.
+
+---
+
+## 0. Como usar este PRD
+
+Este PRD deve ser usado como fonte principal para implementação do sistema. O objetivo é permitir que um agente de desenvolvimento, como Codex, consiga:
+
+1. entender o produto;
+2. criar a arquitetura inicial;
+3. modelar o banco de dados;
+4. implementar os módulos em ordem segura;
+5. preservar regras de negócio essenciais;
+6. gerar uma base que futuramente também permita criar um manual de uso para a operadora.
+
+A versão atual é voltada para desenvolvimento. Uma versão posterior poderá ser adaptada para manual de uso, com linguagem mais simples e apoio visual.
+
+---
+
+## 1. Visão geral do produto
+
+### 1.1 Nome provisório
+
+**Ateliê OS**
+
+Nome interno/provisório para o backoffice da Instante Âmbar. O sistema não precisa expor esse nome para clientes finais.
+
+### 1.2 O que é
+
+Um backoffice para uma pequena operação artesanal de velas aromáticas. O sistema deve controlar o ciclo operacional completo do ateliê:
+
+- cadastro de produtos, insumos e embalagens;
+- estoque por movimentos, lotes e locais;
+- compras e fornecedores;
+- receitas/fórmulas;
+- planejamento e execução de produção;
+- cura, revisão e liberação de lotes;
+- pedidos manuais e pedidos de canais externos;
+- separação de produtos;
+- conferência com scanner ou manual;
+- embalagem;
+- cálculo de frete;
+- etiquetas internas;
+- anexos de etiquetas externas;
+- financeiro gerencial;
+- geração de textos com IA;
+- preparação futura para integrações com marketplaces.
+
+### 1.3 O que não é
+
+O MVP não é:
+
+- loja online pública;
+- clone do Upseller;
+- sistema fiscal;
+- PDV completo;
+- CRM completo;
+- emissor de nota fiscal;
+- integrador omnichannel completo;
+- ferramenta de publicação automática em Instagram;
+- ferramenta de geração de imagens ou vídeos;
+- sistema contábil.
+
+### 1.4 Objetivo principal
+
+Dar à operadora da Instante Âmbar uma forma simples e confiável de responder:
+
+- o que tenho em estoque?
+- o que está faltando?
+- o que preciso comprar?
+- o que consigo produzir hoje?
+- quais materiais preciso separar para uma produção?
+- quais lotes estão em cura?
+- quais lotes estão liberados para venda?
+- quais pedidos estão pagos?
+- quais pedidos precisam ser separados?
+- quais pedidos precisam ser embalados?
+- quanto custa enviar um pedido?
+- qual etiqueta ou documento pertence a cada pedido?
+- qual foi o custo real de um produto?
+- qual texto posso usar para vender ou divulgar este produto?
+
+---
+
+## 2. Contexto da marca
+
+A Instante Âmbar é uma marca artesanal de velas aromáticas com território emocional forte. A comunicação da marca gira em torno de:
+
+- calmaria;
+- paz;
+- aconchego;
+- autocuidado;
+- pausa;
+- refúgio;
+- luz;
+- memória olfativa;
+- presente com carinho;
+- sofisticação serena;
+- linguagem poética e acessível.
+
+O produto físico precisa sustentar a promessa de marca. Por isso, o sistema deve valorizar:
+
+- consistência entre lotes;
+- controle de formulação;
+- controle de cura;
+- registro de testes;
+- rastreabilidade do que foi enviado para cada cliente;
+- experiência de embalagem e unboxing;
+- textos de venda coerentes com a voz da marca.
+
+---
+
+## 3. Princípios de desenvolvimento
+
+### 3.1 Backoffice primeiro
+
+A loja online poderá ser construída no futuro. O MVP deve priorizar operação interna.
+
+### 3.2 Scanner é acelerador, não dependência
+
+Toda ação feita por scanner deve ter alternativa manual por teclado, mouse ou touch.
+
+Regra obrigatória:
+
+```txt
+Toda ação feita por scanner deve ter uma alternativa equivalente por mouse/teclado.
+O scanner acelera o fluxo, mas nunca deve ser obrigatório para concluir uma operação.
+```
+
+### 3.3 Melhor Envio é opcional
+
+O sistema deve estar pronto para funcionar com Melhor Envio, mas a integração só deve operar após autenticação/configuração dentro do backoffice.
+
+Se Melhor Envio não estiver configurado, o sistema deve continuar permitindo:
+
+- frete manual;
+- rastreio manual;
+- anexar etiqueta PDF externa;
+- imprimir etiqueta anexada;
+- concluir pedidos normalmente.
+
+### 3.4 Marketplaces são preparados, não completos
+
+O MVP deve preparar o terreno para TikTok Shop, Mercado Livre e Shopee, mas sem implementar integração completa no primeiro momento.
+
+O MVP deve permitir:
+
+- cadastrar canal externo;
+- registrar pedido manual com número externo;
+- importar CSV/planilha;
+- mapear SKU externo para produto interno;
+- anexar etiqueta PDF baixada manualmente;
+- imprimir etiqueta anexada;
+- salvar rastreio manual;
+- manter histórico de origem do pedido.
+
+Fora do MVP:
+
+- sincronização automática de estoque;
+- publicação de anúncios;
+- atualização de preço;
+- integração com chat/reclamações;
+- cancelamento/reembolso via API;
+- fiscal/nota;
+- omnichannel completo.
+
+### 3.5 IA somente textual
+
+O sistema pode usar IA apenas para gerar ou reescrever textos.
+
+Proibido no escopo atual:
+
+- geração de imagem;
+- geração de vídeo;
+- publicação automática;
+- criação de layout visual;
+- edição de arte;
+- agendamento de posts;
+- análise automática de engajamento.
+
+### 3.6 Produto em cura não é disponível
+
+Velas podem estar fisicamente prontas, mas ainda não disponíveis.
+
+O sistema deve diferenciar:
+
+- físico;
+- reservado;
+- disponível;
+- bloqueado;
+- em cura;
+- aguardando revisão;
+- liberado para venda.
+
+### 3.7 Estoque por movimentos
+
+Não editar saldo diretamente. Todo saldo deve ser consequência de movimentos.
+
+Movimentos possíveis:
+
+- compra/entrada;
+- ajuste positivo;
+- ajuste negativo;
+- perda;
+- reserva;
+- liberação de reserva;
+- consumo de produção;
+- saída de produção;
+- envio de pedido;
+- retorno/devolução;
+- bloqueio;
+- liberação;
+- transferência entre locais.
+
+---
+
+## 4. Stack recomendada
+
+### 4.1 Frontend e aplicação
+
+- Next.js App Router;
+- TypeScript;
+- Tailwind CSS;
+- shadcn/ui;
+- React Hook Form;
+- Zod;
+- TanStack Table para tabelas complexas;
+- Server Actions ou Route Handlers, conforme necessidade;
+- PWA opcional para evolução futura.
+
+### 4.2 Banco e autenticação
+
+- PostgreSQL via Neon;
+- Drizzle ORM;
+- Better Auth ou equivalente;
+- multiusuário desde o MVP;
+- single-company na interface inicial;
+- modelagem com `company_id` para permitir evolução white-label.
+
+### 4.3 Arquivos
+
+Criar abstração de storage para:
+
+- etiquetas anexadas;
+- PDFs gerados;
+- comprovantes;
+- arquivos de importação;
+- logs de importação;
+- documentos de envio;
+- possíveis fotos de pedido embalado.
+
+Em desenvolvimento, pode usar storage local. Em produção, preferir S3/R2 ou equivalente.
+
+### 4.4 PDFs e impressão
+
+O MVP pode gerar PDFs por:
+
+- HTML + print do navegador;
+- biblioteca de PDF;
+- rota de renderização específica.
+
+As etiquetas internas devem usar Code128.
+
+ZPL direto fica fora do MVP.
+
+---
+
+## 5. Papéis e permissões
+
+### 5.1 Roles
+
+- `owner` — acesso total;
+- `admin` — acesso operacional completo;
+- `operator` — produção, estoque, pedidos, separação, embalagem;
+- `finance` — financeiro, compras e relatórios financeiros;
+- `readonly` — leitura.
+
+### 5.2 Matriz de permissões
+
+| Módulo | owner | admin | operator | finance | readonly |
+|---|---|---|---|---|---|
+| Dashboard | sim | sim | sim | sim | sim |
+| Itens/SKUs | sim | sim | leitura | leitura | leitura |
+| Estoque | sim | sim | sim | leitura | leitura |
+| Compras | sim | sim | sim | sim | leitura |
+| Fornecedores | sim | sim | leitura | sim | leitura |
+| Receitas | sim | sim | leitura | leitura | leitura |
+| Produção | sim | sim | sim | não | leitura |
+| Pedidos | sim | sim | sim | leitura | leitura |
+| Frete/Envio | sim | sim | sim | leitura | leitura |
+| Financeiro | sim | sim | não | sim | leitura |
+| IA Conteúdo | sim | sim | sim | não | leitura |
+| Etiquetas | sim | sim | sim | não | leitura |
+| Configurações | sim | parcial | não | não | não |
+| Auditoria | sim | sim | não | não | não |
+
+---
+
+## 6. Sistema de códigos numéricos e etiquetas
+
+### 6.1 Objetivo
+
+Criar códigos internos padronizados, numéricos e de tamanho fixo para facilitar leitura por scanner, validação e operação sem teclado.
+
+### 6.2 Padrão de código
+
+Usar códigos internos de **12 dígitos numéricos**.
+
+Formato:
+
+```txt
+TTSSNNNNNNNC
+```
+
+Onde:
+
+- `TT` = tipo principal;
+- `SS` = subtipo;
+- `NNNNNNN` = sequência;
+- `C` = dígito verificador.
+
+Exemplo:
+
+```txt
+010300001287
+```
+
+### 6.3 Tipos principais
+
+| Prefixo | Tipo |
+|---|---|
+| 01 | Item / SKU |
+| 02 | Lote |
+| 03 | Ordem de produção |
+| 04 | Pedido |
+| 05 | Localização |
+| 06 | Volume / caixa |
+| 07 | Ação de processo |
+| 08 | Quantidade / comando auxiliar |
+| 09 | Código externo/importado |
+
+### 6.4 Subtipos de item
+
+| Código | Tipo |
+|---|---|
+| 0101 | Matéria-prima |
+| 0102 | Embalagem |
+| 0103 | Produto acabado |
+| 0104 | Kit |
+| 0105 | Auxiliar |
+
+### 6.5 Subtipos de lote
+
+| Código | Tipo |
+|---|---|
+| 0201 | Lote de matéria-prima |
+| 0202 | Lote de embalagem |
+| 0203 | Lote de produto acabado |
+| 0204 | Lote bloqueado/quarentena |
+| 0205 | Lote vencido/expirado |
+
+O código do lote não deve mudar quando o status muda. O status é dado do banco.
+
+### 6.6 Subtipos de ordem de produção
+
+| Código | Tipo |
+|---|---|
+| 0301 | OP normal |
+| 0302 | OP de teste |
+| 0303 | Reprocesso |
+| 0304 | Montagem de kit |
+
+### 6.7 Subtipos de pedido
+
+| Código | Tipo |
+|---|---|
+| 0401 | Pedido manual |
+| 0402 | Pedido Instagram/WhatsApp |
+| 0403 | Pedido marketplace |
+| 0404 | Pedido feira/presencial |
+| 0405 | Pedido teste/interno |
+
+### 6.8 Subtipos de localização
+
+| Código | Tipo |
+|---|---|
+| 0501 | Prateleira |
+| 0502 | Caixa organizadora |
+| 0503 | Bancada |
+| 0504 | Área de cura |
+| 0505 | Expedição |
+| 0506 | Produtos bloqueados |
+| 0507 | Estoque de embalagens |
+
+### 6.9 Ações de processo
+
+| Código base | Grupo |
+|---|---|
+| 0701 | Ações de produção |
+| 0702 | Ações de pedido |
+| 0703 | Ações de estoque |
+| 0704 | Ações de embalagem |
+| 0705 | Ações de envio |
+| 0706 | Ações de qualidade |
+
+Exemplos de ações iniciais:
+
+| Código | Ação |
+|---|---|
+| 070100000001 | Separar materiais da produção |
+| 070100000002 | Iniciar produção |
+| 070100000003 | Enviar para cura |
+| 070100000004 | Liberar lote pós-cura |
+| 070200000001 | Iniciar separação de pedido |
+| 070200000002 | Conferir pedido |
+| 070400000001 | Iniciar embalagem |
+| 070500000001 | Marcar pronto para envio |
+| 070600000001 | Bloquear item/lote |
+| 070600000002 | Liberar item/lote |
+
+### 6.10 Dígito verificador
+
+Implementar dígito verificador simples, preferencialmente módulo 10/Luhn ou equivalente.
+
+Se o código lido não passar na validação, bloquear com mensagem clara:
+
+```txt
+Código inválido ou leitura incompleta.
+```
+
+### 6.11 Code128
+
+Usar Code128 para impressão operacional.
+
+### 6.12 Separar SKU humano de código interno
+
+Cada item deve ter:
+
+- SKU humano, exemplo: `VEL-LAV-156`;
+- código interno numérico, exemplo: `010300001287`.
+
+O usuário vê os dois. O scanner usa o código numérico.
+
+---
+
+## 7. Módulos do MVP
+
+## 7.1 Dashboard — “Hoje no ateliê”
+
+### Objetivo
+
+Ser uma central de tarefas do dia. O dashboard deve mostrar o que precisa ser feito agora.
+
+### Cards obrigatórios
+
+- Pedidos aguardando pagamento;
+- Pedidos pagos a separar;
+- Pedidos separados a embalar;
+- Pedidos prontos para envio;
+- Produções aguardando material;
+- Produções em andamento;
+- Lotes em cura;
+- Lotes para revisar/liberar;
+- Itens abaixo do mínimo;
+- Contas a pagar vencendo;
+- Conteúdos IA recentes, opcional.
+
+### Ações rápidas
+
+- Novo pedido;
+- Nova produção;
+- Receber compra;
+- Ajustar estoque;
+- Abrir modo operação;
+- Calcular frete;
+- Gerar conteúdo IA;
+- Imprimir etiquetas.
+
+### Critérios de aceite
+
+- Ao entrar no sistema, a usuária deve conseguir ver as pendências prioritárias sem navegar por vários módulos.
+- Cada card deve ter link para a tela filtrada correspondente.
+- Se não houver pendências, exibir estado vazio positivo.
+
+---
+
+## 7.2 Configuração inicial guiada
+
+### Objetivo
+
+Ajudar a operadora a configurar o sistema sem partir de tela vazia.
+
+### Checklist inicial
+
+1. Criar empresa;
+2. Configurar dados do ateliê;
+3. Configurar locais de estoque;
+4. Configurar unidades de medida;
+5. Cadastrar fornecedores;
+6. Cadastrar matérias-primas;
+7. Cadastrar embalagens;
+8. Cadastrar produtos prontos;
+9. Criar primeira receita;
+10. Receber primeira compra;
+11. Planejar primeira produção;
+12. Criar primeiro pedido;
+13. Imprimir primeiras etiquetas;
+14. Configurar Melhor Envio, opcional;
+15. Configurar voz da marca para IA, opcional.
+
+### Critérios de aceite
+
+- Checklist deve aparecer até ser concluído ou dispensado.
+- Etapas opcionais devem estar marcadas como opcionais.
+- Cada etapa deve levar à tela correta.
+
+---
+
+## 7.3 Itens / SKUs
+
+### Objetivo
+
+Cadastrar tudo que pode ser comprado, consumido, produzido, vendido ou rastreado.
+
+### Tipos de item
+
+- Matéria-prima;
+- Embalagem;
+- Produto acabado;
+- Kit;
+- Auxiliar.
+
+### Campos
+
+- nome;
+- SKU humano;
+- código interno numérico;
+- tipo;
+- categoria;
+- unidade base;
+- local padrão;
+- estoque mínimo;
+- controla lote;
+- possui validade;
+- custo estimado;
+- custo médio;
+- preço de venda sugerido;
+- preço de venda atual;
+- peso do produto;
+- dimensões do produto;
+- peso embalado;
+- dimensões embalado;
+- produto frágil;
+- permite venda;
+- status: ativo, arquivado, bloqueado;
+- observações.
+
+### Exemplos de SKU humano
+
+- `VEL-LAV-156` — Vela Lavanda Francesa 156ml;
+- `VEL-CAP-156` — Vela Capim Limão 156ml;
+- `ESS-LAV-FR` — Essência Lavanda Francesa;
+- `VID-NAD-156` — Vidro Nadir 156ml;
+- `TMP-PIN-052` — Tampa pinus 52mm;
+- `CXA-KFT-121212` — Caixa kraft 12x12x12.
+
+### Ações
+
+- criar item;
+- editar item;
+- arquivar item;
+- bloquear item;
+- imprimir etiqueta;
+- ver estoque;
+- ver movimentos;
+- ver receitas relacionadas;
+- ver histórico.
+
+### Critérios de aceite
+
+- Todo item criado deve receber código interno numérico válido.
+- SKU humano deve ser único por empresa.
+- Código interno deve ser único por empresa.
+- Itens arquivados não devem aparecer em seletores operacionais, mas devem continuar visíveis em histórico.
+
+---
+
+## 7.4 Estoque
+
+### Objetivo
+
+Controlar saldos reais por movimento, lote e local.
+
+### Saldos por item
+
+- físico;
+- reservado;
+- disponível;
+- bloqueado;
+- em cura;
+- aguardando revisão;
+- liberado;
+- mínimo;
+- cobertura estimada.
+
+### Movimentos
+
+- compra/entrada;
+- ajuste positivo;
+- ajuste negativo;
+- perda;
+- reserva;
+- liberação de reserva;
+- consumo de produção;
+- saída de produção;
+- envio de pedido;
+- retorno/devolução;
+- bloqueio;
+- liberação;
+- transferência entre locais.
+
+### Locais
+
+- prateleira;
+- caixa organizadora;
+- bancada de produção;
+- área de cura;
+- bancada de embalagem;
+- expedição;
+- produtos bloqueados;
+- estoque de embalagens.
+
+Cada local deve ter código interno numérico e etiqueta imprimível.
+
+### Ajuste de estoque
+
+Não permitir editar saldo diretamente. Deve criar movimento com motivo.
+
+Motivos:
+
+- contagem física;
+- perda/quebra;
+- erro de lançamento;
+- vencimento;
+- teste;
+- uso interno;
+- outro.
+
+### Critérios de aceite
+
+- Nenhum saldo deve ser editado diretamente.
+- Movimentos que deixariam saldo negativo devem ser bloqueados, exceto se houver regra explícita de permissão administrativa.
+- Histórico de movimentos deve mostrar origem, usuário e data.
+
+---
+
+## 7.5 Compras e fornecedores
+
+### Fornecedores
+
+Campos:
+
+- nome;
+- documento;
+- telefone;
+- WhatsApp;
+- e-mail;
+- site;
+- endereço;
+- prazo médio;
+- pedido mínimo;
+- observações;
+- status.
+
+### Receber compra
+
+Fluxo:
+
+1. selecionar fornecedor ou criar novo;
+2. informar data;
+3. adicionar itens;
+4. informar quantidade;
+5. informar unidade;
+6. informar custo unitário;
+7. calcular custo total;
+8. informar lote do fornecedor, opcional;
+9. informar validade, opcional;
+10. selecionar local destino;
+11. adicionar observações;
+12. criar lotes internos;
+13. criar movimentos de entrada;
+14. permitir imprimir etiquetas dos lotes recebidos;
+15. opcionalmente criar despesa no financeiro.
+
+### Reversão
+
+Permitir reversão somente para `admin` ou `owner` e apenas se os lotes ainda não foram consumidos.
+
+### Critérios de aceite
+
+- Receber compra deve atualizar estoque por movimento.
+- Itens com controle de lote devem gerar lote.
+- Deve ser possível imprimir etiquetas dos lotes recém-criados.
+
+---
+
+## 7.6 Receitas / Fórmulas
+
+### Objetivo
+
+Registrar como um produto acabado ou kit é produzido.
+
+### Campos da receita
+
+- produto final;
+- nome da receita;
+- versão;
+- rendimento;
+- unidade de rendimento;
+- status: rascunho, ativa, arquivada;
+- observações;
+- custo estimado;
+- custo por unidade;
+- perda estimada;
+- tempo de cura padrão;
+- tempo de produção estimado.
+
+### Componentes
+
+Cada componente deve ter:
+
+- item;
+- quantidade;
+- unidade;
+- percentual de perda;
+- obrigatório/opcional;
+- observações.
+
+### Versionamento
+
+Quando uma receita ativa for alterada, criar nova versão. Produções antigas devem manter referência à versão usada.
+
+### Testes de receita
+
+Campos:
+
+- data;
+- quantidade produzida;
+- observações de aroma;
+- observações de queima;
+- observações de acabamento;
+- aprovado/reprovado/ajustar;
+- próximos ajustes.
+
+### Critérios de aceite
+
+- Receita ativa usada em produção não deve ser sobrescrita.
+- Produção deve guardar referência à versão da receita.
+- Custo estimado deve ser calculado a partir dos componentes.
+
+---
+
+## 7.7 Produção
+
+### Objetivo
+
+Transformar insumos em produtos prontos, com controle de material, lote, cura, perdas e liberação.
+
+### Status sugeridos
+
+- Planejada;
+- Aguardando materiais;
+- Materiais separados;
+- Em produção;
+- Em cura;
+- Aguardando revisão;
+- Liberada;
+- Finalizada;
+- Bloqueada;
+- Cancelada.
+
+### Criar ordem de produção
+
+Campos:
+
+- receita;
+- quantidade planejada;
+- lote/código da OP;
+- data planejada;
+- responsável;
+- observações.
+
+Ao criar OP:
+
+- não consumir estoque ainda;
+- calcular materiais necessários;
+- mostrar faltantes;
+- permitir gerar pick list de produção;
+- permitir imprimir PDF da OP.
+
+### Separação de materiais
+
+Pode ser feita:
+
+- por scanner;
+- por modo operação manual;
+- por pick list impressa e confirmação posterior.
+
+Validações:
+
+- item escaneado deve pertencer à receita;
+- lote não pode estar bloqueado/vencido;
+- quantidade não pode exceder necessário sem confirmação;
+- estoque não pode ficar negativo.
+
+### Finalização de produção
+
+Campos:
+
+- quantidade produzida;
+- quantidade aprovada;
+- quantidade perdida;
+- motivo de perda;
+- lote gerado;
+- local destino;
+- data de cura até;
+- observações.
+
+Ao finalizar:
+
+- consumir insumos por FIFO/FEFO;
+- criar lote de produto acabado;
+- criar movimentos de saída de insumo;
+- criar movimento de entrada de produto acabado;
+- se houver cura, status do lote deve ser `em cura`, não `disponível`.
+
+### Liberação pós-cura
+
+Fluxo:
+
+1. lote atinge data de cura;
+2. aparece em pendências;
+3. usuária revisa;
+4. pode liberar, bloquear ou estender cura;
+5. ao liberar, entra como disponível.
+
+### Critérios de aceite
+
+- OP não consome estoque ao ser criada.
+- Consumo ocorre na finalização ou em etapa explícita definida.
+- Produto em cura não deve aparecer como disponível para pedido.
+- Deve ser possível rastrear quais lotes de insumos foram usados em qual lote produzido.
+
+---
+
+## 7.8 Pedidos
+
+### Objetivo
+
+Registrar pedidos manuais e pedidos de canais externos, reservando estoque e conduzindo separação, embalagem e envio.
+
+### Canais iniciais
+
+- Instagram;
+- WhatsApp;
+- Feira/presencial;
+- Mercado Livre;
+- Shopee;
+- TikTok Shop;
+- Venda direta;
+- Outro.
+
+### Campos do pedido
+
+- número interno;
+- código numérico interno;
+- canal;
+- número externo, opcional;
+- cliente;
+- status do pedido;
+- status de pagamento;
+- itens;
+- frete;
+- desconto;
+- taxa do canal;
+- total;
+- observações;
+- endereço de entrega;
+- documentos anexos;
+- rastreio;
+- etiqueta de envio;
+- histórico.
+
+### Status sugeridos
+
+- Novo;
+- Aguardando pagamento;
+- Pago;
+- A separar;
+- Separando;
+- Separado;
+- Embalando;
+- Embalado;
+- Pronto para envio;
+- Enviado;
+- Entregue;
+- Cancelado;
+- Bloqueado.
+
+### Reserva de estoque
+
+Configuração por empresa:
+
+- reservar ao criar pedido;
+- reservar ao marcar como pago;
+- reservar ao iniciar separação;
+- reservar manualmente.
+
+Baixa definitiva:
+
+- ao marcar como enviado;
+- ao marcar como entregue;
+- manualmente.
+
+### Critérios de aceite
+
+- Pedido deve poder existir sem frete calculado.
+- Pedido externo deve guardar canal e número externo.
+- Cancelar pedido não enviado deve liberar reserva.
+- Pedido enviado não deve ser cancelado sem fluxo administrativo específico.
+
+---
+
+## 7.9 Pick list de pedidos
+
+### Objetivo
+
+Consolidar o que precisa ser separado para um ou vários pedidos.
+
+### Criar pick list
+
+Pode ser criada por:
+
+- pedido individual;
+- seleção de vários pedidos;
+- filtro de pedidos pagos e não separados;
+- canal;
+- data;
+- status.
+
+### Conteúdo
+
+- código da pick list;
+- pedidos incluídos;
+- produtos consolidados;
+- quantidades;
+- local sugerido;
+- lote sugerido, se aplicável;
+- embalagens necessárias;
+- responsável;
+- data;
+- código de barras da pick list.
+
+### PDF de pick list de pedidos
+
+Gerar PDF A4 com:
+
+- cabeçalho;
+- código da pick list;
+- lista de pedidos;
+- checklist de produtos;
+- checklist de embalagens;
+- locais;
+- espaço para assinatura/responsável;
+- observações.
+
+### Critérios de aceite
+
+- Pick list deve consolidar itens repetidos de múltiplos pedidos.
+- Deve permitir imprimir PDF.
+- Deve permitir abrir modo operação a partir da pick list.
+
+---
+
+## 7.10 Pick list de produção
+
+### Objetivo
+
+Gerar lista de materiais necessários para uma ordem de produção.
+
+### Conteúdo
+
+- código da OP;
+- produto final;
+- receita e versão;
+- quantidade planejada;
+- materiais necessários;
+- quantidades;
+- lotes sugeridos;
+- locais sugeridos;
+- etapas da produção;
+- observações.
+
+### PDF de pick list de produção
+
+Gerar PDF A4 com:
+
+- dados da OP;
+- checklist de materiais;
+- checklist de etapas;
+- espaço para perdas;
+- espaço para observações;
+- código de barras da OP.
+
+### Critérios de aceite
+
+- PDF deve ser claro para uso na bancada.
+- Deve indicar faltantes antes de autorizar produção.
+- Deve respeitar unidade de medida dos componentes.
+
+---
+
+## 7.11 Modo Operação / Mesa de Conferência
+
+### Objetivo
+
+Executar separação e conferência com scanner ou manualmente, em tela cheia.
+
+### Modos
+
+- Separação de pedidos;
+- Conferência de pedidos;
+- Embalagem;
+- Expedição;
+- Separação de produção;
+- Conferência de produção;
+- Contagem de estoque.
+
+### Abertura
+
+Pode abrir:
+
+- pelo dashboard;
+- pela tela de pedidos;
+- pela tela de produção;
+- pela tela de estoque;
+- pela tela de pick list.
+
+Se aberto a partir de pedido ou OP, já carregar o documento correspondente.
+
+### Entrada rápida
+
+Deve haver campo com foco permanente:
+
+- scanner envia código + Enter;
+- usuário pode digitar código, SKU, nome ou número;
+- usuário pode buscar manualmente.
+
+### Alternativas manuais
+
+Cada ação de scanner deve ter botão equivalente:
+
+- `+1`;
+- `-1`;
+- marcar completo;
+- selecionar lote;
+- informar quantidade;
+- desfazer última ação;
+- finalizar etapa;
+- bloquear;
+- sair.
+
+### Feedback de tela
+
+Exibir:
+
+- documento ativo;
+- progresso;
+- itens esperados;
+- itens já conferidos;
+- última leitura;
+- erro atual;
+- histórico recente.
+
+### Erros
+
+Mensagens claras para:
+
+- código inválido;
+- item não pertence à lista;
+- quantidade excedida;
+- lote bloqueado;
+- lote vencido;
+- produto em cura;
+- pedido já conferido;
+- OP já finalizada;
+- estoque insuficiente.
+
+### Critérios de aceite
+
+- Deve ser possível concluir fluxo inteiro sem scanner.
+- Deve ser possível concluir fluxo inteiro sem teclado, usando scanner e códigos de ação.
+- Erros devem bloquear avanço indevido.
+- Última ação deve poder ser desfeita se ainda não finalizada.
+
+---
+
+## 7.12 Embalagem e checklist
+
+### Objetivo
+
+Garantir que cada pedido seja embalado corretamente.
+
+### Checklist padrão
+
+- produto correto;
+- aroma correto;
+- vidro sem defeito;
+- tampa correta;
+- etiqueta inferior aplicada;
+- dust cover aplicado;
+- cartão incluído;
+- proteção kraft/colmeia;
+- caixa fechada;
+- etiqueta de envio aplicada;
+- foto do pedido, opcional.
+
+### Ações
+
+- marcar item do checklist;
+- anexar etiqueta;
+- imprimir etiqueta;
+- registrar observação;
+- marcar como embalado;
+- mover para pronto para envio.
+
+### PDF
+
+Gerar PDF de checklist do pedido com:
+
+- pedido;
+- cliente;
+- canal;
+- itens;
+- checklist;
+- rastreio, se houver;
+- espaço para assinatura/conferência.
+
+### Critérios de aceite
+
+- Pedido não deve ir para “pronto para envio” se checklist obrigatório estiver incompleto, a menos que admin force com motivo.
+
+---
+
+## 7.13 Frete e Melhor Envio
+
+### Objetivo
+
+Permitir cotar e registrar frete de forma rápida, com Melhor Envio opcional.
+
+### Comportamento sem Melhor Envio
+
+Se não configurado:
+
+- exibir status “Melhor Envio não configurado”;
+- permitir frete manual;
+- permitir rastreio manual;
+- permitir anexar etiqueta PDF externa;
+- não bloquear pedido.
+
+### Comportamento com Melhor Envio configurado
+
+Se autenticado:
+
+- permitir cotação de frete;
+- salvar cotações;
+- selecionar opção;
+- salvar valor escolhido no pedido;
+- opcionalmente comprar etiqueta;
+- opcionalmente imprimir etiqueta;
+- salvar rastreio;
+- acompanhar status, se implementado.
+
+### MVP obrigatório
+
+- tela de configuração/autenticação;
+- status de conexão;
+- calculadora avulsa de frete;
+- cotação de frete dentro do pedido;
+- salvar cotação escolhida;
+- fallback manual.
+
+### Fase futura
+
+- compra de etiqueta;
+- pagamento de etiqueta;
+- impressão de etiqueta oficial;
+- rastreio automático;
+- cancelamento de etiqueta;
+- logística reversa.
+
+### Dados logísticos por produto
+
+- peso do produto;
+- peso embalado;
+- altura;
+- largura;
+- comprimento;
+- embalagem sugerida;
+- frágil;
+- permite empilhar.
+
+### Modelos de embalagem
+
+Campos:
+
+- nome;
+- altura;
+- largura;
+- comprimento;
+- peso da embalagem;
+- custo da embalagem;
+- capacidade sugerida;
+- observações.
+
+### Calculadora avulsa
+
+Campos:
+
+- produto;
+- quantidade;
+- CEP destino;
+- embalagem;
+- peso/dimensões calculados;
+- botão calcular;
+- opções retornadas;
+- copiar mensagem para WhatsApp.
+
+### Critérios de aceite
+
+- Sistema deve funcionar completamente sem autenticação do Melhor Envio.
+- Se a API falhar, o usuário deve conseguir preencher frete manualmente.
+- Cotação salva deve ficar vinculada ao pedido.
+
+---
+
+## 7.14 Marketplaces e canais externos
+
+### Objetivo
+
+Preparar o sistema para canais externos sem implementar integração completa.
+
+### MVP
+
+- cadastrar canal de venda;
+- pedido manual com número externo;
+- importar CSV;
+- mapear SKU externo para item interno;
+- salvar payload bruto da importação;
+- mostrar pendências de importação;
+- anexar etiqueta PDF;
+- imprimir etiqueta anexada;
+- salvar rastreio manual;
+- logar origem do pedido.
+
+### Pendências de importação
+
+Tela deve mostrar:
+
+- pedidos com SKU desconhecido;
+- pedidos com estoque insuficiente;
+- pedidos duplicados;
+- pedidos com dados inválidos;
+- ações para resolver.
+
+### Mapeamento de SKU externo
+
+Permitir mapear:
+
+- SKU Mercado Livre;
+- SKU Shopee;
+- SKU TikTok Shop;
+- outros códigos externos;
+- para item interno.
+
+### Fora do MVP
+
+- OAuth/API real com Mercado Livre/Shopee/TikTok Shop;
+- sincronização automática de estoque;
+- publicação de anúncios;
+- atualização de preço;
+- chat;
+- reclamações;
+- reembolso;
+- fiscal.
+
+### Critérios de aceite
+
+- Importação CSV não deve criar pedidos duplicados.
+- Pedidos com SKU desconhecido devem ficar em pendência, não falhar silenciosamente.
+- Deve ser possível resolver mapeamento uma vez e reaproveitar nas próximas importações.
+
+---
+
+## 7.15 IA de conteúdo textual
+
+### Objetivo
+
+Ajudar a criar textos comerciais e operacionais coerentes com a marca.
+
+### Escopo
+
+Somente texto.
+
+### Tipos de conteúdo
+
+- descrição curta de produto;
+- descrição longa de produto;
+- legenda de Instagram;
+- mensagem de WhatsApp;
+- texto de cartão;
+- slogan curto;
+- ideias de stories em texto;
+- reescrita de conteúdo;
+- naming auxiliar;
+- campanha textual.
+
+### Voz da marca
+
+Criar configuração com:
+
+- personalidade;
+- promessa;
+- público;
+- palavras preferidas;
+- palavras proibidas;
+- tom padrão;
+- instruções de segurança;
+- claims proibidos.
+
+Valores iniciais:
+
+- personalidade: acolhedora, sofisticada, serena, poética, minimalista;
+- promessa: transformar o fim do dia em um ritual de paz e autocuidado;
+- público: mulheres adultas, rotina corrida, buscam aconchego e autocuidado;
+- palavras preferidas: pausa, respiro, aconchego, calmaria, refúgio, cuidado, aroma, luz;
+- evitar: compre agora, promoção imperdível, cura, terapêutico, garantido, milagroso.
+
+### Contexto usado pela IA
+
+Usar dados estruturados:
+
+- nome do produto;
+- aroma;
+- coleção;
+- descrição interna;
+- notas olfativas;
+- ingredientes relevantes;
+- categoria;
+- preço, se aplicável;
+- ocasião de uso;
+- tom da marca;
+- briefing manual da usuária.
+
+### Proibições
+
+A IA não deve inventar:
+
+- tempo de queima;
+- benefícios terapêuticos;
+- composição exata;
+- certificações;
+- propriedades médicas;
+- informações de segurança não cadastradas.
+
+### Templates de geração
+
+- descrição de catálogo;
+- legenda de lançamento;
+- post de reposição;
+- mensagem de pós-venda;
+- texto de cartão;
+- campanha de data comemorativa.
+
+### Templates de mensagem
+
+Permitir variáveis:
+
+- `{{cliente}}`;
+- `{{pedido}}`;
+- `{{produto}}`;
+- `{{total}}`;
+- `{{prazo}}`;
+- `{{rastreio}}`;
+- `{{forma_pagamento}}`;
+- `{{data_retirada}}`.
+
+### Histórico
+
+Salvar:
+
+- produto relacionado;
+- receita relacionada, opcional;
+- tipo;
+- template usado;
+- briefing do usuário;
+- contexto usado;
+- resultado;
+- status: rascunho, aprovado, usado, arquivado;
+- favorito;
+- criado por;
+- criado em.
+
+### Critérios de aceite
+
+- Conteúdo gerado deve poder ser editado antes de salvo como aprovado.
+- Deve haver botão copiar.
+- Deve haver histórico por produto.
+- IA não deve publicar nada automaticamente.
+
+---
+
+## 7.16 Financeiro gerencial
+
+### Objetivo
+
+Controlar entradas, saídas e margem de forma simples, sem caráter fiscal/contábil.
+
+Exibir aviso:
+
+```txt
+Este financeiro é gerencial e não substitui contabilidade ou emissão fiscal.
+```
+
+### Funcionalidades
+
+- lançar receita;
+- lançar despesa;
+- vincular pedido;
+- vincular compra;
+- marcar pago;
+- cancelar;
+- vencimentos;
+- contas a pagar;
+- contas a receber;
+- resumo mensal;
+- margem bruta estimada.
+
+### Categorias iniciais
+
+- Matéria-prima;
+- Embalagem;
+- Frete;
+- Taxas de canal;
+- Marketing;
+- Equipamentos;
+- Assinaturas;
+- Manutenção;
+- Outros.
+
+### Critérios de aceite
+
+- Receita vinculada a pedido deve respeitar status de pagamento.
+- Despesa vinculada a compra deve poder ser marcada como paga.
+- Cancelar financeiro não deve apagar histórico.
+
+---
+
+## 7.17 Relatórios simples
+
+### Vendas
+
+- pedidos por período;
+- vendas por canal;
+- ticket médio;
+- produtos mais vendidos;
+- clientes recorrentes.
+
+### Produção
+
+- unidades produzidas;
+- perdas por lote;
+- custo médio por produto;
+- produções em atraso;
+- lotes bloqueados.
+
+### Estoque
+
+- abaixo do mínimo;
+- sem saldo;
+- com reserva;
+- em cura;
+- bloqueado;
+- validade próxima;
+- cobertura estimada.
+
+### Financeiro
+
+- recebido;
+- a receber;
+- pago;
+- a pagar;
+- margem estimada.
+
+### Critérios de aceite
+
+- Relatórios podem começar como tabelas filtráveis.
+- Gráficos não são obrigatórios no MVP.
+
+---
+
+## 7.18 Auditoria
+
+### Objetivo
+
+Registrar ações importantes para rastreabilidade.
+
+### Registrar logs para
+
+- criação;
+- edição;
+- arquivamento;
+- ajuste de estoque;
+- reversão;
+- finalização de produção;
+- liberação de lote;
+- bloqueio;
+- envio de pedido;
+- cancelamento;
+- importação;
+- impressão de etiqueta;
+- geração de conteúdo IA.
+
+### Campos do log
+
+- empresa;
+- usuário;
+- entidade;
+- ID da entidade;
+- ação;
+- origem: manual, scanner, importação, sistema, IA;
+- antes;
+- depois;
+- timestamp.
+
+### Critérios de aceite
+
+- Ações críticas devem gerar log.
+- Logs não devem ser editáveis por usuários comuns.
+
+---
+
+## 8. Telas principais
+
+### 8.1 Login
+
+- email;
+- senha;
+- erro inline;
+- recuperar senha, opcional.
+
+### 8.2 Onboarding
+
+- criar empresa;
+- checklist inicial;
+- pular etapas opcionais.
+
+### 8.3 Dashboard
+
+- tarefas do dia;
+- pendências;
+- cards rápidos;
+- status do Melhor Envio;
+- alertas de estoque.
+
+### 8.4 Itens/SKUs
+
+- lista com filtros;
+- novo item;
+- editar item;
+- arquivar item;
+- imprimir etiqueta;
+- ver estoque;
+- ver receitas relacionadas;
+- histórico.
+
+### 8.5 Estoque
+
+- saldos;
+- filtros;
+- movimentos;
+- ajustar estoque;
+- transferir local;
+- contagem;
+- etiquetas de localização.
+
+### 8.6 Compras
+
+- receber compra;
+- fornecedores;
+- histórico;
+- imprimir etiquetas de lotes;
+- criar despesa.
+
+### 8.7 Receitas
+
+- lista de receitas;
+- criar receita;
+- versionar;
+- componentes;
+- testes;
+- custo estimado.
+
+### 8.8 Produção
+
+- kanban/lista;
+- criar OP;
+- materiais necessários;
+- pick list;
+- finalizar produção;
+- cura;
+- liberação.
+
+### 8.9 Pedidos
+
+- lista;
+- criar pedido;
+- pedido externo;
+- itens;
+- pagamento;
+- reserva;
+- separação;
+- embalagem;
+- envio;
+- anexos.
+
+### 8.10 Pick Lists
+
+- pick list de pedidos;
+- pick list de produção;
+- PDF;
+- abrir modo operação.
+
+### 8.11 Modo Operação
+
+- fullscreen;
+- campo com foco permanente;
+- histórico de leituras;
+- botões manuais;
+- progresso;
+- erros grandes;
+- finalizar etapa.
+
+### 8.12 Frete e Envios
+
+- calculadora avulsa;
+- frete por pedido;
+- status Melhor Envio;
+- frete manual;
+- etiquetas anexadas;
+- rastreio.
+
+### 8.13 Conteúdo IA
+
+- gerar texto;
+- templates;
+- voz da marca;
+- histórico;
+- favoritos;
+- copiar.
+
+### 8.14 Financeiro
+
+- entradas;
+- saídas;
+- contas a pagar;
+- contas a receber;
+- resumo.
+
+### 8.15 Etiquetas
+
+- gerar etiquetas;
+- modelos;
+- histórico;
+- reimpressão;
+- impressão em massa.
+
+### 8.16 Configurações
+
+- empresa;
+- usuários;
+- unidades;
+- locais;
+- canais;
+- status;
+- Melhor Envio;
+- voz da marca;
+- templates.
+
+---
+
+## 9. Modelo de dados sugerido
+
+> Nomes são sugestões. Implementação pode ajustar, mas deve preservar os conceitos.
+
+### 9.1 Auth e empresa
+
+- `users`
+- `companies`
+- `company_members`
+- `roles`
+- `sessions`
+
+### 9.2 Configurações
+
+- `company_settings`
+- `units`
+- `unit_conversions`
+- `categories`
+- `inventory_locations`
+- `sales_channels`
+- `custom_statuses`
+- `message_templates`
+- `ai_brand_voice`
+
+### 9.3 Catálogo
+
+- `items`
+- `item_aliases`
+- `item_barcodes`
+- `item_logistics`
+- `packaging_models`
+
+### 9.4 Códigos e etiquetas
+
+- `barcodes`
+- `label_templates`
+- `label_print_jobs`
+- `label_print_items`
+
+### 9.5 Estoque
+
+- `inventory_lots`
+- `stock_movements`
+- `stock_counts`
+- `stock_count_items`
+
+### 9.6 Compras
+
+- `suppliers`
+- `purchase_orders`
+- `purchase_order_items`
+
+### 9.7 Receitas
+
+- `formulas`
+- `formula_versions`
+- `formula_components`
+- `formula_tests`
+
+### 9.8 Produção
+
+- `production_orders`
+- `production_material_requirements`
+- `production_material_separations`
+- `production_consumptions`
+- `production_outputs`
+- `production_status_history`
+
+### 9.9 Pedidos
+
+- `customers`
+- `orders`
+- `order_items`
+- `order_status_history`
+- `shipments`
+- `order_documents`
+
+### 9.10 Pick lists e operação
+
+- `pick_lists`
+- `pick_list_sources`
+- `pick_list_items`
+- `operation_sessions`
+- `operation_events`
+
+### 9.11 Frete e integrações
+
+- `integration_accounts`
+- `shipping_quotes`
+- `shipping_labels`
+- `external_orders`
+- `external_order_items`
+- `channel_sku_mappings`
+- `sync_logs`
+
+### 9.12 IA
+
+- `ai_generation_templates`
+- `ai_generated_contents`
+- `ai_usage_logs`
+
+### 9.13 Financeiro
+
+- `financial_transactions`
+- `financial_categories`
+- `accounts_payable`
+- `accounts_receivable`
+
+### 9.14 Auditoria
+
+- `audit_logs`
+
+---
+
+## 10. Regras críticas de negócio
+
+### 10.1 Estoque
+
+- Saldo é derivado de movimentos.
+- Movimento não pode deixar estoque negativo sem autorização explícita.
+- Produto em cura não é disponível.
+- Produto bloqueado não é disponível.
+- Produto reservado não é disponível.
+
+### 10.2 Produção
+
+- Criar OP não consome estoque.
+- Separar material registra progresso, mas consumo real ocorre conforme regra definida.
+- Finalizar produção deve registrar perdas.
+- Lote produzido deve guardar custo real.
+- Lote produzido deve guardar insumos/lotes consumidos.
+
+### 10.3 Pedido
+
+- Pedido pode ser criado sem frete.
+- Pedido pago pode reservar estoque conforme configuração.
+- Pedido cancelado deve liberar reserva se não enviado.
+- Pedido enviado deve gerar baixa definitiva.
+
+### 10.4 Scanner
+
+- Código inválido deve ser bloqueado.
+- Item errado deve ser bloqueado.
+- Quantidade excedente deve pedir confirmação ou bloquear.
+- Ação via scanner deve ter equivalente manual.
+
+### 10.5 Melhor Envio
+
+- Não configurado não bloqueia operação.
+- Falha de API não bloqueia frete manual.
+- Cotação escolhida deve ficar salva no pedido.
+
+### 10.6 IA
+
+- IA não publica.
+- IA não gera imagem/vídeo.
+- IA não inventa dados técnicos não cadastrados.
+- Resultado deve ser editável antes de aprovação.
+
+---
+
+## 11. Ordem sugerida de implementação
+
+### Fase 0 — Base técnica
+
+- projeto Next.js;
+- auth;
+- layout;
+- banco;
+- Drizzle;
+- roles;
+- empresa única;
+- seed básico.
+
+### Fase 1 — Cadastros essenciais
+
+- itens;
+- categorias;
+- unidades;
+- locais;
+- fornecedores;
+- clientes;
+- canais;
+- códigos numéricos;
+- etiquetas básicas.
+
+### Fase 2 — Estoque e compras
+
+- movimentos;
+- saldos;
+- receber compra;
+- lotes;
+- etiquetas de lote;
+- ajustes.
+
+### Fase 3 — Receitas e produção
+
+- receitas;
+- versões;
+- OP;
+- cálculo de materiais;
+- pick list de produção;
+- finalização;
+- cura;
+- liberação.
+
+### Fase 4 — Pedidos e operação
+
+- pedidos;
+- reserva;
+- pick list de pedidos;
+- modo operação;
+- conferência;
+- checklist embalagem;
+- PDFs.
+
+### Fase 5 — Frete e documentos
+
+- modelos de embalagem;
+- calculadora frete;
+- Melhor Envio opcional;
+- frete manual;
+- anexar etiqueta;
+- imprimir etiqueta anexada.
+
+### Fase 6 — IA textual
+
+- voz da marca;
+- templates;
+- geração por produto;
+- mensagens;
+- histórico.
+
+### Fase 7 — Financeiro e relatórios
+
+- entradas/saídas;
+- contas;
+- resumos;
+- relatórios simples.
+
+### Fase 8 — CSV e canais externos
+
+- importação;
+- mapeamento SKU externo;
+- pendências;
+- logs.
+
+### Fase 9 — Hardening
+
+- auditoria;
+- permissões finas;
+- testes;
+- estados vazios;
+- tratamento de erro;
+- responsividade;
+- impressão.
+
+---
+
+## 12. Critérios gerais de aceite do MVP
+
+O MVP estará aceitável quando for possível:
+
+1. criar empresa e usuário;
+2. cadastrar insumos, embalagens e produtos;
+3. gerar códigos internos numéricos;
+4. imprimir etiquetas internas;
+5. receber compras e gerar lotes;
+6. visualizar estoque por item, lote e local;
+7. criar receita;
+8. planejar produção;
+9. gerar pick list de produção em PDF;
+10. separar materiais por modo operação;
+11. finalizar produção;
+12. colocar lote em cura;
+13. liberar lote pós-cura;
+14. criar pedido manual;
+15. reservar estoque;
+16. gerar pick list de pedidos em PDF;
+17. separar pedido por scanner ou manualmente;
+18. fazer checklist de embalagem;
+19. calcular ou informar frete;
+20. anexar etiqueta PDF;
+21. marcar pedido como enviado;
+22. registrar movimentações de estoque corretas;
+23. gerar texto de produto com IA;
+24. salvar histórico de conteúdo;
+25. registrar financeiro gerencial básico;
+26. consultar auditoria de ações críticas.
+
+---
+
+## 13. Fora de escopo explícito do MVP
+
+- loja online pública;
+- checkout público;
+- publicação automática em marketplace;
+- sincronização automática de estoque com marketplace;
+- emissão de nota fiscal;
+- integração fiscal;
+- geração de imagem;
+- geração de vídeo;
+- publicação automática no Instagram;
+- app mobile nativo;
+- ZPL direto;
+- RFID;
+- PDV de balcão completo;
+- multiempresa visível para usuário final;
+- relatórios avançados com BI.
+
+---
+
+## 14. Observações para futuro manual de uso
+
+Quando este PRD for convertido em manual, separar por tarefas reais da usuária:
+
+1. Como cadastrar um produto;
+2. Como cadastrar uma matéria-prima;
+3. Como receber uma compra;
+4. Como imprimir etiquetas;
+5. Como criar uma receita;
+6. Como planejar uma produção;
+7. Como separar materiais;
+8. Como finalizar uma produção;
+9. Como liberar lote após cura;
+10. Como criar um pedido;
+11. Como separar um pedido;
+12. Como embalar um pedido;
+13. Como calcular frete;
+14. Como anexar uma etiqueta;
+15. Como usar o modo operação;
+16. Como gerar textos com IA;
+17. Como ver o financeiro;
+18. Como resolver erros comuns.
+
+O manual deve evitar linguagem técnica e usar exemplos da Instante Âmbar, como:
+
+- Vela Lavanda Francesa;
+- Vela Capim Limão;
+- Vidro 156ml;
+- Tampa pinus;
+- Essência Lavanda;
+- Caixa kraft.
+
+---
+
+## 15. Resumo executivo para Codex
+
+Construir um backoffice artesanal para a Instante Âmbar, do zero, com foco em operação interna. O sistema deve controlar catálogo, estoque por movimento, compras, receitas, produção, lotes, cura, pedidos, pick lists, modo operação com scanner/manual, etiquetas internas, frete opcional via Melhor Envio, anexos de etiquetas externas, IA somente textual, financeiro gerencial e auditoria.
+
+Priorizar robustez operacional sobre automações avançadas. Melhor Envio deve ser opcional. Marketplaces devem ser preparados via canais externos, CSV, SKU mapping e anexos, mas sem integração completa no MVP. Scanner deve acelerar, mas nunca ser obrigatório. O sistema deve ser fácil de operar na bancada, com PDFs imprimíveis e tela fullscreen de operação.
+

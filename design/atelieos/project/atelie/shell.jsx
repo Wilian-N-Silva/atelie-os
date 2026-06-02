@@ -1,0 +1,160 @@
+/* ============================================================
+   shell.jsx — AppShell: sidebar, topbar, mobile drawer
+   ============================================================ */
+
+const NAV = [
+  { group: 'Operação', items: [
+    { id: 'hoje', label: 'Hoje no ateliê', icon: 'hoje' },
+    { id: 'pedidos', label: 'Pedidos', icon: 'pedidos', count: 6 },
+    { id: 'producao', label: 'Produção', icon: 'producao', count: 6 },
+  ]},
+  { group: 'Catálogo & estoque', items: [
+    { id: 'itens', label: 'Itens / SKUs', icon: 'itens' },
+    { id: 'receitas', label: 'Receitas', icon: 'receitas' },
+    { id: 'estoque', label: 'Estoque', icon: 'estoque' },
+    { id: 'etiquetas', label: 'Etiquetas', icon: 'tag' },
+  ]},
+  { group: 'Conteúdo', items: [
+    { id: 'ia', label: 'Conteúdo IA', icon: 'ia' },
+  ]},
+  { group: 'Sistema', items: [
+    { id: 'configuracoes', label: 'Configurações', icon: 'settings' },
+  ]},
+];
+
+const PAGE_META = {
+  hoje:     { title: 'Hoje no ateliê', sub: 'sábado, 31 de maio' },
+  pedidos:  { title: 'Pedidos', sub: 'Separação · embalagem · envio' },
+  producao: { title: 'Produção', sub: 'Ordens, cura e liberação' },
+  itens:    { title: 'Itens / SKUs', sub: 'Catálogo do ateliê' },
+  receitas: { title: 'Receitas', sub: 'Fórmulas e testes' },
+  estoque:  { title: 'Estoque', sub: 'Saldos · lotes · movimentos' },
+  etiquetas:{ title: 'Etiquetas', sub: 'Editor de modelos e impressão' },
+  ia:       { title: 'Conteúdo IA', sub: 'Textos na voz da marca' },
+  configuracoes: { title: 'Configurações', sub: 'White-label · marca, fluxos, etiquetas' },
+};
+
+function Shell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, onSignOut, children }) {
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [acctOpen, setAcctOpen] = React.useState(false);
+  const meta = PAGE_META[route.screen] || { title: '', sub: '' };
+  React.useEffect(() => { setMobileOpen(false); }, [route.screen]);
+  React.useEffect(() => {
+    if (!acctOpen) return;
+    const h = () => setAcctOpen(false);
+    const id = setTimeout(() => document.addEventListener('click', h), 0);
+    return () => { clearTimeout(id); document.removeEventListener('click', h); };
+  }, [acctOpen]);
+  const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+  const logo = (typeof localStorage !== 'undefined' && localStorage.getItem('atelie-logo')) || null;
+  const me = user || { name: 'Camila Ribeiro', email: 'camila@instanteambar.com.br', role: 'owner' };
+  const roleLabel = (window.ROLE_LABELS && window.ROLE_LABELS[me.role]) || me.role;
+  const brandName = company || 'Instante Âmbar';
+
+  return (
+    <div className="app">
+      {mobileOpen && <div className="sb-backdrop" onClick={() => setMobileOpen(false)} />}
+      <aside className={cn('sb', mobileOpen && 'sb--open')}>
+        <div className="sb-brand">
+          <div className="sb-mark">{logo ? <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8 }} /> : <Icon name="flame" size={18} strokeWidth={2.2} />}</div>
+          <div>
+            <div className="sb-brand-name">{brandName}</div>
+            <div className="sb-brand-sub">Ateliê OS</div>
+          </div>
+        </div>
+
+        <button className="sb-op" onClick={() => go('operacao')}>
+          <Icon name="scan" size={20} />
+          <div>
+            <div>Modo Operação</div>
+            <div className="sb-op-sub">Bancada · scanner ou manual</div>
+          </div>
+        </button>
+
+        <nav className="sb-nav">
+          {NAV.map(grp => (
+            <div className="sb-group" key={grp.group}>
+              <div className="sb-group-label">{grp.group}</div>
+              {grp.items.map(it => (
+                <button key={it.id}
+                  className={cn('sb-item', route.screen === it.id && 'sb-item--active')}
+                  onClick={() => go(it.id)}>
+                  <Icon name={it.icon} size={18} className="sb-item-icon" />
+                  {it.label}
+                  {it.count != null && <span className="sb-item-count">{it.count}</span>}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sb-foot acct-wrap">
+          <button className="acct-trigger" onClick={(e) => { e.stopPropagation(); setAcctOpen(o => !o); }}>
+            <Avatar name={me.name} size={32} />
+            <div className="sb-foot-meta">
+              <div className="sb-foot-name">{me.name}</div>
+              <div className="sb-foot-role">{roleLabel}</div>
+            </div>
+            <div className="spacer" />
+            <Icon name="chevronUp" size={16} className="muted" />
+          </button>
+          {acctOpen && (
+            <div className="acct-menu" onClick={e => e.stopPropagation()}>
+              <div className="acct-card">
+                <Avatar name={me.name} size={38} />
+                <div style={{ minWidth: 0 }}>
+                  <div className="acct-card-name">{me.name}</div>
+                  <div className="acct-card-mail">{me.email}</div>
+                </div>
+              </div>
+              <div className="acct-co"><span className="acct-co-dot" />{brandName} · {roleLabel}</div>
+              <div className="um-menu-sep" />
+              <button className="acct-item" onClick={() => { setAcctOpen(false); go('configuracoes', { tab: 'users' }); }}><Icon name="user" size={16} /> Usuários e acessos</button>
+              <button className="acct-item" onClick={() => { setAcctOpen(false); go('configuracoes'); }}><Icon name="settings" size={16} /> Configurações</button>
+              <div className="um-menu-sep" />
+              <button className="acct-item acct-item--bad" onClick={() => { setAcctOpen(false); onSignOut && onSignOut(); }}><Icon name="arrowLeft" size={16} /> Sair do ateliê</button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className="main">
+        <header className="topbar">
+          <button className="icon-btn menu-btn" onClick={() => setMobileOpen(true)}><Icon name="menu" size={19} /></button>
+          <nav className="crumbs" aria-label="Trilha">
+            <button className="crumb crumb--root" onClick={() => go('hoje')}>Ateliê OS</button>
+            {(() => {
+              const grp = NAV.find(g => g.items.some(it => it.id === route.screen));
+              const items = [];
+              if (grp) items.push(<span key="g" className="crumb crumb--muted">{grp.group}</span>);
+              items.push(<span key="p" className="crumb crumb--current">{meta.title}</span>);
+              if (route.screen === 'configuracoes' && route.tab) {
+                const tabNames = { branding: 'Aparência da marca', users: 'Usuários e acessos', workflows: 'Fluxos e Kanban', labels: 'Modelos de etiqueta' };
+                items.push(<span key="t" className="crumb crumb--current">{tabNames[route.tab] || ''}</span>);
+              }
+              return items.map((el, i) => <React.Fragment key={i}><Icon name="chevronRight" size={14} className="crumb-sep" />{el}</React.Fragment>);
+            })()}
+          </nav>
+          <div className="topbar-spacer" />
+          <button className="topbar-search-btn" onClick={onOpenCmd}>
+            <Icon name="search" size={15} />
+            <span className="topbar-search-txt">Buscar SKU, código, pedido…</span>
+            <span className="topbar-kbd">
+              <kbd>{isMac ? '⌘' : 'Ctrl'}</kbd><kbd>K</kbd>
+            </span>
+          </button>
+          <button className="icon-btn" title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} />
+          </button>
+          <button className="icon-btn" title="Notificações" data-notif-trigger onClick={onOpenNotif}>
+            <Icon name="bell" size={18} />{unread > 0 && <span className="icon-btn-dot" />}
+          </button>
+        </header>
+        <div className="content">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Shell, NAV, PAGE_META });
