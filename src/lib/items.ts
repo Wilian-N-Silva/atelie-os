@@ -53,6 +53,14 @@ export type ItemsResponse = {
   items: CatalogItem[];
 };
 
+export type StockAdjustmentDirection = "increase" | "decrease";
+
+export type StockAdjustmentInput = {
+  direction: StockAdjustmentDirection;
+  quantity: number;
+  reason: string;
+};
+
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   raw_material: "Materia-prima",
   packaging: "Embalagem",
@@ -93,4 +101,18 @@ export async function fetchItems(): Promise<ItemsResponse> {
   }
 
   return (await res.json()) as ItemsResponse;
+}
+
+export async function adjustItemStock(itemId: string, input: StockAdjustmentInput): Promise<void> {
+  const res = await fetch(`/api/app/items/${itemId}/stock-adjustment`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Nao foi possivel registrar o ajuste.");
+  }
 }

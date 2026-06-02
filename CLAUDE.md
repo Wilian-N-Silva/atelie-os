@@ -119,5 +119,6 @@ Production and orders:
 - Onboarding/session endpoints may authenticate without requiring an existing company so new users can complete onboarding.
 - `GET /api/app/dashboard` derives stock summary from `stock_movements`.
 - `GET /api/app/items` lists company-scoped catalog items with category, unit, default location, pricing flags, and derived stock balances.
+- `POST /api/app/items/[itemId]/stock-adjustment` records manual positive/negative stock adjustments as `stock_movements` plus `stock.adjust` audit rows.
 - Use `src/lib/stock-balances.ts` for stock movement interpretation in app APIs.
 - The known `drizzle-kit` dev-only audit warning is documented; do not run `npm audit fix --force` to downgrade or churn Drizzle Kit.

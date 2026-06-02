@@ -9,16 +9,22 @@ import {
   CardHeader,
   CardTitle,
   Empty,
+  Field,
   Icon,
   Input,
+  Modal,
   Sep,
+  Select,
   SortTh,
   Stat,
   Tabs,
+  Textarea,
+  toast,
   useSort,
 } from "@/components/ui";
 import { BRL, num } from "@/lib/format";
 import {
+  adjustItemStock,
   fetchItems,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_TONES,
@@ -27,6 +33,7 @@ import {
   type CatalogItem,
   type ItemType,
   type ItemsResponse,
+  type StockAdjustmentDirection,
 } from "@/lib/items";
 import type { Go, Route } from "@/lib/types";
 
@@ -94,78 +101,208 @@ function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function ItemDrawer({ item, onClose }: { item: CatalogItem; onClose: () => void }) {
+function StockAdjustmentModal({
+  item,
+  open,
+  onClose,
+  onAdjusted,
+}: {
+  item: CatalogItem;
+  open: boolean;
+  onClose: () => void;
+  onAdjusted: () => void;
+}) {
+  const [direction, setDirection] = React.useState<StockAdjustmentDirection>("increase");
+  const [quantity, setQuantity] = React.useState("");
+  const [reason, setReason] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setDirection("increase");
+    setQuantity("");
+    setReason("");
+    setError(null);
+    setBusy(false);
+  }, [open, item.id]);
+
+  const submit = async () => {
+    const parsedQuantity = Number(quantity.replace(",", "."));
+    const trimmedReason = reason.trim();
+
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setError("Informe uma quantidade maior que zero.");
+      return;
+    }
+
+    if (!trimmedReason) {
+      setError("Informe o motivo do ajuste.");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await adjustItemStock(item.id, {
+        direction,
+        quantity: parsedQuantity,
+        reason: trimmedReason,
+      });
+      toast("Ajuste de estoque registrado.", "ok");
+      onClose();
+      onAdjusted();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Nao foi possivel registrar o ajuste.";
+      setError(message === "insufficient_physical_stock" ? "Ajuste deixaria o estoque fisico negativo." : message);
+      setBusy(false);
+    }
+  };
+
+  const nextPhysical = Number.isFinite(Number(quantity.replace(",", ".")))
+    ? item.physical + (direction === "increase" ? Number(quantity.replace(",", ".")) : -Number(quantity.replace(",", ".")))
+    : item.physical;
+
   return (
-    <div className="drawer-backdrop" onClick={onClose}>
-      <div className="drawer" onClick={(event) => event.stopPropagation()}>
-        <div className="drawer-head">
-          <div className={`swatch swatch--${item.type === "raw_material" ? "mp" : item.type === "packaging" ? "emb" : item.type === "kit" ? "kit" : ""}`}>
-            <Icon name={ITEM_ICONS[item.type]} size={17} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="drawer-h1">{itemTitle(item)}</div>
-            <div className="row-wrap" style={{ gap: 6, marginTop: 7 }}>
-              <span className="code-pill">{item.code}</span>
-              <span className="sku">{item.sku}</span>
-              <Badge tone={ITEM_TYPE_TONES[item.type]}>{ITEM_TYPE_LABELS[item.type]}</Badge>
-              <Badge tone={ITEM_STATUS_TONES[item.status]}>{ITEM_STATUS_LABELS[item.status]}</Badge>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Ajustar estoque"
+      subtitle={itemTitle(item)}
+      icon="sliders"
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button variant="default" icon="check" onClick={submit} disabled={busy}>
+            {busy ? "Registrando..." : "Registrar ajuste"}
+          </Button>
+        </>
+      )}
+    >
+      <div className="grid cols-3" style={{ marginBottom: 16 }}>
+        <Stat label="Fisico atual" value={`${num(item.physical)} ${item.unit}`} />
+        <Stat label="Disponivel" value={`${num(item.available)} ${item.unit}`} tone={stockTone(item)} />
+        <Stat label="Novo fisico" value={`${num(Math.max(0, nextPhysical))} ${item.unit}`} tone={nextPhysical < 0 ? "bad" : undefined} />
+      </div>
+
+      <Field label="Tipo de ajuste" required>
+        <Select
+          value={direction}
+          onChange={(value) => setDirection(value as StockAdjustmentDirection)}
+          options={[
+            { value: "increase", label: "Entrada manual" },
+            { value: "decrease", label: "Saida manual" },
+          ]}
+        />
+      </Field>
+
+      <Field label={`Quantidade (${item.unit})`} required>
+        <Input
+          inputMode="decimal"
+          value={quantity}
+          onChange={(event) => setQuantity(event.target.value)}
+          placeholder="0"
+        />
+      </Field>
+
+      <Field label="Motivo" required hint="O motivo fica registrado na movimentacao e na auditoria.">
+        <Textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Ex.: contagem fisica revisada na prateleira principal"
+        />
+      </Field>
+
+      {error && <div className="ff-error" style={{ marginTop: -6 }}>{error}</div>}
+    </Modal>
+  );
+}
+
+function ItemDrawer({ item, onClose, onAdjusted }: { item: CatalogItem; onClose: () => void; onAdjusted: () => void }) {
+  const [adjustOpen, setAdjustOpen] = React.useState(false);
+
+  return (
+    <>
+      <div className="drawer-backdrop" onClick={onClose}>
+        <div className="drawer" onClick={(event) => event.stopPropagation()}>
+          <div className="drawer-head">
+            <div className={`swatch swatch--${item.type === "raw_material" ? "mp" : item.type === "packaging" ? "emb" : item.type === "kit" ? "kit" : ""}`}>
+              <Icon name={ITEM_ICONS[item.type]} size={17} />
             </div>
-          </div>
-          <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
-        </div>
-
-        <div className="drawer-body">
-          <div className="grid cols-3" style={{ marginBottom: 18 }}>
-            <Stat label="Disponivel" value={`${num(item.available)} ${item.unit}`} tone={stockTone(item)} />
-            <Stat label="Fisico" value={`${num(item.physical)} ${item.unit}`} />
-            <Stat label="Minimo" value={`${num(item.min)} ${item.unit}`} />
-          </div>
-
-          <div className="block-label">Estoque</div>
-          <table className="minitable" style={{ marginBottom: 18 }}>
-            <tbody>
-              <tr><td>Reservado</td><td className="r">{num(item.reserved)} {item.unit}</td></tr>
-              <tr><td>Em cura</td><td className="r">{num(item.inCure)} {item.unit}</td></tr>
-              <tr><td>Bloqueado</td><td className="r">{num(item.blocked)} {item.unit}</td></tr>
-              <tr><td>Status</td><td className="r"><Badge tone={stockTone(item)}>{stockLabel(item)}</Badge></td></tr>
-            </tbody>
-          </table>
-
-          <div className="block-label">Cadastro</div>
-          <div style={{ marginBottom: 18 }}>
-            <FieldRow label="Categoria" value={item.category} />
-            <FieldRow label="Unidade" value={item.unit} />
-            <FieldRow label="Local padrao" value={item.defaultLocation} />
-            <FieldRow label="Controla lote" value={item.tracksLot ? "Sim" : "Nao"} />
-            <FieldRow label="Vendavel" value={item.sellable ? "Sim" : "Nao"} />
-            <FieldRow label="Fragil" value={item.fragile ? "Sim" : "Nao"} />
-          </div>
-
-          <div className="block-label">Comercial</div>
-          <div style={{ marginBottom: 18 }}>
-            <FieldRow label="Custo estimado" value={item.estimatedCost == null ? "-" : BRL(item.estimatedCost)} />
-            <FieldRow label="Custo medio" value={item.averageCost == null ? "-" : BRL(item.averageCost)} />
-            <FieldRow label="Preco sugerido" value={item.suggestedPrice == null ? "-" : BRL(item.suggestedPrice)} />
-            <FieldRow label="Preco atual" value={item.currentPrice == null ? "-" : BRL(item.currentPrice)} />
-          </div>
-
-          {(item.metadata.aroma || item.metadata.collection || item.metadata.cureDays != null) && (
-            <>
-              <div className="block-label">Produto</div>
-              <div>
-                <FieldRow label="Colecao" value={item.metadata.collection} />
-                <FieldRow label="Aroma" value={item.metadata.aroma} />
-                <FieldRow label="Cura" value={item.metadata.cureDays == null ? "-" : `${item.metadata.cureDays} dias`} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="drawer-h1">{itemTitle(item)}</div>
+              <div className="row-wrap" style={{ gap: 6, marginTop: 7 }}>
+                <span className="code-pill">{item.code}</span>
+                <span className="sku">{item.sku}</span>
+                <Badge tone={ITEM_TYPE_TONES[item.type]}>{ITEM_TYPE_LABELS[item.type]}</Badge>
+                <Badge tone={ITEM_STATUS_TONES[item.status]}>{ITEM_STATUS_LABELS[item.status]}</Badge>
               </div>
-            </>
-          )}
-        </div>
+            </div>
+            <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
+          </div>
 
-        <div className="drawer-foot">
-          <Button variant="outline" onClick={onClose}>Fechar</Button>
+          <div className="drawer-body">
+            <div className="grid cols-3" style={{ marginBottom: 18 }}>
+              <Stat label="Disponivel" value={`${num(item.available)} ${item.unit}`} tone={stockTone(item)} />
+              <Stat label="Fisico" value={`${num(item.physical)} ${item.unit}`} />
+              <Stat label="Minimo" value={`${num(item.min)} ${item.unit}`} />
+            </div>
+
+            <div className="block-label">Estoque</div>
+            <table className="minitable" style={{ marginBottom: 18 }}>
+              <tbody>
+                <tr><td>Reservado</td><td className="r">{num(item.reserved)} {item.unit}</td></tr>
+                <tr><td>Em cura</td><td className="r">{num(item.inCure)} {item.unit}</td></tr>
+                <tr><td>Bloqueado</td><td className="r">{num(item.blocked)} {item.unit}</td></tr>
+                <tr><td>Status</td><td className="r"><Badge tone={stockTone(item)}>{stockLabel(item)}</Badge></td></tr>
+              </tbody>
+            </table>
+
+            <div className="block-label">Cadastro</div>
+            <div style={{ marginBottom: 18 }}>
+              <FieldRow label="Categoria" value={item.category} />
+              <FieldRow label="Unidade" value={item.unit} />
+              <FieldRow label="Local padrao" value={item.defaultLocation} />
+              <FieldRow label="Controla lote" value={item.tracksLot ? "Sim" : "Nao"} />
+              <FieldRow label="Vendavel" value={item.sellable ? "Sim" : "Nao"} />
+              <FieldRow label="Fragil" value={item.fragile ? "Sim" : "Nao"} />
+            </div>
+
+            <div className="block-label">Comercial</div>
+            <div style={{ marginBottom: 18 }}>
+              <FieldRow label="Custo estimado" value={item.estimatedCost == null ? "-" : BRL(item.estimatedCost)} />
+              <FieldRow label="Custo medio" value={item.averageCost == null ? "-" : BRL(item.averageCost)} />
+              <FieldRow label="Preco sugerido" value={item.suggestedPrice == null ? "-" : BRL(item.suggestedPrice)} />
+              <FieldRow label="Preco atual" value={item.currentPrice == null ? "-" : BRL(item.currentPrice)} />
+            </div>
+
+            {(item.metadata.aroma || item.metadata.collection || item.metadata.cureDays != null) && (
+              <>
+                <div className="block-label">Produto</div>
+                <div>
+                  <FieldRow label="Colecao" value={item.metadata.collection} />
+                  <FieldRow label="Aroma" value={item.metadata.aroma} />
+                  <FieldRow label="Cura" value={item.metadata.cureDays == null ? "-" : `${item.metadata.cureDays} dias`} />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="drawer-foot">
+            <Button variant="default" icon="sliders" onClick={() => setAdjustOpen(true)}>Ajustar estoque</Button>
+            <Button variant="outline" onClick={onClose}>Fechar</Button>
+          </div>
         </div>
       </div>
-    </div>
+
+      <StockAdjustmentModal
+        item={item}
+        open={adjustOpen}
+        onClose={() => setAdjustOpen(false)}
+        onAdjusted={onAdjusted}
+      />
+    </>
   );
 }
 
@@ -342,7 +479,7 @@ export function ItemsScreen({ go, route }: { go: Go; route: Route }) {
         </CardContent>
       </Card>
 
-      {selected && <ItemDrawer item={selected} onClose={() => go("itens")} />}
+      {selected && <ItemDrawer item={selected} onClose={() => go("itens")} onAdjusted={load} />}
     </div>
   );
 }
