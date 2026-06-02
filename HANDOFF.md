@@ -1,6 +1,6 @@
 # Atelie OS - Implementation Handoff
 
-Last updated: 2026-06-02 during the foundation-hardening slice.
+Last updated: 2026-06-02 during the DB-backed items register slice.
 
 ## Current Baseline
 
@@ -15,14 +15,14 @@ Current stack:
 - Drizzle ORM
 - PostgreSQL 17 through Docker Compose for local development
 
-The app has the ported shell, auth flow, onboarding flow, and dashboard visual layout. Backend foundation tables, Better Auth tables, company membership, defaults, seed catalog, stock movements, audit logs, and first app API routes exist.
+The app has the ported shell, auth flow, onboarding flow, dashboard visual layout, and a DB-backed Items / SKUs register. Backend foundation tables, Better Auth tables, company membership, defaults, seed catalog, stock movements, audit logs, and first app API routes exist.
 
 ## Branch Workflow
 
 - `main` is reserved for release promotion.
 - `development` is the integration branch.
 - Feature work should branch from `development`.
-- This slice is on `feature/foundation-hardening`.
+- Current slice is on `feature/items-register`.
 
 The previous split commits should stay as-is: `feat: port design prototype` and `feat: add backend foundation`.
 
@@ -54,7 +54,11 @@ Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_
 - `src/lib/app-route-context.ts` - server helper for authenticated user, active company, and role.
 - `src/app/api/app/session/route.ts` - auth session payload for the client gate.
 - `src/app/api/app/dashboard/route.ts` - DB-backed dashboard stock summary.
+- `src/app/api/app/items/route.ts` - DB-backed catalog item list with derived stock balances.
+- `src/lib/stock-balances.ts` - shared stock movement balance interpretation for app APIs.
+- `src/lib/items.ts` - client contract for the Items / SKUs register.
 - `src/screens/dashboard.tsx` - keeps prototype dashboard layout and consumes backend low-stock data when available.
+- `src/screens/items.tsx` - searchable/sortable Items / SKUs register and detail drawer.
 
 ## Foundation Hardening Status
 
@@ -86,6 +90,22 @@ Local database note:
 - `.env` may override the placeholder seed owner name, email, and password for local testing.
 - The local database already had three historical `seed.run` audit rows per seed entity from earlier pre-hardening seed runs. The new idempotency guard kept that count stable on subsequent runs; it did not delete old audit history.
 
+## Items Register Status
+
+Done in this slice:
+
+- Added `GET /api/app/items`.
+- Extracted stock movement interpretation into `src/lib/stock-balances.ts` and reused it from the dashboard endpoint.
+- Added a DB-backed `Itens / SKUs` screen behind the existing shell route.
+- The screen lists company-scoped catalog items with category, unit, default location, pricing flags, stock health, search, tabs, sorting, and a read-only detail drawer.
+- The screen remains read-only; stock adjustments and item create/edit flows should be separate audited slices.
+
+Verification completed on 2026-06-02:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- Unauthenticated `GET /api/app/items` returned `401`.
+
 ## Product Invariants
 
 - Keep single-company UI for now, but preserve `company_id` on every app query.
@@ -99,4 +119,4 @@ Local database note:
 
 ## Next Recommended Slice
 
-Finish verification for this foundation-hardening branch first. After that, remove remaining prototype fixture data from active UI paths before porting more screens. Use `docs/next-steps-fixture-data-cleanup.md` as the next planning note, then continue screen-by-screen from the product build order.
+Finish review for `feature/items-register` first. The next practical product slice is an audited stock adjustment flow from the item detail drawer: manual positive/negative adjustments, reason required, `stock_movements` write, audit row, and refresh of `/api/app/items` and `/api/app/dashboard` balances.

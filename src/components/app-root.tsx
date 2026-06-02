@@ -12,6 +12,7 @@ import { NotifCenter } from "@/components/notif-center";
 import { AuthFlow } from "@/components/auth/auth-flow";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { Dashboard } from "@/screens/dashboard";
+import { ItemsScreen } from "@/screens/items";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
@@ -32,6 +33,7 @@ type ScreenProps = { go: Go; route: Route; session: Session };
 
 const SCREENS: Record<string, React.ComponentType<ScreenProps>> = {
   hoje: Dashboard as React.ComponentType<ScreenProps>,
+  itens: ItemsScreen as React.ComponentType<ScreenProps>,
 };
 
 function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => void }) {

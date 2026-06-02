@@ -15,7 +15,7 @@ Current stack:
 - Drizzle ORM
 - PostgreSQL 17
 
-The design prototype has been ported into the shell, auth flow, onboarding flow, and dashboard. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
+The design prototype has been ported into the shell, auth flow, onboarding flow, dashboard, and a DB-backed Items / SKUs register. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
 
 Read `HANDOFF.md` before continuing implementation work.
 
@@ -117,5 +117,7 @@ Production and orders:
 - Use `src/lib/app-route-context.ts` for app API authentication and active company resolution.
 - Company-scoped app resources should return `401` when unauthenticated and `403` when authenticated without active company access.
 - Onboarding/session endpoints may authenticate without requiring an existing company so new users can complete onboarding.
-- `GET /api/app/dashboard` is the first DB-backed dashboard endpoint. It derives stock summary from `stock_movements`.
+- `GET /api/app/dashboard` derives stock summary from `stock_movements`.
+- `GET /api/app/items` lists company-scoped catalog items with category, unit, default location, pricing flags, and derived stock balances.
+- Use `src/lib/stock-balances.ts` for stock movement interpretation in app APIs.
 - The known `drizzle-kit` dev-only audit warning is documented; do not run `npm audit fix --force` to downgrade or churn Drizzle Kit.
