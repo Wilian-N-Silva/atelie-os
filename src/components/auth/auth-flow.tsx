@@ -188,7 +188,7 @@ function SignupScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  const invite = { company: "Instante Âmbar", by: "Camila Ribeiro", role: "operator" as const, email: "rafael@instanteambar.com.br" };
+  const invite = { company: "Atelie de exemplo", by: "Administrador", role: "operator" as const, email: "convite@example.com" };
   React.useEffect(() => { if (mode === "invite") setEmail(invite.email); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async (e?: React.FormEvent) => {

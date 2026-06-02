@@ -37,11 +37,13 @@ npm run db:seed
 npm run dev
 ```
 
-Seeded owner email uses a placeholder by default:
+Seeded company and owner identity use neutral placeholders by default:
 
+- Company: defaults to `Atelie OS` when `SEED_COMPANY_NAME` is not set
+- Name: defaults to `SEED_OWNER_EMAIL` when `SEED_OWNER_NAME` is not set
 - Email: `admin@example.com`
 
-Set `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not record real seed credentials in committed docs, examples, or source defaults.
+Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not record real seed credentials, company names, or personal names in committed docs, examples, or source defaults.
 
 ## Important Files
 
@@ -81,7 +83,7 @@ Verification completed on 2026-06-02:
 
 Local database note:
 
-- `.env` may override the placeholder seed credentials for local testing.
+- `.env` may override the placeholder seed owner name, email, and password for local testing.
 - The local database already had three historical `seed.run` audit rows per seed entity from earlier pre-hardening seed runs. The new idempotency guard kept that count stable on subsequent runs; it did not delete old audit history.
 
 ## Product Invariants
@@ -97,4 +99,4 @@ Local database note:
 
 ## Next Recommended Slice
 
-Finish verification for this foundation-hardening branch first. After that, continue screen-by-screen from the product build order rather than porting every remaining screen at once. The next practical product slice is usually one core register screen backed by company-scoped DB queries, keeping the existing prototype styles intact.
+Finish verification for this foundation-hardening branch first. After that, remove remaining prototype fixture data from active UI paths before porting more screens. Use `docs/next-steps-fixture-data-cleanup.md` as the next planning note, then continue screen-by-screen from the product build order.

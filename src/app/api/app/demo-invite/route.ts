@@ -12,13 +12,13 @@ export async function POST(request: Request) {
   if ("response" in authResult) return authResult.response;
 
   const existingCompany = await db.query.companies.findFirst({
-    where: eq(companies.slug, "instante-ambar"),
+    where: eq(companies.slug, "atelie-de-exemplo"),
     columns: { id: true, name: true },
   });
 
   const company = existingCompany ?? (await createCompanyForUser({
     userId: authResult.user.id,
-    companyName: "Instante Ambar",
+    companyName: "Atelie de exemplo",
     segment: "velas",
     teamSize: "small",
   }).then((created) => ({ id: created.companyId, name: created.companyName })));

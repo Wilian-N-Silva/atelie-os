@@ -55,11 +55,13 @@ npm run build
 docker compose ps postgres
 ```
 
-Seeded owner email uses a placeholder by default:
+Seeded company and owner identity use neutral placeholders by default:
 
+- Company: defaults to `Atelie OS` when `SEED_COMPANY_NAME` is not set
+- Name: defaults to `SEED_OWNER_EMAIL` when `SEED_OWNER_NAME` is not set
 - Email: `admin@example.com`
 
-Set `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not commit real seed credentials in examples, docs, or source defaults.
+Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not commit real seed credentials, company names, or personal names in examples, docs, or source defaults.
 
 ## Architecture Invariants
 

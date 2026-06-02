@@ -14,9 +14,9 @@ import { Onboarding } from "@/components/onboarding/onboarding";
 import { Dashboard } from "@/screens/dashboard";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
-import { buildNotifications } from "@/lib/data";
 import { fetchAppSession } from "@/lib/app-session";
 import type { Session, Route, Go } from "@/lib/types";
+import type { Notification } from "@/components/notif-center";
 import type { OnboardingDonePayload } from "@/components/onboarding/onboarding";
 
 function Placeholder({ name }: { name: string }) {
@@ -28,8 +28,10 @@ function Placeholder({ name }: { name: string }) {
 }
 
 /* Screens built so far. Others fall back to a placeholder. */
-const SCREENS: Record<string, React.ComponentType<{ go: Go; route: Route }>> = {
-  hoje: Dashboard as React.ComponentType<{ go: Go; route: Route }>,
+type ScreenProps = { go: Go; route: Route; session: Session };
+
+const SCREENS: Record<string, React.ComponentType<ScreenProps>> = {
+  hoje: Dashboard as React.ComponentType<ScreenProps>,
 };
 
 function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => void }) {
@@ -51,7 +53,7 @@ function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => 
   React.useEffect(() => { localStorage.setItem("atelie-notif", JSON.stringify(notifState)); }, [notifState]);
 
   const notifications = React.useMemo(
-    () => buildNotifications().map((n) => ({ ...n, status: (notifState[n.id] ?? "unread") as "unread" | "read" | "resolved" })),
+    () => ([] as Notification[]).map((n) => ({ ...n, status: (notifState[n.id] ?? "unread") as "unread" | "read" | "resolved" })),
     [notifState]
   );
   const unread = notifications.filter((n) => n.status === "unread").length;
@@ -105,7 +107,7 @@ function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => 
       <AppShell route={route} go={go} theme={theme} setTheme={setTheme}
         unread={unread} onOpenCmd={() => setCmdOpen(true)} onOpenNotif={() => setNotifOpen(true)}
         user={session.user} company={session.companyName} onSignOut={onSignOut}>
-        {Screen ? <Screen go={go} route={route} /> : <Placeholder name={route.screen} />}
+        {Screen ? <Screen go={go} route={route} session={session} /> : <Placeholder name={route.screen} />}
       </AppShell>
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} go={go} />
