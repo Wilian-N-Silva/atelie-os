@@ -15,7 +15,7 @@ Current stack:
 - Drizzle ORM
 - PostgreSQL 17
 
-The design prototype has been ported into the shell, auth flow, onboarding flow, dashboard, and a DB-backed Items / SKUs register. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
+The design prototype has been ported into the shell, auth flow, onboarding flow, dashboard, a DB-backed Items / SKUs register, and a local DB-backed Estoque screen in progress. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
 
 Read `HANDOFF.md` before continuing implementation work.
 
@@ -36,7 +36,7 @@ The PRD notes that table and field names are suggestions. Preserve the concepts 
 - Merge finished work back into `development`.
 - Promote `development` to `main` only for releases.
 
-Current hardening work is intended for `feature/foundation-hardening`.
+Current local module work is on `feature/inventory-module`. No PR is open for that branch by request.
 
 ## Local Setup
 
@@ -122,5 +122,7 @@ Production and orders:
 - `POST /api/app/items` and `PUT /api/app/items/[itemId]` create/update item metadata with lookup validation, duplicate SKU/code checks, and `item.create` / `item.update` audit rows.
 - `GET /api/app/items/[itemId]/movements` lists recent stock movements for one company-scoped item.
 - `POST /api/app/items/[itemId]/stock-adjustment` records manual positive/negative stock adjustments as `stock_movements` plus `stock.adjust` audit rows.
+- `GET /api/app/inventory` returns company-scoped inventory cards, active locations, item balances, and recent movement history, with optional `locationId` filtering.
 - Use `src/lib/stock-balances.ts` for stock movement interpretation in app APIs.
+- `src/lib/stock-balances.ts` supports both company-wide and location-scoped balance views; preserve company-scoped behavior for dashboard/items callers.
 - The known `drizzle-kit` dev-only audit warning is documented; do not run `npm audit fix --force` to downgrade or churn Drizzle Kit.

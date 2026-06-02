@@ -1,6 +1,6 @@
 # Atelie OS - Implementation Handoff
 
-Last updated: 2026-06-02 during the Items / SKUs module PR.
+Last updated: 2026-06-02 during the local Estoque module branch.
 
 ## Current Baseline
 
@@ -15,14 +15,15 @@ Current stack:
 - Drizzle ORM
 - PostgreSQL 17 through Docker Compose for local development
 
-The app has the ported shell, auth flow, onboarding flow, dashboard visual layout, and a DB-backed Items / SKUs register. Backend foundation tables, Better Auth tables, company membership, defaults, seed catalog, stock movements, audit logs, and first app API routes exist.
+The app has the ported shell, auth flow, onboarding flow, dashboard visual layout, a DB-backed Items / SKUs register, and a local DB-backed Estoque screen in progress. Backend foundation tables, Better Auth tables, company membership, defaults, seed catalog, stock movements, audit logs, and first app API routes exist.
 
 ## Branch Workflow
 
 - `main` is reserved for release promotion.
 - `development` is the integration branch.
 - Feature work should branch from `development`.
-- Current slice is on `feature/items-register`.
+- Current local slice is on `feature/inventory-module`.
+- No PR is open for the current local slice by request.
 
 The previous split commits should stay as-is: `feat: port design prototype` and `feat: add backend foundation`.
 
@@ -58,11 +59,15 @@ Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_
 - `src/app/api/app/items/[itemId]/route.ts` - item metadata update endpoint.
 - `src/app/api/app/items/[itemId]/movements/route.ts` - recent stock movement history for one item.
 - `src/app/api/app/items/[itemId]/stock-adjustment/route.ts` - audited manual stock adjustment endpoint.
+- `src/app/api/app/inventory/route.ts` - DB-backed inventory overview with optional location filter.
 - `src/lib/stock-balances.ts` - shared stock movement balance interpretation for app APIs.
 - `src/lib/items-server.ts` - server-side item list shaping, form validation, lookup validation, duplicate checks, and audit writes.
 - `src/lib/items.ts` - client contract for the Items / SKUs register.
+- `src/lib/inventory-server.ts` - server-side inventory overview shaping.
+- `src/lib/inventory.ts` - client contract for the Estoque screen.
 - `src/screens/dashboard.tsx` - keeps prototype dashboard layout and consumes backend low-stock data when available.
 - `src/screens/items.tsx` - searchable/sortable Items / SKUs register and detail drawer.
+- `src/screens/inventory.tsx` - searchable/sortable inventory balances and recent movements.
 
 ## Foundation Hardening Status
 
@@ -125,6 +130,24 @@ Verification completed on 2026-06-02:
 - Unauthenticated `GET /api/app/items/[itemId]/movements` returned `401`.
 - Unauthenticated `POST /api/app/items/[itemId]/stock-adjustment` returned `401`.
 
+## Estoque Module Status
+
+Done locally on `feature/inventory-module`:
+
+- Added `GET /api/app/inventory`.
+- Added `src/lib/inventory.ts` and `src/lib/inventory-server.ts`.
+- Extended `src/lib/stock-balances.ts` so app APIs can request company-wide balances or balances scoped to one inventory location.
+- Wired the existing `estoque` shell route to `src/screens/inventory.tsx`.
+- The Estoque screen shows aggregate stock cards, active-location filtering, search, tabs, sorting, item/location balances, and recent stock movement history.
+- Inventory rows navigate into the Items / SKUs drawer for item details and stock adjustment.
+- No schema migration was required for this slice.
+
+Verification completed on 2026-06-02:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- Unauthenticated `GET /api/app/inventory` returned `401`.
+
 ## Product Invariants
 
 - Keep single-company UI for now, but preserve `company_id` on every app query.
@@ -138,4 +161,4 @@ Verification completed on 2026-06-02:
 
 ## Next Recommended Slice
 
-Finish review for `feature/items-register` first. Start the next PR as a different module. The next practical module PR is likely `Estoque`: stock movement list, location filters, item/location balance views, and manual movement workflows that build on the Items/SKUs module.
+Continue the current `feature/inventory-module` branch until the Estoque module is ready as a module-sized PR. The next practical step inside this module is adding direct manual movement workflows for purchase entry, transfer, loss, block, and release, reusing item/location validation and audit logging.

@@ -12,6 +12,14 @@ export type StockBalance = {
 
 type StockMovementType = (typeof stockMovements.$inferSelect)["movementType"];
 
+type StockMovementBalanceInput = {
+  type: StockMovementType;
+  quantity: string;
+  fromLocationId: string | null;
+  toLocationId: string | null;
+  toLocationType: string | null;
+};
+
 export function emptyStockBalance(): StockBalance {
   return {
     physical: 0,
@@ -79,12 +87,58 @@ export function applyStockMovement(balance: StockBalance, movement: {
   }
 }
 
-export async function getStockBalancesForCompany(companyId: string) {
+function applyLocationStockMovement(balance: StockBalance, movement: StockMovementBalanceInput, locationId: string) {
+  const quantity = Number(movement.quantity);
+  const fromSelected = movement.fromLocationId === locationId;
+  const toSelected = movement.toLocationId === locationId;
+
+  switch (movement.type) {
+    case "purchase_entry":
+    case "adjustment_positive":
+    case "return":
+      if (toSelected) balance.physical += quantity;
+      break;
+    case "production_output":
+      if (!toSelected) break;
+      if (movement.toLocationType === "cure") {
+        balance.inCure += quantity;
+      } else {
+        balance.physical += quantity;
+      }
+      break;
+    case "adjustment_negative":
+    case "loss":
+    case "production_consumption":
+    case "order_shipment":
+      if (fromSelected) balance.physical -= quantity;
+      break;
+    case "reservation":
+      if (toSelected) balance.reserved += quantity;
+      break;
+    case "reservation_release":
+      if (fromSelected || toSelected) balance.reserved -= quantity;
+      break;
+    case "block":
+      if (toSelected) balance.blocked += quantity;
+      break;
+    case "release":
+      if (fromSelected || toSelected) balance.blocked -= quantity;
+      break;
+    case "transfer":
+      if (fromSelected) balance.physical -= quantity;
+      if (toSelected) balance.physical += quantity;
+      break;
+  }
+}
+
+export async function getStockBalancesForCompany(companyId: string, locationId?: string | null) {
   const movementRows = await db
     .select({
       itemId: stockMovements.itemId,
       type: stockMovements.movementType,
       quantity: stockMovements.quantity,
+      fromLocationId: stockMovements.fromLocationId,
+      toLocationId: stockMovements.toLocationId,
       toLocationType: inventoryLocations.type,
     })
     .from(stockMovements)
@@ -96,7 +150,11 @@ export async function getStockBalancesForCompany(companyId: string) {
 
   for (const movement of movementRows) {
     const balance = balances.get(movement.itemId) ?? emptyStockBalance();
-    applyStockMovement(balance, movement);
+    if (locationId) {
+      applyLocationStockMovement(balance, movement, locationId);
+    } else {
+      applyStockMovement(balance, movement);
+    }
     balances.set(movement.itemId, balance);
   }
 
