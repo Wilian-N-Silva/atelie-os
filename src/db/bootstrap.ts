@@ -46,10 +46,39 @@ export async function uniqueCompanySlug(name: string) {
   }
 }
 
+export async function ensureSeedAuditLog(input: {
+  companyId: string;
+  actorUserId?: string | null;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const existing = await db.query.auditLogs.findFirst({
+    where: and(
+      eq(auditLogs.companyId, input.companyId),
+      eq(auditLogs.action, "seed.run"),
+      eq(auditLogs.entityType, input.entityType),
+      eq(auditLogs.entityId, input.entityId),
+    ),
+    columns: { id: true },
+  });
+
+  if (existing) return;
+
+  await db.insert(auditLogs).values({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId ?? null,
+    action: "seed.run",
+    entityType: input.entityType,
+    entityId: input.entityId,
+    metadata: input.metadata ?? {},
+  });
+}
+
 export async function seedCompanyDefaults(companyId: string, actorUserId?: string | null) {
   await db.insert(companySettings).values({ companyId }).onConflictDoNothing();
 
-  const [theme] = await db
+  const [insertedTheme] = await db
     .insert(brandThemes)
     .values({
       companyId,
@@ -59,6 +88,11 @@ export async function seedCompanyDefaults(companyId: string, actorUserId?: strin
     })
     .onConflictDoNothing()
     .returning({ id: brandThemes.id });
+
+  const theme = insertedTheme ?? (await db.query.brandThemes.findFirst({
+    where: and(eq(brandThemes.companyId, companyId), eq(brandThemes.name, DEFAULT_THEME.name)),
+    columns: { id: true },
+  }));
 
   await db
     .insert(companyBrandSettings)
@@ -113,14 +147,14 @@ export async function seedCompanyDefaults(companyId: string, actorUserId?: strin
       .onConflictDoNothing()
       .returning({ id: workflows.id });
 
-    const existing = row ?? await db.query.workflows.findFirst({
+    const existing = row ?? (await db.query.workflows.findFirst({
       where: and(
         eq(workflows.companyId, companyId),
         eq(workflows.entity, workflow.entity),
         eq(workflows.technicalKey, workflow.technicalKey),
       ),
       columns: { id: true },
-    });
+    }));
 
     if (!existing) continue;
 
@@ -199,10 +233,9 @@ export async function seedCompanyDefaults(companyId: string, actorUserId?: strin
     )
     .onConflictDoNothing();
 
-  await db.insert(auditLogs).values({
+  await ensureSeedAuditLog({
     companyId,
     actorUserId: actorUserId ?? null,
-    action: "seed.run",
     entityType: "company",
     entityId: companyId,
     metadata: { scope: "company_defaults" },

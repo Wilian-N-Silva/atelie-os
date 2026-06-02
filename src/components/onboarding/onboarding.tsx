@@ -125,7 +125,7 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
               <div className="ob-body">
                 <div className="ff">
                   <label className="ff-label">Nome do ateliê <span className="ff-req">*</span></label>
-                  <Input value={coName} onChange={(e) => { setCoName(e.target.value); setErr(null); }} placeholder="Ex.: Instante Âmbar" autoFocus />
+                  <Input value={coName} onChange={(e) => { setCoName(e.target.value); setErr(null); }} placeholder="Ex.: Meu atelie" autoFocus />
                   {err && <div className="ff-error">{err}</div>}
                 </div>
 

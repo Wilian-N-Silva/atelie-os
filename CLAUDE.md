@@ -1,65 +1,121 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for coding agents working in this repository.
 
-## Current state
+## Current State
 
-Implementation has **started** (Next.js + Tailwind + shadcn). A design prototype is being ported into `src/`. **If you are picking this up, read `HANDOFF.md` at the repo root first** — it records what's built, the locked decisions, the design-bundle locations (including a second bundle with auth screens still to fetch), and the exact remaining work in order.
+Atelie OS is a Next.js backoffice for an artisanal candle atelier, built white-label from day one. The product language is pt-BR.
 
-The original design docs under `docs/` remain the product source of truth. When starting code work, follow the recommended stack and the phased implementation order below rather than inventing a different architecture.
+Current stack:
 
-The working language of the product and docs is **Portuguese (pt-BR)**. The domain is a backoffice ("Ateliê OS") for a small artisanal scented-candle maker (Instante Âmbar), designed white-label from day one.
+- Next.js 16 App Router
+- React 19
+- Tailwind CSS 4
+- Better Auth
+- Drizzle ORM
+- PostgreSQL 17
 
-## Source of truth
+The design prototype has been ported into the shell, auth flow, onboarding flow, and dashboard. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
 
-- `docs/prd-v2.1-atelie-os-instante-ambar.md` — the authoritative spec. It defines the product scope, the full module list (§7), the data model (§9), the critical business rules (§10), the phased build order (§11), and MVP acceptance criteria (§12). Read the relevant section before implementing a module. The doc explicitly states there is no legacy code; prior conversations are conceptual reference only.
-- `docs/manual-base-atelie-os-instante-ambar.md` — narrative base for an end-user manual (how to *use* the system, not how it's built). Useful for understanding intended UX and operator workflows; not a dev spec.
-- `docs/git-workflow.md` — branching rules.
+Read `HANDOFF.md` before continuing implementation work.
 
-The PRD notes that table/field names in §9 are suggestions — implementation may adjust names but **must preserve the concepts**.
+## Source of Truth
 
-## Git workflow
+- `docs/prd-v2.1-atelie-os-instante-ambar.md` - authoritative product spec.
+- `docs/manual-base-atelie-os-instante-ambar.md` - operator/user flow context.
+- `docs/git-workflow.md` - branching rules.
+- `docs/next-steps-foundation-hardening.md` - current foundation-hardening slice notes.
 
-This directory is not yet a git repo. Once initialized:
+The PRD notes that table and field names are suggestions. Preserve the concepts even when implementation names differ.
 
-- `main` — release branch. Never implement features on it.
-- `development` — central integration branch. Branch all work from here.
-- Create `feature/<scope>`, `fix/<scope>`, or `chore/<scope>` from `development`; merge back into `development`. Promote `development` → `main` only for releases.
+## Git Workflow
 
-## Recommended stack (PRD §4)
+- `main` is the release branch.
+- `development` is the integration branch.
+- Branch feature work from `development` using `feature/<scope>`, `fix/<scope>`, or `chore/<scope>`.
+- Merge finished work back into `development`.
+- Promote `development` to `main` only for releases.
 
-- Next.js (App Router) + TypeScript + Tailwind + shadcn/ui
-- React Hook Form + Zod for forms/validation; TanStack Table for complex tables
-- PostgreSQL (Neon) via Drizzle ORM
-- Better Auth (or equivalent); multi-user from the MVP
-- Storage abstraction (local in dev; S3/R2 in prod) for labels, PDFs, receipts, imports, shipping docs
-- PDFs via HTML+browser print or a PDF lib; internal labels use **Code128**
+Current hardening work is intended for `feature/foundation-hardening`.
 
-## Implementation order (PRD §11)
+## Local Setup
 
-Build in phases — do not jump ahead, since later modules depend on earlier ones:
-Phase 0 base (Next.js, auth, layout, DB, Drizzle, roles, single company, seed, audit + internal-help scaffolding) → 1 core registers (items, categories, units, locations, suppliers, customers, channels, numeric codes, basic labels) → 2 labels/print → 3 stock/purchasing/counts → 4 recipes/pricing/production → 5 orders/pick lists/operation mode → 6 shipping → 7 replenishment/notifications/dashboard → 8 AI text → 9 finance/export/reports → 10 CSV & external channels → 11 help refinement + hardening.
+```powershell
+docker compose up -d postgres
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
 
-v2.1 added two cross-cutting concerns to wire in early (§11.10): make the app consume **default branding tokens** (CSS variables) and **default workflows** first, then expose advanced editing later.
+Useful checks:
 
-## Non-obvious architectural invariants
+```powershell
+npm run lint
+npm run build
+docker compose ps postgres
+```
 
-These are the rules most likely to be violated by a naive implementation. Honor them across all modules.
+Seeded company and owner identity use neutral placeholders by default:
 
-**Multi-tenancy / white-label.** Single-company UI initially, but every table carries `company_id` to allow white-label evolution. No critical color may be hardcoded in operational components — colors come from branding tokens (CSS variables) with a safe fallback. A missing logo must fall back to a text name, never break layout.
+- Company: defaults to `Atelie OS` when `SEED_COMPANY_NAME` is not set
+- Name: defaults to `SEED_OWNER_EMAIL` when `SEED_OWNER_NAME` is not set
+- Email: `admin@example.com`
 
-**Stock is derived from movements (PRD §3.7, §10.1).** Never edit a balance directly. Every balance is the consequence of `stock_movements` rows. Movements must not drive stock negative without explicit authorization. Distinguish availability states: físico / reservado / disponível / bloqueado / em cura / aguardando revisão / liberado. Product in cure, blocked, or reserved is **not available**.
+Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not commit real seed credentials, company names, or personal names in examples, docs, or source defaults.
 
-**Workflows/kanban are configurable; logic must not key off display names (§10.12).** Statuses (e.g. production/order stages) are user-editable rows, not fixed strings like "Em cura". Automations must branch on a stable `technical_key` / `automation_type`, never on the visible label. In-use steps cannot be hard-deleted; history must preserve the step as it was at the time. Replace any hardcoded status list with a query against the active workflow.
+## Architecture Invariants
 
-**Numeric internal codes + barcodes (PRD §6).** Items etc. get a 12-digit numeric internal code `TTSSNNNNNNNC` (type / subtype / sequence / check digit) used by scanners, *plus* a separate human SKU (e.g. `VEL-LAV-156`) shown to users. Implement a check digit (Luhn/mod-10 or equivalent) and reject invalid/incomplete scans. A lot's code never changes when its status changes — status is DB data.
+Multi-tenancy and white-label:
 
-**Scanner is an accelerator, never a dependency (§3.2, §10.4).** Every scanner action must have an equivalent manual (keyboard/mouse/touch) path. Wrong item or invalid code must block; excess quantity must confirm or block.
+- Single-company UI is acceptable now, but every app table and query must stay company-scoped.
+- No critical operational color should be hardcoded in components; use theme tokens/CSS variables.
+- Missing logos must fall back to a text company name.
 
-**Melhor Envio (shipping) is optional (§3.3, §10.5).** If not configured, the system must still allow manual freight, manual tracking, attaching/printing external label PDFs, and completing orders. API failure must not block manual freight. A chosen quote is saved on the order.
+Stock:
 
-**AI is text-only (§3.5, §10.6).** AI may only generate/rewrite text. No image/video generation, no auto-publishing, no inventing technical data that wasn't entered. Output must be editable before approval.
+- Stock is derived from `stock_movements`.
+- Do not add or edit direct balance fields as source of truth.
+- Distinguish physical, reserved, available, blocked, curing, review-pending, and released states.
+- Product in cure, blocked, or reserved is not available.
 
-**Auditing & sensitive data (§10.11, §7.24).** Critical actions (incl. branding/workflow/theme changes, stock adjustments, lot release) produce audit records. Integration tokens are encrypted, never exposed to the frontend, never included in exports; logs mask sensitive data.
+Workflows:
 
-**Production & orders.** Creating a production order does not consume stock; consumption happens per the defined rule on finalize, which must record losses and the produced lot's real cost and consumed lots. A shipped order can't be cancelled directly — open an incident; returned product only re-enters availability after review. Lot release requires a user and date.
+- Workflow/status logic must use stable technical keys or automation metadata.
+- Do not key behavior off editable display labels.
+- In-use workflow steps should not be hard-deleted.
+
+Codes and scanners:
+
+- Internal codes are 12-digit numeric codes separate from SKUs.
+- Scanner use is an accelerator, never a dependency.
+- Every scanner operation needs a manual equivalent.
+
+Shipping:
+
+- Melhor Envio is optional.
+- Manual freight, external label PDFs, manual tracking, and order completion must still work without integration.
+
+AI:
+
+- AI may generate or rewrite text only.
+- No image/video generation, no auto-publishing, and no invented technical data.
+- AI output must be editable before approval.
+
+Audit and sensitive data:
+
+- Critical actions must produce audit records.
+- Integration tokens must be encrypted, masked in logs, omitted from exports, and never sent to the frontend.
+
+Production and orders:
+
+- Creating a production order does not consume stock.
+- Consumption happens on the defined finalization rule and must record losses, consumed lots, produced lot cost, user, and date where applicable.
+- A shipped order cannot be cancelled directly; use an incident/return flow.
+
+## Current Backend Notes
+
+- Use `src/lib/app-route-context.ts` for app API authentication and active company resolution.
+- Company-scoped app resources should return `401` when unauthenticated and `403` when authenticated without active company access.
+- Onboarding/session endpoints may authenticate without requiring an existing company so new users can complete onboarding.
+- `GET /api/app/dashboard` is the first DB-backed dashboard endpoint. It derives stock summary from `stock_movements`.
+- The known `drizzle-kit` dev-only audit warning is documented; do not run `npm audit fix --force` to downgrade or churn Drizzle Kit.

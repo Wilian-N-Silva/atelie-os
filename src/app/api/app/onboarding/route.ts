@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { createCompanyForUser } from "@/db/bootstrap";
+import { requireAuthenticatedUser } from "@/lib/app-route-context";
 import type { OnboardingInvite } from "@/lib/seed-defaults";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const authSession = await auth.api.getSession({
-    headers: request.headers,
-  });
-
-  if (!authSession) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireAuthenticatedUser(request);
+  if ("response" in authResult) return authResult.response;
 
   const body = (await request.json().catch(() => null)) as {
     companyName?: string;
@@ -28,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   const company = await createCompanyForUser({
-    userId: authSession.user.id,
+    userId: authResult.user.id,
     companyName,
     segment: body?.segment ?? null,
     teamSize: body?.teamSize ?? null,

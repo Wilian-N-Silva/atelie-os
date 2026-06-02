@@ -10,8 +10,8 @@ import type { Go, Route, SessionUser } from "@/lib/types";
 export const NAV = [
   { group: "Operação", items: [
     { id: "hoje", label: "Hoje no ateliê", icon: "hoje" },
-    { id: "pedidos", label: "Pedidos", icon: "pedidos", count: 6 },
-    { id: "producao", label: "Produção", icon: "producao", count: 6 },
+    { id: "pedidos", label: "Pedidos", icon: "pedidos" },
+    { id: "producao", label: "Produção", icon: "producao" },
   ] },
   { group: "Catálogo & estoque", items: [
     { id: "itens", label: "Itens / SKUs", icon: "itens" },
@@ -28,7 +28,7 @@ export const NAV = [
 ] as const;
 
 export const PAGE_META: Record<string, { title: string; sub: string }> = {
-  hoje: { title: "Hoje no ateliê", sub: "sábado, 31 de maio" },
+  hoje: { title: "Hoje no ateliê", sub: "Painel operacional" },
   pedidos: { title: "Pedidos", sub: "Separação · embalagem · envio" },
   producao: { title: "Produção", sub: "Ordens, cura e liberação" },
   itens: { title: "Itens / SKUs", sub: "Catálogo do ateliê" },
@@ -62,9 +62,9 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
     return () => { clearTimeout(id); document.removeEventListener("click", h); };
   }, [acctOpen]);
 
-  const me = user || { name: "Atelie Admin", email: "admin@example.com", role: "owner" as const };
+  const me = user || { name: "Usuario", email: "", role: "owner" as const };
   const roleLabel = ROLE_LABELS[me.role] || me.role;
-  const brandName = company || "Instante Âmbar";
+  const brandName = company || "Atelie OS";
 
   return (
     <div className="app">
@@ -96,7 +96,6 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
                   onClick={() => go(it.id)}>
                   <Icon name={it.icon} size={18} className="sb-item-icon" />
                   {it.label}
-                  {"count" in it && it.count != null && <span className="sb-item-count">{it.count}</span>}
                 </button>
               ))}
             </div>

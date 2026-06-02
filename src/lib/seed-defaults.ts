@@ -1,8 +1,8 @@
 import type { MemberRole } from "@/db/schema";
 
 export const DEFAULT_THEME = {
-  id: "instante-ambar-neutral",
-  name: "Instante Ambar neutro",
+  id: "atelie-neutral",
+  name: "Tema neutro",
   mode: "light",
   radius: "0.5rem",
   colors: {

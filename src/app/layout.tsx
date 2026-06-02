@@ -7,7 +7,7 @@ import "@/styles/extras.css";
 import "@/styles/auth.css";
 
 export const metadata: Metadata = {
-  title: "Ateliê OS · Instante Âmbar",
+  title: "Atelie OS",
   description: "Backoffice artesanal white-label — catálogo, estoque, produção, cura, pedidos e etiquetas.",
 };
 

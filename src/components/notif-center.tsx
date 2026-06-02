@@ -4,8 +4,20 @@
    ============================================================ */
 import * as React from "react";
 import { cn, Icon, Badge, Empty } from "@/components/ui";
-import type { Notification } from "@/lib/data";
 import type { Go } from "@/lib/types";
+
+export interface Notification {
+  id: string;
+  group: string;
+  severity: "critical" | "warning" | "info";
+  icon: string;
+  tone: "ok" | "warn" | "info" | "bad" | "cure" | "neutral";
+  title: string;
+  desc: string;
+  action: { screen: string; filter?: string };
+  actionLabel: string;
+  critical?: boolean;
+}
 
 type NotifWithStatus = Notification & { status: "unread" | "read" | "resolved" };
 

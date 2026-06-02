@@ -3,10 +3,9 @@ import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { db, sqlClient } from "@/db/client";
-import { items as sampleItems } from "@/lib/data";
+import { seedItems } from "@/db/seed-data";
 import {
   account,
-  auditLogs,
   categories,
   companies,
   companyMembers,
@@ -16,12 +15,13 @@ import {
   units,
   user,
 } from "@/db/schema";
-import { seedCompanyDefaults } from "@/db/bootstrap";
+import { ensureSeedAuditLog, seedCompanyDefaults } from "@/db/bootstrap";
 import { slugify } from "@/lib/slug";
 
 const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL?.trim() || "admin@example.com";
+const OWNER_NAME = process.env.SEED_OWNER_NAME?.trim() || OWNER_EMAIL;
 const OWNER_PASSWORD = getSeedOwnerPassword();
-const COMPANY_NAME = "Instante Ambar";
+const COMPANY_NAME = process.env.SEED_COMPANY_NAME?.trim() || "Atelie OS";
 
 function getSeedOwnerPassword() {
   const password = process.env.SEED_OWNER_PASSWORD?.trim();
@@ -51,7 +51,7 @@ async function ensureOwnerUser() {
       .insert(user)
       .values({
         id: randomUUID(),
-        name: "Camila Ribeiro",
+        name: OWNER_NAME,
         email: ownerEmail,
         emailVerified: true,
       })
@@ -60,6 +60,15 @@ async function ensureOwnerUser() {
 
   if (!owner) {
     throw new Error("Seed owner user was not created.");
+  }
+
+  if (owner.name !== OWNER_NAME) {
+    const [updatedOwner] = await db
+      .update(user)
+      .set({ name: OWNER_NAME, updatedAt: new Date() })
+      .where(eq(user.id, owner.id))
+      .returning();
+    owner = updatedOwner ?? owner;
   }
 
   const password = await hashPassword(OWNER_PASSWORD);
@@ -151,7 +160,7 @@ async function getLookupMaps(companyId: string) {
 async function seedCatalog(companyId: string, ownerId: string) {
   const lookup = await getLookupMaps(companyId);
 
-  for (const sample of sampleItems) {
+  for (const sample of seedItems) {
     const defaultLocationId =
       sample.type === "emb"
         ? lookup.locations.packaging
@@ -196,19 +205,13 @@ async function seedCatalog(companyId: string, ownerId: string) {
 
     if (!item) continue;
 
-    const existingMovement = await db.query.stockMovements.findFirst({
-      where: and(eq(stockMovements.companyId, companyId), eq(stockMovements.itemId, item.id)),
-      columns: { id: true },
-    });
-
-    if (existingMovement) continue;
-
     const movements: Array<{
       movementType: "adjustment_positive" | "reservation" | "production_output" | "block";
       quantity: string;
       toLocationId?: string;
       reason: string;
       sourceType: string;
+      sourceId: string;
     }> = [];
 
     if (sample.phys > 0) {
@@ -218,6 +221,7 @@ async function seedCatalog(companyId: string, ownerId: string) {
         toLocationId: defaultLocationId,
         reason: "Seed saldo fisico inicial",
         sourceType: "seed.initial.physical",
+        sourceId: sample.sku,
       });
     }
 
@@ -228,6 +232,7 @@ async function seedCatalog(companyId: string, ownerId: string) {
         toLocationId: defaultLocationId,
         reason: "Seed reserva inicial",
         sourceType: "seed.initial.reserved",
+        sourceId: sample.sku,
       });
     }
 
@@ -238,6 +243,7 @@ async function seedCatalog(companyId: string, ownerId: string) {
         toLocationId: lookup.locations.cure,
         reason: "Seed quantidade em cura",
         sourceType: "seed.initial.cure",
+        sourceId: sample.sku,
       });
     }
 
@@ -248,18 +254,28 @@ async function seedCatalog(companyId: string, ownerId: string) {
         toLocationId: lookup.locations.blocked,
         reason: "Seed quantidade bloqueada",
         sourceType: "seed.initial.blocked",
+        sourceId: sample.sku,
       });
     }
 
-    if (movements.length) {
-      await db.insert(stockMovements).values(
-        movements.map((movement) => ({
-          ...movement,
-          companyId,
-          itemId: item.id,
-          createdByUserId: ownerId,
-        })),
-      );
+    for (const movement of movements) {
+      const existingMovement = await db.query.stockMovements.findFirst({
+        where: and(
+          eq(stockMovements.companyId, companyId),
+          eq(stockMovements.itemId, item.id),
+          eq(stockMovements.sourceType, movement.sourceType),
+        ),
+        columns: { id: true },
+      });
+
+      if (existingMovement) continue;
+
+      await db.insert(stockMovements).values({
+        ...movement,
+        companyId,
+        itemId: item.id,
+        createdByUserId: ownerId,
+      });
     }
   }
 }
@@ -269,19 +285,19 @@ async function main() {
   const company = await ensureCompany(owner.id);
   await seedCatalog(company.id, owner.id);
 
-  await db.insert(auditLogs).values({
+  await ensureSeedAuditLog({
     companyId: company.id,
     actorUserId: owner.id,
-    action: "seed.run",
     entityType: "seed",
-    entityId: "instante-ambar",
+    entityId: slugify(COMPANY_NAME),
     metadata: {
       ownerEmail: OWNER_EMAIL,
-      catalogItems: sampleItems.length,
+      catalogItems: seedItems.length,
     },
   });
 
   console.log(`Seed concluido: ${COMPANY_NAME}`);
+  console.log(`Nome: ${OWNER_NAME}`);
   console.log(`Login: ${OWNER_EMAIL}`);
   console.log("Senha: use SEED_OWNER_PASSWORD from your local .env");
 }
