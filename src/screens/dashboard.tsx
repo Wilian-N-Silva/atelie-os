@@ -2,18 +2,62 @@
 /* ============================================================
    dashboard.tsx — "Hoje no ateliê". Ported from screen_dashboard.jsx.
    ============================================================ */
+import * as React from "react";
 import { cn, Icon, Button, Card, CardHeader, CardTitle, CardContent, Badge, Progress, Stat, Sep } from "@/components/ui";
 import { orders, production, items, finance, BRL, ORDER_STATUS, CHANNELS, num } from "@/lib/data";
+import { fetchDashboard, type DashboardResponse, type DashboardStockItem } from "@/lib/dashboard";
 import type { Go } from "@/lib/types";
 
 export function Dashboard({ go }: { go: Go }) {
+  const [dashboard, setDashboard] = React.useState<DashboardResponse | null>(null);
+  const [stockError, setStockError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    fetchDashboard()
+      .then((data) => {
+        if (!alive) return;
+        setDashboard(data);
+        setStockError(null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setStockError("Estoque local exibido enquanto o painel nao responde.");
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const byStatus = (s: string) => orders.filter((o) => o.status === s);
   const aSeparar = orders.filter((o) => ["pago", "a_separar"].includes(o.status));
   const aEmbalar = orders.filter((o) => ["separado", "embalando"].includes(o.status));
   const prontos = byStatus("pronto_envio");
   const emCura = production.filter((p) => p.status === "em_cura");
   const revisar = production.filter((p) => p.status === "aguardando_revisao");
-  const abaixoMin = items.filter((i) => i.available < i.min);
+  const localAbaixoMin = React.useMemo<DashboardStockItem[]>(
+    () => items
+      .filter((i) => i.available < i.min)
+      .map((i) => ({
+        id: i.code,
+        code: i.code,
+        sku: i.sku,
+        name: i.name,
+        variant: i.variant,
+        unit: i.unit,
+        min: i.min,
+        physical: i.phys,
+        reserved: i.reserved,
+        inCure: i.cure,
+        blocked: i.blocked,
+        available: i.available,
+      })),
+    [],
+  );
+  const abaixoMin = dashboard?.stockSummary.lowStock ?? localAbaixoMin;
+  const abaixoMinCount = dashboard?.cards.belowMinimum ?? localAbaixoMin.length;
 
   const tasks = [
     { n: aSeparar.length, label: "Pagos a separar", sub: "pedidos prontos para a bancada", icon: "pedidos", tone: "info", to: { screen: "pedidos", filter: "a_separar" } },
@@ -87,13 +131,14 @@ export function Dashboard({ go }: { go: Go }) {
           <Card>
             <CardHeader>
               <CardTitle><span className="row" style={{ gap: 8 }}><Icon name="alert" size={16} className="om-text--bad" />Abaixo do mínimo</span></CardTitle>
-              <Badge tone="bad">{abaixoMin.length}</Badge>
+              <Badge tone="bad">{abaixoMinCount}</Badge>
             </CardHeader>
             <CardContent style={{ paddingTop: 4 }}>
+              {stockError && <div className="section-hint" style={{ marginBottom: 8 }}>{stockError}</div>}
               {abaixoMin.slice(0, 4).map((i) => (
-                <div className="lrow om-row-click" key={i.code} onClick={() => go("itens", { open: i.code })}>
+                <div className="lrow om-row-click" key={i.id} onClick={() => go("itens", { open: i.code })}>
                   <div className="lrow-main">
-                    <div className="lrow-title">{i.name} <span className="muted" style={{ fontWeight: 400 }}>{i.variant}</span></div>
+                    <div className="lrow-title">{i.name} {i.variant && <span className="muted" style={{ fontWeight: 400 }}>{i.variant}</span>}</div>
                     <div className="lrow-sub sku">{i.sku}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>

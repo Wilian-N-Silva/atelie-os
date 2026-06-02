@@ -1,38 +1,22 @@
-import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { companyMembers, companies } from "@/db/schema";
-import { db } from "@/db/client";
-import { auth } from "@/lib/auth";
+import { getActiveCompanyForUser, requireAuthenticatedUser } from "@/lib/app-route-context";
 import type { Session } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const authSession = await auth.api.getSession({
-    headers: request.headers,
-  });
+  const authResult = await requireAuthenticatedUser(request);
+  if ("response" in authResult) return authResult.response;
 
-  if (!authSession) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  const [membership] = await db
-    .select({
-      role: companyMembers.role,
-      companyName: companies.name,
-    })
-    .from(companyMembers)
-    .innerJoin(companies, eq(companyMembers.companyId, companies.id))
-    .where(and(eq(companyMembers.userId, authSession.user.id), eq(companyMembers.status, "active")))
-    .limit(1);
+  const membership = await getActiveCompanyForUser(authResult.user.id);
 
   const payload: Session = {
     user: {
-      name: authSession.user.name,
-      email: authSession.user.email,
+      name: authResult.user.name,
+      email: authResult.user.email,
       role: membership?.role ?? "owner",
     },
-    companyName: membership?.companyName ?? null,
+    companyName: membership?.company.name ?? null,
     onboarded: Boolean(membership),
   };
 

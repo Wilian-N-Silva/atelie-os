@@ -2,8 +2,8 @@
 /* ============================================================
    app-root.tsx — session gate + workspace.
    Root: not authed → AuthFlow · authed & !onboarded → Onboarding ·
-   authed & onboarded → Workspace (the app). Session persisted in
-   localStorage 'atelie-session'. Ported from root.jsx + app.jsx.
+   authed & onboarded → Workspace (the app). Session comes from the
+   Better Auth-backed /api/app/session route.
    ============================================================ */
 import * as React from "react";
 import { AppShell } from "@/components/shell/app-shell";

@@ -2,31 +2,26 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { companyMembers, companies } from "@/db/schema";
 import { db } from "@/db/client";
-import { auth } from "@/lib/auth";
 import { createCompanyForUser } from "@/db/bootstrap";
+import { requireAuthenticatedUser } from "@/lib/app-route-context";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const authSession = await auth.api.getSession({
-    headers: request.headers,
-  });
-
-  if (!authSession) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireAuthenticatedUser(request);
+  if ("response" in authResult) return authResult.response;
 
   const existingCompany = await db.query.companies.findFirst({
     where: eq(companies.slug, "instante-ambar"),
     columns: { id: true, name: true },
   });
 
-  const company = existingCompany ?? await createCompanyForUser({
-      userId: authSession.user.id,
-      companyName: "Instante Ambar",
-      segment: "velas",
-      teamSize: "small",
-    }).then((created) => ({ id: created.companyId, name: created.companyName }));
+  const company = existingCompany ?? (await createCompanyForUser({
+    userId: authResult.user.id,
+    companyName: "Instante Ambar",
+    segment: "velas",
+    teamSize: "small",
+  }).then((created) => ({ id: created.companyId, name: created.companyName })));
 
   if (!company) {
     return NextResponse.json({ error: "company_not_found" }, { status: 500 });
@@ -36,7 +31,7 @@ export async function POST(request: Request) {
     .insert(companyMembers)
     .values({
       companyId: company.id,
-      userId: authSession.user.id,
+      userId: authResult.user.id,
       role: "operator",
       status: "active",
     })
@@ -45,13 +40,13 @@ export async function POST(request: Request) {
   const [membership] = await db
     .select({ role: companyMembers.role })
     .from(companyMembers)
-    .where(and(eq(companyMembers.companyId, company.id), eq(companyMembers.userId, authSession.user.id)))
+    .where(and(eq(companyMembers.companyId, company.id), eq(companyMembers.userId, authResult.user.id)))
     .limit(1);
 
   return NextResponse.json({
     user: {
-      name: authSession.user.name,
-      email: authSession.user.email,
+      name: authResult.user.name,
+      email: authResult.user.email,
       role: membership?.role ?? "operator",
     },
     companyName: company.name,
