@@ -1,6 +1,6 @@
 # Atelie OS - Implementation Handoff
 
-Last updated: 2026-06-02 during the audited stock adjustment slice.
+Last updated: 2026-06-02 during the Items / SKUs module PR.
 
 ## Current Baseline
 
@@ -55,8 +55,11 @@ Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_
 - `src/app/api/app/session/route.ts` - auth session payload for the client gate.
 - `src/app/api/app/dashboard/route.ts` - DB-backed dashboard stock summary.
 - `src/app/api/app/items/route.ts` - DB-backed catalog item list with derived stock balances.
+- `src/app/api/app/items/[itemId]/route.ts` - item metadata update endpoint.
+- `src/app/api/app/items/[itemId]/movements/route.ts` - recent stock movement history for one item.
 - `src/app/api/app/items/[itemId]/stock-adjustment/route.ts` - audited manual stock adjustment endpoint.
 - `src/lib/stock-balances.ts` - shared stock movement balance interpretation for app APIs.
+- `src/lib/items-server.ts` - server-side item list shaping, form validation, lookup validation, duplicate checks, and audit writes.
 - `src/lib/items.ts` - client contract for the Items / SKUs register.
 - `src/screens/dashboard.tsx` - keeps prototype dashboard layout and consumes backend low-stock data when available.
 - `src/screens/items.tsx` - searchable/sortable Items / SKUs register and detail drawer.
@@ -91,9 +94,9 @@ Local database note:
 - `.env` may override the placeholder seed owner name, email, and password for local testing.
 - The local database already had three historical `seed.run` audit rows per seed entity from earlier pre-hardening seed runs. The new idempotency guard kept that count stable on subsequent runs; it did not delete old audit history.
 
-## Items Register And Stock Adjustment Status
+## Items / SKUs Module Status
 
-Done in this slice:
+Done in PR #2 (`feature/items-register`):
 
 - Added `GET /api/app/items`.
 - Extracted stock movement interpretation into `src/lib/stock-balances.ts` and reused it from the dashboard endpoint.
@@ -103,13 +106,23 @@ Done in this slice:
 - Added `POST /api/app/items/[itemId]/stock-adjustment`.
 - Stock adjustments validate active-company item ownership, direction, positive quantity, required reason, and reject negative physical stock.
 - Accepted adjustments write one `stock_movements` row and one `stock.adjust` audit row in a transaction, then refresh the Items / SKUs balances.
-- Item create/edit flows remain out of scope.
+- Added item create/edit form in the Items / SKUs screen.
+- Added `POST /api/app/items` and `PUT /api/app/items/[itemId]`.
+- Item create/edit validates active-company category/unit/default-location lookups, 12-digit internal code, SKU/name, duplicate SKU/code, and writes `item.create` / `item.update` audit rows.
+- Added migration `drizzle/0001_sudden_machine_man.sql` for `item.create` and `item.update` audit enum values.
+- Stock movements remain separate from editable item metadata.
+- Added `GET /api/app/items/[itemId]/movements`.
+- The item drawer shows recent stock movements with type, quantity, reason, source, actor, and date.
 
 Verification completed on 2026-06-02:
 
+- `npm run db:migrate` applied `drizzle/0001_sudden_machine_man.sql` locally.
 - `npm run lint` passed.
 - `npm run build` passed.
 - Unauthenticated `GET /api/app/items` returned `401`.
+- Unauthenticated `POST /api/app/items` returned `401`.
+- Unauthenticated `PUT /api/app/items/[itemId]` returned `401`.
+- Unauthenticated `GET /api/app/items/[itemId]/movements` returned `401`.
 - Unauthenticated `POST /api/app/items/[itemId]/stock-adjustment` returned `401`.
 
 ## Product Invariants
@@ -125,4 +138,4 @@ Verification completed on 2026-06-02:
 
 ## Next Recommended Slice
 
-Finish review for `feature/items-register` first. The next practical product slice is item create/edit: company-scoped catalog form, category/unit/default-location selection, SKU/internal-code validation, audit rows for critical changes, and keeping stock movements separate from editable item metadata.
+Finish review for `feature/items-register` first. Start the next PR as a different module. The next practical module PR is likely `Estoque`: stock movement list, location filters, item/location balance views, and manual movement workflows that build on the Items/SKUs module.

@@ -113,6 +113,8 @@ export const auditActionEnum = pgEnum("audit_action", [
   "member.invite",
   "branding.update",
   "workflow.update",
+  "item.create",
+  "item.update",
   "stock.adjust",
   "seed.run",
 ]);
