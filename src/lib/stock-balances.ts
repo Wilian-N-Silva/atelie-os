@@ -119,10 +119,18 @@ function applyLocationStockMovement(balance: StockBalance, movement: StockMoveme
       if (fromSelected || toSelected) balance.reserved -= quantity;
       break;
     case "block":
-      if (toSelected) balance.blocked += quantity;
+      if (fromSelected) balance.physical -= quantity;
+      if (toSelected) {
+        balance.physical += quantity;
+        balance.blocked += quantity;
+      }
       break;
     case "release":
-      if (fromSelected || toSelected) balance.blocked -= quantity;
+      if (fromSelected) {
+        balance.physical -= quantity;
+        balance.blocked -= quantity;
+      }
+      if (toSelected) balance.physical += quantity;
       break;
     case "transfer":
       if (fromSelected) balance.physical -= quantity;

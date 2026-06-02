@@ -1,9 +1,12 @@
-import { and, asc, desc, eq, or } from "drizzle-orm";
+import { randomUUID } from "crypto";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db/client";
-import { categories, inventoryLocations, items, stockMovements, units, user } from "@/db/schema";
+import { auditLogs, categories, inventoryLocations, items, stockMovements, units, user } from "@/db/schema";
 import type { AppRouteContext } from "@/lib/app-route-context";
 import type {
+  InventoryManualMovementInput,
+  InventoryManualMovementType,
   InventoryItemBalance,
   InventoryMovementLocation,
   InventoryResponse,
@@ -13,6 +16,18 @@ import { emptyStockBalance, getStockBalancesForCompany, roundStock } from "@/lib
 
 const fromLocations = alias(inventoryLocations, "from_inventory_locations");
 const toLocations = alias(inventoryLocations, "to_inventory_locations");
+const MANUAL_MOVEMENT_TYPES: InventoryManualMovementType[] = ["purchase_entry", "transfer", "loss", "block", "release"];
+
+type ManualMovementLocation = {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+};
+
+type CreateInventoryMovementResult =
+  | { ok: true; movementId: string; itemId: string }
+  | { error: string };
 
 function stockStatus(item: { min: number; available: number }): ItemStockStatus {
   if (item.min <= 0) return "no_minimum";
@@ -31,6 +46,205 @@ function movementLocation(row: {
     code: row.code,
     name: row.name,
     type: row.type,
+  };
+}
+
+function cleanRequiredString(value: unknown, max: number) {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function cleanOptionalId(value: unknown) {
+  const cleaned = cleanRequiredString(value, 80);
+  return cleaned || null;
+}
+
+export function parseInventoryMovementInput(payload: unknown):
+  | { input: InventoryManualMovementInput }
+  | { error: string } {
+  if (!payload || typeof payload !== "object") return { error: "invalid_payload" };
+
+  const data = payload as Record<string, unknown>;
+  const movementType = data.movementType;
+  const itemId = cleanRequiredString(data.itemId, 80);
+  const quantity = roundStock(Number(data.quantity));
+  const reason = cleanRequiredString(data.reason, 500);
+  const fromLocationId = cleanOptionalId(data.fromLocationId);
+  const toLocationId = cleanOptionalId(data.toLocationId);
+
+  if (!MANUAL_MOVEMENT_TYPES.includes(movementType as InventoryManualMovementType)) {
+    return { error: "invalid_movement_type" };
+  }
+  if (!itemId) return { error: "item_required" };
+  if (!Number.isFinite(quantity) || quantity <= 0) return { error: "invalid_quantity" };
+  if (!reason) return { error: "reason_required" };
+
+  switch (movementType) {
+    case "purchase_entry":
+      if (!toLocationId) return { error: "to_location_required" };
+      break;
+    case "loss":
+      if (!fromLocationId) return { error: "from_location_required" };
+      break;
+    case "transfer":
+    case "block":
+    case "release":
+      if (!fromLocationId) return { error: "from_location_required" };
+      if (!toLocationId) return { error: "to_location_required" };
+      if (fromLocationId === toLocationId) return { error: "same_location" };
+      break;
+  }
+
+  return {
+    input: {
+      movementType: movementType as InventoryManualMovementType,
+      itemId,
+      quantity,
+      fromLocationId,
+      toLocationId,
+      reason,
+    },
+  };
+}
+
+async function getManualMovementItem(context: AppRouteContext, itemId: string) {
+  const [item] = await db
+    .select({
+      id: items.id,
+      code: items.internalCode,
+      sku: items.sku,
+      name: items.name,
+      variant: items.variant,
+      unit: units.code,
+    })
+    .from(items)
+    .leftJoin(units, eq(items.baseUnitId, units.id))
+    .where(and(eq(items.id, itemId), eq(items.companyId, context.company.id)))
+    .limit(1);
+
+  return item ?? null;
+}
+
+async function getManualMovementLocations(context: AppRouteContext, input: InventoryManualMovementInput) {
+  const ids = Array.from(new Set([input.fromLocationId, input.toLocationId].filter((id): id is string => Boolean(id))));
+  if (!ids.length) return new Map<string, ManualMovementLocation>();
+
+  const rows = await db
+    .select({
+      id: inventoryLocations.id,
+      code: inventoryLocations.code,
+      name: inventoryLocations.name,
+      type: inventoryLocations.type,
+    })
+    .from(inventoryLocations)
+    .where(
+      and(
+        eq(inventoryLocations.companyId, context.company.id),
+        eq(inventoryLocations.isActive, true),
+        inArray(inventoryLocations.id, ids),
+      ),
+    );
+
+  return new Map(rows.map((location) => [location.id, location]));
+}
+
+function describeLocation(location: ManualMovementLocation | null) {
+  if (!location) return null;
+  return {
+    id: location.id,
+    code: location.code,
+    name: location.name,
+    type: location.type,
+  };
+}
+
+async function assertSourceCapacity(context: AppRouteContext, input: InventoryManualMovementInput) {
+  if (!input.fromLocationId) return null;
+
+  const balances = await getStockBalancesForCompany(context.company.id, input.fromLocationId);
+  const balance = balances.get(input.itemId) ?? emptyStockBalance();
+
+  if (input.movementType === "release") {
+    return input.quantity > balance.blocked ? "insufficient_blocked_stock" : null;
+  }
+
+  if (["transfer", "loss", "block"].includes(input.movementType)) {
+    return input.quantity > balance.physical ? "insufficient_source_stock" : null;
+  }
+
+  return null;
+}
+
+export async function createInventoryMovement(
+  context: AppRouteContext,
+  input: InventoryManualMovementInput,
+): Promise<CreateInventoryMovementResult> {
+  const item = await getManualMovementItem(context, input.itemId);
+  if (!item) return { error: "item_not_found" };
+
+  const locations = await getManualMovementLocations(context, input);
+  const fromLocation = input.fromLocationId ? locations.get(input.fromLocationId) ?? null : null;
+  const toLocation = input.toLocationId ? locations.get(input.toLocationId) ?? null : null;
+
+  if (input.fromLocationId && !fromLocation) return { error: "from_location_not_found" };
+  if (input.toLocationId && !toLocation) return { error: "to_location_not_found" };
+  if (input.movementType === "block" && toLocation?.type !== "blocked") return { error: "blocked_location_required" };
+  if (input.movementType === "release" && fromLocation?.type !== "blocked") return { error: "blocked_source_required" };
+
+  const capacityError = await assertSourceCapacity(context, input);
+  if (capacityError) return { error: capacityError };
+
+  const manualMovementId = randomUUID();
+  const movement = await db.transaction(async (tx) => {
+    const [insertedMovement] = await tx
+      .insert(stockMovements)
+      .values({
+        companyId: context.company.id,
+        itemId: item.id,
+        movementType: input.movementType,
+        quantity: input.quantity.toString(),
+        fromLocationId: input.fromLocationId,
+        toLocationId: input.toLocationId,
+        reason: input.reason,
+        sourceType: "manual.inventory_movement",
+        sourceId: manualMovementId,
+        createdByUserId: context.user.id,
+        metadata: {
+          manualMovementId,
+          fromLocation: describeLocation(fromLocation),
+          toLocation: describeLocation(toLocation),
+        },
+      })
+      .returning({ id: stockMovements.id });
+
+    await tx.insert(auditLogs).values({
+      companyId: context.company.id,
+      actorUserId: context.user.id,
+      action: "stock.adjust",
+      entityType: "item",
+      entityId: item.id,
+      metadata: {
+        manualMovementId,
+        movementId: insertedMovement.id,
+        movementType: input.movementType,
+        itemCode: item.code,
+        sku: item.sku,
+        itemName: item.name,
+        itemVariant: item.variant,
+        quantity: input.quantity,
+        unit: item.unit ?? "un",
+        reason: input.reason,
+        fromLocation: describeLocation(fromLocation),
+        toLocation: describeLocation(toLocation),
+      },
+    });
+
+    return insertedMovement;
+  });
+
+  return {
+    ok: true,
+    movementId: movement.id,
+    itemId: item.id,
   };
 }
 

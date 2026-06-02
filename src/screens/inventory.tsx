@@ -9,20 +9,27 @@ import {
   CardHeader,
   CardTitle,
   Empty,
+  Field,
   Icon,
   Input,
+  Modal,
   Select,
   Sep,
   SortTh,
   Stat,
   Tabs,
+  Textarea,
+  toast,
   useSort,
 } from "@/components/ui";
 import { num } from "@/lib/format";
 import {
+  createInventoryMovement,
   fetchInventory,
   type InventoryItemBalance,
   type InventoryLocation,
+  type InventoryManualMovementInput,
+  type InventoryManualMovementType,
   type InventoryMovement,
   type InventoryResponse,
 } from "@/lib/inventory";
@@ -56,6 +63,376 @@ const LOCATION_TYPE_LABELS: Record<string, string> = {
   blocked: "Bloqueado",
   packaging: "Embalagens",
 };
+
+const MANUAL_MOVEMENT_LABELS: Record<InventoryManualMovementType, string> = {
+  purchase_entry: "Entrada de compra",
+  transfer: "Transferencia",
+  loss: "Perda",
+  block: "Bloquear",
+  release: "Liberar bloqueado",
+};
+
+const MANUAL_MOVEMENT_OPTIONS = [
+  { value: "purchase_entry", label: MANUAL_MOVEMENT_LABELS.purchase_entry },
+  { value: "transfer", label: MANUAL_MOVEMENT_LABELS.transfer },
+  { value: "loss", label: MANUAL_MOVEMENT_LABELS.loss },
+  { value: "block", label: MANUAL_MOVEMENT_LABELS.block },
+  { value: "release", label: MANUAL_MOVEMENT_LABELS.release },
+];
+
+const MOVEMENT_ERROR_LABELS: Record<string, string> = {
+  invalid_payload: "Dados invalidos.",
+  invalid_movement_type: "Tipo de movimento invalido.",
+  item_required: "Selecione um item.",
+  item_not_found: "Item nao encontrado.",
+  invalid_quantity: "Informe uma quantidade maior que zero.",
+  reason_required: "Informe o motivo.",
+  from_location_required: "Selecione o local de origem.",
+  to_location_required: "Selecione o local de destino.",
+  same_location: "Origem e destino devem ser diferentes.",
+  from_location_not_found: "Local de origem nao encontrado.",
+  to_location_not_found: "Local de destino nao encontrado.",
+  blocked_location_required: "Destino deve ser um local de bloqueados.",
+  blocked_source_required: "Origem deve ser um local de bloqueados.",
+  insufficient_source_stock: "Saldo fisico insuficiente no local de origem.",
+  insufficient_blocked_stock: "Saldo bloqueado insuficiente no local de origem.",
+};
+
+type MovementFormState = {
+  movementType: InventoryManualMovementType;
+  itemId: string;
+  quantity: string;
+  fromLocationId: string;
+  toLocationId: string;
+  reason: string;
+};
+
+function movementRequiresFrom(type: InventoryManualMovementType) {
+  return type !== "purchase_entry";
+}
+
+function movementRequiresTo(type: InventoryManualMovementType) {
+  return type !== "loss";
+}
+
+function movementErrorMessage(message: string) {
+  return MOVEMENT_ERROR_LABELS[message] ?? message;
+}
+
+function itemLocationFallback(item: InventoryItemBalance | null, selectedLocationId: string) {
+  return selectedLocationId || item?.defaultLocationId || "";
+}
+
+function firstLocation(locations: InventoryLocation[], predicate?: (location: InventoryLocation) => boolean) {
+  return locations.find((location) => location.isActive && (!predicate || predicate(location)))?.id ?? "";
+}
+
+function defaultMovementForm(data: InventoryResponse | null, selectedLocationId: string): MovementFormState {
+  const item = data?.items[0] ?? null;
+  const activeLocations = data?.locations.filter((location) => location.isActive) ?? [];
+  const defaultLocationId = itemLocationFallback(item, selectedLocationId) || firstLocation(activeLocations);
+
+  return {
+    movementType: "purchase_entry",
+    itemId: item?.id ?? "",
+    quantity: "",
+    fromLocationId: "",
+    toLocationId: defaultLocationId,
+    reason: "",
+  };
+}
+
+function parseMovementQuantity(value: string) {
+  return Number(value.replace(",", "."));
+}
+
+function resolveMovementLocations(
+  type: InventoryManualMovementType,
+  item: InventoryItemBalance | null,
+  locations: InventoryLocation[],
+  selectedLocationId: string,
+  current: Pick<MovementFormState, "fromLocationId" | "toLocationId">,
+) {
+  const activeLocations = locations.filter((location) => location.isActive);
+  const defaultLocationId = itemLocationFallback(item, selectedLocationId) || firstLocation(activeLocations);
+  const blockedLocationId = firstLocation(activeLocations, (location) => location.type === "blocked");
+  const availableLocationId = firstLocation(activeLocations, (location) => location.type !== "blocked");
+  const isAvailableLocation = (locationId: string) => activeLocations.some((location) => location.id === locationId && location.type !== "blocked");
+  const nextFromLocationId = current.fromLocationId || defaultLocationId;
+  const firstDifferentLocationId = activeLocations.find((location) => location.id !== nextFromLocationId)?.id ?? "";
+
+  switch (type) {
+    case "purchase_entry":
+      return {
+        fromLocationId: "",
+        toLocationId: current.toLocationId || defaultLocationId,
+      };
+    case "loss":
+      return {
+        fromLocationId: current.fromLocationId || defaultLocationId,
+        toLocationId: "",
+      };
+    case "transfer":
+      return {
+        fromLocationId: nextFromLocationId,
+        toLocationId: current.toLocationId && current.toLocationId !== nextFromLocationId
+          ? current.toLocationId
+          : firstDifferentLocationId,
+      };
+    case "block":
+      return {
+        fromLocationId: isAvailableLocation(current.fromLocationId) ? current.fromLocationId : availableLocationId || defaultLocationId,
+        toLocationId: blockedLocationId,
+      };
+    case "release":
+      return {
+        fromLocationId: blockedLocationId,
+        toLocationId: current.toLocationId && current.toLocationId !== blockedLocationId && isAvailableLocation(current.toLocationId)
+          ? current.toLocationId
+          : availableLocationId || defaultLocationId,
+      };
+  }
+}
+
+function InventoryMovementModal({
+  open,
+  data,
+  selectedLocationId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  data: InventoryResponse | null;
+  selectedLocationId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = React.useState<MovementFormState>(() => defaultMovementForm(data, selectedLocationId));
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const items = data?.items ?? [];
+  const activeLocations = React.useMemo(
+    () => (data?.locations ?? []).filter((location) => location.isActive),
+    [data?.locations],
+  );
+  const selectedItem = items.find((item) => item.id === form.itemId) ?? null;
+  const blockedLocations = activeLocations.filter((location) => location.type === "blocked");
+  const availableLocations = activeLocations.filter((location) => location.type !== "blocked");
+  const fromLocationOptions = form.movementType === "release"
+    ? blockedLocations
+    : form.movementType === "block"
+      ? availableLocations
+      : activeLocations;
+  const toLocationOptions = form.movementType === "block"
+    ? blockedLocations
+    : form.movementType === "release"
+      ? availableLocations
+      : activeLocations;
+
+  React.useEffect(() => {
+    if (!open) return;
+    setForm(defaultMovementForm(data, selectedLocationId));
+    setError(null);
+    setBusy(false);
+  }, [open, data, selectedLocationId]);
+
+  const setField = <K extends keyof MovementFormState>(key: K, value: MovementFormState[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const changeMovementType = (movementType: InventoryManualMovementType) => {
+    setForm((current) => ({
+      ...current,
+      movementType,
+      ...resolveMovementLocations(movementType, selectedItem, activeLocations, selectedLocationId, current),
+    }));
+    setError(null);
+  };
+
+  const changeItem = (itemId: string) => {
+    const nextItem = items.find((item) => item.id === itemId) ?? null;
+    setForm((current) => ({
+      ...current,
+      itemId,
+      ...resolveMovementLocations(current.movementType, nextItem, activeLocations, selectedLocationId, {
+        fromLocationId: "",
+        toLocationId: "",
+      }),
+    }));
+    setError(null);
+  };
+
+  const submit = async () => {
+    const quantity = parseMovementQuantity(form.quantity);
+    const reason = form.reason.trim();
+
+    if (!form.itemId) {
+      setError(MOVEMENT_ERROR_LABELS.item_required);
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError(MOVEMENT_ERROR_LABELS.invalid_quantity);
+      return;
+    }
+    if (movementRequiresFrom(form.movementType) && !form.fromLocationId) {
+      setError(MOVEMENT_ERROR_LABELS.from_location_required);
+      return;
+    }
+    if (movementRequiresTo(form.movementType) && !form.toLocationId) {
+      setError(MOVEMENT_ERROR_LABELS.to_location_required);
+      return;
+    }
+    if (form.fromLocationId && form.toLocationId && form.fromLocationId === form.toLocationId) {
+      setError(MOVEMENT_ERROR_LABELS.same_location);
+      return;
+    }
+    if (form.movementType === "block" && !blockedLocations.some((location) => location.id === form.toLocationId)) {
+      setError(MOVEMENT_ERROR_LABELS.blocked_location_required);
+      return;
+    }
+    if (form.movementType === "release" && !blockedLocations.some((location) => location.id === form.fromLocationId)) {
+      setError(MOVEMENT_ERROR_LABELS.blocked_source_required);
+      return;
+    }
+    if (!reason) {
+      setError(MOVEMENT_ERROR_LABELS.reason_required);
+      return;
+    }
+
+    const input: InventoryManualMovementInput = {
+      movementType: form.movementType,
+      itemId: form.itemId,
+      quantity,
+      fromLocationId: movementRequiresFrom(form.movementType) ? form.fromLocationId : null,
+      toLocationId: movementRequiresTo(form.movementType) ? form.toLocationId : null,
+      reason,
+    };
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await createInventoryMovement(input);
+      toast("Movimentacao registrada.", "ok");
+      onClose();
+      onCreated();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Nao foi possivel registrar o movimento.";
+      setError(movementErrorMessage(message));
+      setBusy(false);
+    }
+  };
+
+  const quantity = parseMovementQuantity(form.quantity);
+  const signedQuantity = Number.isFinite(quantity) ? quantity : 0;
+  const movementDelta = form.movementType === "purchase_entry"
+    ? signedQuantity
+    : form.movementType === "loss"
+      ? -signedQuantity
+      : 0;
+  const nextPhysical = selectedItem ? selectedItem.physical + movementDelta : 0;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Registrar movimento"
+      subtitle="Entrada, transferencia, perda, bloqueio ou liberacao de estoque"
+      icon="estoque"
+      width={680}
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button variant="default" icon="check" onClick={submit} disabled={busy || !data}>
+            {busy ? "Registrando..." : "Registrar movimento"}
+          </Button>
+        </>
+      )}
+    >
+      {selectedItem && (
+        <div className="grid cols-3" style={{ marginBottom: 16 }}>
+          <Stat label="Fisico atual" value={`${num(selectedItem.physical)} ${selectedItem.unit}`} />
+          <Stat label="Bloqueado" value={`${num(selectedItem.blocked)} ${selectedItem.unit}`} tone={selectedItem.blocked > 0 ? "info" : undefined} />
+          <Stat
+            label={movementDelta === 0 ? "Disponivel" : "Novo fisico"}
+            value={`${num(movementDelta === 0 ? selectedItem.available : Math.max(0, nextPhysical))} ${selectedItem.unit}`}
+            tone={nextPhysical < 0 ? "bad" : stockTone(selectedItem)}
+          />
+        </div>
+      )}
+
+      <div className="grid cols-2">
+        <Field label="Tipo de movimento" required>
+          <Select
+            value={form.movementType}
+            onChange={(value) => changeMovementType(value as InventoryManualMovementType)}
+            options={MANUAL_MOVEMENT_OPTIONS}
+          />
+        </Field>
+
+        <Field label="Item" required>
+          <Select
+            value={form.itemId}
+            onChange={changeItem}
+            placeholder="Selecione um item"
+            options={items.map((item) => ({
+              value: item.id,
+              label: `${itemTitle(item)} - ${item.sku}`,
+            }))}
+          />
+        </Field>
+
+        {movementRequiresFrom(form.movementType) && (
+          <Field label="Origem" required>
+            <Select
+              value={form.fromLocationId}
+              onChange={(value) => setField("fromLocationId", value)}
+              placeholder="Selecione o local"
+              options={fromLocationOptions.map((location) => ({
+                value: location.id,
+                label: locationLabel(location),
+              }))}
+            />
+          </Field>
+        )}
+
+        {movementRequiresTo(form.movementType) && (
+          <Field label="Destino" required>
+            <Select
+              value={form.toLocationId}
+              onChange={(value) => setField("toLocationId", value)}
+              placeholder="Selecione o local"
+              options={toLocationOptions.map((location) => ({
+                value: location.id,
+                label: locationLabel(location),
+              }))}
+            />
+          </Field>
+        )}
+
+        <Field label={`Quantidade${selectedItem ? ` (${selectedItem.unit})` : ""}`} required>
+          <Input
+            inputMode="decimal"
+            value={form.quantity}
+            onChange={(event) => setField("quantity", event.target.value)}
+            placeholder="0"
+          />
+        </Field>
+      </div>
+
+      <Field label="Motivo" required hint="O motivo fica registrado na movimentacao e na auditoria.">
+        <Textarea
+          value={form.reason}
+          onChange={(event) => setField("reason", event.target.value)}
+          placeholder="Ex.: transferencia para bancada de envase"
+        />
+      </Field>
+
+      {error && <div className="ff-error" style={{ marginTop: -6 }}>{error}</div>}
+    </Modal>
+  );
+}
 
 function itemTitle(item: { name: string; variant: string | null }) {
   return `${item.name}${item.variant ? ` ${item.variant}` : ""}`;
@@ -155,6 +532,7 @@ export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
   const [query, setQuery] = React.useState("");
   const [tab, setTab] = React.useState<InventoryTab>("all");
   const [locationId, setLocationId] = React.useState(route.filter ?? "");
+  const [movementOpen, setMovementOpen] = React.useState(false);
 
   const load = React.useCallback(async (nextLocationId: string) => {
     setLoading(true);
@@ -227,6 +605,14 @@ export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
           </p>
         </div>
         <div className="row-wrap">
+          <Button
+            variant="default"
+            icon="plus"
+            onClick={() => setMovementOpen(true)}
+            disabled={loading || !data || data.items.length === 0 || data.locations.every((location) => !location.isActive)}
+          >
+            Novo movimento
+          </Button>
           <Button variant="outline" icon="itens" onClick={() => go("itens")}>Itens / SKUs</Button>
           <Button variant="outline" icon="refresh" onClick={() => void load(locationId)} disabled={loading}>Atualizar</Button>
         </div>
@@ -380,6 +766,14 @@ export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
           ))}
         </CardContent>
       </Card>
+
+      <InventoryMovementModal
+        open={movementOpen}
+        data={data}
+        selectedLocationId={locationId}
+        onClose={() => setMovementOpen(false)}
+        onCreated={() => void load(locationId)}
+      />
     </div>
   );
 }

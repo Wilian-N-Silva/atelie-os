@@ -73,6 +73,23 @@ export type InventoryResponse = {
   movements: InventoryMovement[];
 };
 
+export type InventoryManualMovementType = "purchase_entry" | "transfer" | "loss" | "block" | "release";
+
+export type InventoryManualMovementInput = {
+  movementType: InventoryManualMovementType;
+  itemId: string;
+  quantity: number;
+  fromLocationId: string | null;
+  toLocationId: string | null;
+  reason: string;
+};
+
+export type InventoryManualMovementResult = {
+  ok: boolean;
+  movementId: string;
+  itemId: string;
+};
+
 export async function fetchInventory(locationId?: string | null): Promise<InventoryResponse> {
   const params = new URLSearchParams();
   if (locationId) params.set("locationId", locationId);
@@ -89,4 +106,20 @@ export async function fetchInventory(locationId?: string | null): Promise<Invent
   }
 
   return (await res.json()) as InventoryResponse;
+}
+
+export async function createInventoryMovement(input: InventoryManualMovementInput): Promise<InventoryManualMovementResult> {
+  const res = await fetch("/api/app/inventory/movements", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Nao foi possivel registrar o movimento.");
+  }
+
+  return (await res.json()) as InventoryManualMovementResult;
 }
