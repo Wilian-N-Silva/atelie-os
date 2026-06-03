@@ -19,6 +19,7 @@ import {
   toast,
   useSort,
 } from "@/components/ui";
+import { Barcode } from "@/components/barcode";
 import {
   BRL,
   CHANNELS,
@@ -29,12 +30,27 @@ import {
   type DemoOrder,
   type DemoOrderStatus,
 } from "@/lib/screen-fixtures";
+import { loadDemoOrders, writeDemoCustomOrder, writeDemoOrderOverride } from "@/lib/demo-order-overrides";
 import type { Go, Route } from "@/lib/types";
 
 type OrderFilter = "todos" | "a_separar" | "a_embalar" | "envio" | "pagamento" | "enviados";
+type PickListJob = { id: string; code: string; title: string; orders: DemoOrder[]; generatedAt: string };
+type OrderPatch = Partial<Pick<DemoOrder, "payment" | "status">>;
 
 function orderQuantity(order: DemoOrder) {
   return order.items.reduce((sum, item) => sum + item.qty, 0);
+}
+
+function canPick(order: DemoOrder) {
+  return order.status === "pago" || order.status === "a_separar";
+}
+
+function itemLocation(sku: string) {
+  if (sku.startsWith("KIT-")) return "Kits / B2";
+  if (sku.includes("CED")) return "Prateleira A3";
+  if (sku.includes("BAU")) return "Prateleira A2";
+  if (sku.includes("CAP")) return "Prateleira A1";
+  return "Prateleira A1";
 }
 
 function ChannelBadge({ channel }: { channel: DemoOrder["channel"] }) {
@@ -42,15 +58,121 @@ function ChannelBadge({ channel }: { channel: DemoOrder["channel"] }) {
   return <Badge tone={external ? "warn" : "neutral"}>{CHANNELS[channel]}</Badge>;
 }
 
-function OrderDrawer({ order, go, onClose }: { order: DemoOrder; go: Go; onClose: () => void }) {
+function PickListDocument({ job }: { job: PickListJob | null }) {
+  if (!job) return null;
+  const totalItems = job.orders.reduce((sum, order) => sum + orderQuantity(order), 0);
+  const totalLines = job.orders.reduce((sum, order) => sum + order.items.length, 0);
+
+  return (
+    <div className="print-doc pickdoc" aria-hidden="true">
+      <div className="pickdoc-page">
+        <header className="pickdoc-head">
+          <div>
+            <div className="pickdoc-kicker">Atelie OS - documento de bancada</div>
+            <h1 className="pickdoc-title">{job.title}</h1>
+            <div className="pickdoc-meta">
+              <span>Gerado: {job.generatedAt}</span>
+              <span>Pedidos: {job.orders.length}</span>
+              <span>Linhas: {totalLines}</span>
+              <span>Unidades: {totalItems}</span>
+            </div>
+          </div>
+          <Barcode code={job.orders.length === 1 ? job.orders[0].code : job.code} size="lg" />
+        </header>
+
+        <section className="pickdoc-summary">
+          <div><span>Documento</span><strong>{job.code}</strong></div>
+          <div><span>Pedidos</span><strong>{job.orders.length}</strong></div>
+          <div><span>Unidades</span><strong>{totalItems}</strong></div>
+          <div><span>Uso</span><strong>Separacao</strong></div>
+        </section>
+
+        {job.orders.map((order) => {
+          const lines = order.items.map((line) => ({ ...line, item: findDemoItem(line.sku) }));
+          return (
+            <article className="pickdoc-order" key={order.id}>
+              <div className="pickdoc-order-head">
+                <div>
+                  <div className="pickdoc-order-title">{order.num} - {order.customerName}</div>
+                  <div className="pickdoc-order-sub">
+                    {CHANNELS[order.channel]} - {order.city}<br />
+                    Pedido: <span className="pickdoc-code">{order.code}</span> - Pagamento: {order.payment === "pago" ? "pago" : "aguardando"}
+                  </div>
+                  {order.note && <div className="pickdoc-note">Obs.: {order.note}</div>}
+                </div>
+                <Barcode code={order.code} size="md" />
+              </div>
+
+              <table className="pickdoc-table">
+                <thead>
+                  <tr>
+                    <th className="pickdoc-check">Ok</th>
+                    <th>Qtd</th>
+                    <th>Item</th>
+                    <th>SKU</th>
+                    <th>Codigo</th>
+                    <th>Local</th>
+                    <th>Conferencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => (
+                    <tr key={line.sku}>
+                      <td className="pickdoc-check"><span className="pickdoc-box" /></td>
+                      <td className="pickdoc-qty">{line.qty}</td>
+                      <td>
+                        <div className="pickdoc-item">{line.item?.name ?? line.sku}</div>
+                        <div>{line.item?.variant ?? ""}</div>
+                      </td>
+                      <td className="pickdoc-code">{line.sku}</td>
+                      <td className="pickdoc-code">{line.item?.code ?? "-"}</td>
+                      <td>{itemLocation(line.sku)}</td>
+                      <td><span className="pickdoc-box" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="pickdoc-sign">
+                <span>Separado por / hora</span>
+                <span>Conferido por / hora</span>
+                <span>Embalado por / hora</span>
+              </div>
+            </article>
+          );
+        })}
+
+        <div className="pickdoc-flow">
+          <strong>Fluxo recomendado</strong>
+          1. No Modo Operacao, bipe o codigo de barras do pedido nesta folha. 2. Separe cada item e finalize. 3. Releia os itens em Conferencia. 4. Complete o checklist de embalagem e aplique a etiqueta de envio.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderDrawer({
+  order,
+  go,
+  onClose,
+  onPrint,
+  onUpdate,
+}: {
+  order: DemoOrder;
+  go: Go;
+  onClose: () => void;
+  onPrint: (orders: DemoOrder[], title: string) => void;
+  onUpdate: (orderId: string, patch: OrderPatch) => void;
+}) {
   const status = ORDER_STATUS[order.status];
   const lines = order.items.map((line) => ({ ...line, item: findDemoItem(line.sku) }));
   const subtotal = lines.reduce((sum, line) => sum + (line.item?.price ?? 0) * line.qty, 0);
+  const waitingPayment = order.payment !== "pago" || order.status === "aguardando_pagamento";
   const nextAction =
-    order.status === "pago" || order.status === "a_separar"
+    canPick(order)
       ? { label: "Iniciar separacao", icon: "scan", route: { screen: "operacao", mode: "separacao", order: order.id } }
       : order.status === "separado"
-        ? { label: "Iniciar embalagem", icon: "package2", route: { screen: "operacao", mode: "embalagem", order: order.id } }
+        ? { label: "Conferir separacao", icon: "listChecks", route: { screen: "operacao", mode: "conferencia", order: order.id } }
         : null;
 
   const flow: DemoOrderStatus[] = ["pago", "a_separar", "separado", "embalado", "pronto_envio", "enviado"];
@@ -84,6 +206,16 @@ function OrderDrawer({ order, go, onClose }: { order: DemoOrder; go: Go; onClose
           {order.note && (
             <div style={{ background: "hsl(var(--warn-bg))", color: "hsl(var(--warn))", padding: "9px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 16, display: "flex", gap: 8 }}>
               <Icon name="alertCircle" size={15} /> {order.note}
+            </div>
+          )}
+
+          {waitingPayment && (
+            <div style={{ background: "hsl(var(--info-bg))", color: "hsl(var(--info))", padding: "11px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <Icon name="banknote" size={16} />
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>Pagamento aguardando confirmacao manual</div>
+                <div>Sem integracao conectada, confirme o recebimento para liberar pick list, separacao e embalagem.</div>
+              </div>
             </div>
           )}
 
@@ -142,12 +274,25 @@ function OrderDrawer({ order, go, onClose }: { order: DemoOrder; go: Go; onClose
         </div>
 
         <div className="drawer-foot">
+          {waitingPayment && (
+            <Button
+              variant="default"
+              icon="checkCircle"
+              style={{ flex: 1 }}
+              onClick={() => {
+                onUpdate(order.id, { payment: "pago", status: "pago" });
+                toast("Pagamento confirmado. Pedido liberado para separacao.", "ok");
+              }}
+            >
+              Confirmar pagamento
+            </Button>
+          )}
           {nextAction && (
             <Button variant="default" icon={nextAction.icon} style={{ flex: 1 }} onClick={() => go(nextAction.route.screen, nextAction.route)}>
               {nextAction.label}
             </Button>
           )}
-          <Button variant="outline" icon="printer" onClick={() => window.print()}>Pick list</Button>
+          <Button variant="outline" icon="printer" onClick={() => onPrint([order], `Pick list ${order.num}`)}>Pick list</Button>
           <Button variant="outline" onClick={onClose}>Fechar</Button>
         </div>
       </aside>
@@ -155,37 +300,63 @@ function OrderDrawer({ order, go, onClose }: { order: DemoOrder; go: Go; onClose
   );
 }
 
+type DraftLine = { id: number; sku: string; qty: string };
+
 function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (order: DemoOrder) => void }) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
+  const nextLineId = React.useRef(1);
   const products = productOptions();
   const [customer, setCustomer] = React.useState("Cliente novo");
   const [city, setCity] = React.useState("Sao Paulo - SP");
-  const [sku, setSku] = React.useState(products[0]?.sku ?? "");
-  const [qty, setQty] = React.useState("1");
+  const [channel, setChannel] = React.useState<DemoOrder["channel"]>("whatsapp");
+  const [payment, setPayment] = React.useState<DemoOrder["payment"]>("pago");
+  const [lines, setLines] = React.useState<DraftLine[]>(() => [{ id: 0, sku: products[0]?.sku ?? "", qty: "1" }]);
   const [note, setNote] = React.useState("");
 
+  const setLine = (lineId: number, patch: Partial<DraftLine>) => {
+    setLines((current) => current.map((line) => line.id === lineId ? { ...line, ...patch } : line));
+  };
+
+  const addLine = () => {
+    setLines((current) => [...current, { id: nextLineId.current++, sku: products[0]?.sku ?? "", qty: "1" }]);
+  };
+
+  const removeLine = (lineId: number) => {
+    setLines((current) => current.length > 1 ? current.filter((line) => line.id !== lineId) : current);
+  };
+
   const submit = () => {
-    const product = findDemoItem(sku);
-    const quantity = Math.max(1, Number.parseInt(qty, 10) || 1);
+    const aggregated = new Map<string, number>();
+    for (const line of lines) {
+      if (!line.sku) continue;
+      const quantity = Math.max(1, Number.parseInt(line.qty, 10) || 1);
+      aggregated.set(line.sku, (aggregated.get(line.sku) ?? 0) + quantity);
+    }
+    const items = Array.from(aggregated, ([sku, qty]) => ({ sku, qty }));
+    if (!items.length) {
+      toast("Adicione pelo menos um item ao pedido.", "bad");
+      return;
+    }
     const freight = 24.9;
-    const total = (product?.price ?? 0) * quantity + freight;
+    const subtotal = items.reduce((sum, line) => sum + (findDemoItem(line.sku)?.price ?? 0) * line.qty, 0);
+    const total = subtotal + freight;
     const next = nextId.current++;
     const id = `${idPrefix}-${next}`;
     onCreate({
       id,
       code: `040100${String(900000 + next).slice(-6)}`,
       num: `#${1044 + next}`,
-      channel: "whatsapp",
+      channel,
       customerName: customer.trim() || "Cliente novo",
       city: city.trim() || "Sao Paulo - SP",
-      status: "pago",
-      payment: "pago",
+      status: payment === "pago" ? "pago" : "aguardando_pagamento",
+      payment,
       createdAt: "agora",
       freight,
       discount: 0,
       total,
-      items: [{ sku, qty: quantity }],
+      items,
       tracking: null,
       note: note.trim() || null,
     });
@@ -201,11 +372,32 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
         <Field label="Cidade"><Input value={city} onChange={(event) => setCity(event.target.value)} /></Field>
       </div>
       <div className="ff-grid">
-        <Field label="Produto">
-          <Select value={sku} onChange={setSku} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} />
+        <Field label="Canal">
+          <Select value={channel} onChange={(value) => setChannel(value as DemoOrder["channel"])} options={Object.entries(CHANNELS).map(([value, label]) => ({ value, label }))} />
         </Field>
-        <Field label="Quantidade"><Input value={qty} inputMode="numeric" onChange={(event) => setQty(event.target.value)} /></Field>
+        <Field label="Pagamento">
+          <Select value={payment} onChange={(value) => setPayment(value as DemoOrder["payment"])} options={[
+            { value: "pago", label: "Pago" },
+            { value: "aguardando", label: "Aguardando pagamento" },
+          ]} />
+        </Field>
       </div>
+
+      <div className="block-label" style={{ marginTop: 4 }}>Itens</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+        {lines.map((line, index) => (
+          <div key={line.id} className="row" style={{ gap: 8, alignItems: "flex-end" }}>
+            <Field label={index === 0 ? "Produto" : ""} style={{ flex: 1 }}>
+              <Select value={line.sku} onChange={(value) => setLine(line.id, { sku: value })} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} />
+            </Field>
+            <Field label={index === 0 ? "Qtd" : ""} style={{ width: 92 }}>
+              <Input value={line.qty} inputMode="numeric" onChange={(event) => setLine(line.id, { qty: event.target.value })} />
+            </Field>
+            <Button variant="ghost" size="icon" icon="x" onClick={() => removeLine(line.id)} disabled={lines.length === 1} aria-label="Remover item" />
+          </div>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" icon="plus" onClick={addLine}>Adicionar item</Button>
       <Field label="Observacao"><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Cartao, retirada, embalagem especial..." /></Field>
     </Modal>
   );
@@ -217,6 +409,12 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [query, setQuery] = React.useState("");
   const [newOpen, setNewOpen] = React.useState(false);
+  const [printJob, setPrintJob] = React.useState<PickListJob | null>(null);
+  const printCounter = React.useRef(1);
+
+  React.useEffect(() => {
+    setOrders(loadDemoOrders(DEMO_ORDERS));
+  }, []);
 
   React.useEffect(() => {
     if (route.filter) setFilter(route.filter as OrderFilter);
@@ -245,6 +443,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   const rows = orders
     .filter(groups[filter] ?? groups.todos)
     .filter((order) => !normalizedQuery || `${order.num} ${order.customerName} ${order.city} ${order.code}`.toLowerCase().includes(normalizedQuery));
+  const pickableRows = rows.filter(canPick);
   const sort = useSort(rows, {
     num: (order) => order.num,
     customerName: (order) => order.customerName,
@@ -254,6 +453,36 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
     status: (order) => ORDER_STATUS[order.status].step,
   }, "status", "asc");
   const openOrder = orders.find((order) => order.id === openId);
+  const updateOrder = React.useCallback((orderId: string, patch: OrderPatch) => {
+    writeDemoOrderOverride(orderId, patch);
+    setOrders((current) => current.map((order) => order.id === orderId ? { ...order, ...patch } : order));
+  }, []);
+  const printPickList = React.useCallback((selected: DemoOrder[], title: string) => {
+    const next = printCounter.current++;
+    setPrintJob({
+      id: `pick-${next}`,
+      code: `049900${String(100000 + next).slice(-6)}`,
+      title,
+      orders: selected,
+      generatedAt: "agora",
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!printJob) return;
+    document.body.dataset.printMode = "picklist";
+    const clear = () => {
+      delete document.body.dataset.printMode;
+      setPrintJob(null);
+    };
+    window.addEventListener("afterprint", clear, { once: true });
+    const timer = window.setTimeout(() => window.print(), 80);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", clear);
+      delete document.body.dataset.printMode;
+    };
+  }, [printJob]);
 
   return (
     <div className="page page--wide fade-in">
@@ -263,7 +492,14 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
           <p className="page-lede">{sort.sorted.length} pedidos nesta visao</p>
         </div>
         <div className="row-wrap">
-          <Button variant="outline" icon="printer" onClick={() => window.print()}>Pick list em lote</Button>
+          <Button
+            variant="outline"
+            icon="printer"
+            onClick={() => printPickList(pickableRows, `Pick list em lote - ${pickableRows.length} pedidos`)}
+            disabled={!pickableRows.length}
+          >
+            Pick list em lote{pickableRows.length ? ` (${pickableRows.length})` : ""}
+          </Button>
           <Button variant="default" icon="plus" onClick={() => setNewOpen(true)}>Novo pedido</Button>
         </div>
       </div>
@@ -309,8 +545,16 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
         {sort.sorted.length === 0 && <Empty icon="pedidos" title="Nenhum pedido nesta visao" hint="Ajuste o filtro ou registre um novo pedido." />}
       </Card>
 
-      {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} />}
-      <NewOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(order) => setOrders((current) => [order, ...current])} />
+      {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} />}
+      <NewOrderModal
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        onCreate={(order) => {
+          writeDemoCustomOrder(order);
+          setOrders((current) => [order, ...current]);
+        }}
+      />
+      <PickListDocument job={printJob} />
       <Sep style={{ marginTop: 18 }} />
     </div>
   );
