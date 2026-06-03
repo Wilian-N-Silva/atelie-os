@@ -163,6 +163,17 @@
 .order-alert-row { display: flex; gap: 8px; align-items: flex-start; color: hsl(var(--warn)); font-size: 12px; line-height: 1.35; }
 .order-create-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 16px; }
 
+/* ---------------- Production planning dialog --------------------- */
+.prod-plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; align-items: start; }
+.prod-plan-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.prod-plan-side { position: sticky; top: 0; min-width: 0; }
+.prod-plan-materials td { vertical-align: middle; }
+.prod-plan-callout { margin-top: 14px; border-radius: var(--radius); padding: 11px 12px; display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; line-height: 1.4; }
+.prod-plan-callout strong { display: block; margin-bottom: 2px; }
+.prod-plan-callout span { display: block; color: inherit; opacity: .88; }
+.prod-plan-callout--ok { background: hsl(var(--ok-bg)); color: hsl(var(--ok)); }
+.prod-plan-callout--warn { background: hsl(var(--warn-bg)); color: hsl(var(--warn)); }
+
 @media (max-width: 1180px) {
   .order-create-layout { grid-template-columns: minmax(0, 1fr) 290px; }
   .order-create-menu { display: none; }
@@ -176,6 +187,10 @@
 @media (max-width: 620px) {
   .order-line-edit { grid-template-columns: 1fr 72px 36px; }
   .order-line-edit .ff:nth-child(3) { grid-column: 1 / 3; }
+}
+@media (max-width: 760px) {
+  .prod-plan-layout { grid-template-columns: 1fr; }
+  .prod-plan-side { position: static; }
 }
 
 /* ---------------- Pick list print document ---------------------- */

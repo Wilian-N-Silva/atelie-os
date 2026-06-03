@@ -64,6 +64,24 @@ function estimatedCost(order: DemoProductionOrder) {
   return materialRows(order).reduce((sum, row) => sum + row.need * (findDemoItem(row.sku)?.costAvg ?? 0), 0);
 }
 
+function plannedMaterialRows(recipeId: string, quantity: string) {
+  const recipe = DEMO_RECIPES.find((item) => item.id === recipeId);
+  const planned = Math.max(1, Number.parseInt(quantity, 10) || 1);
+  if (!recipe) return [];
+  return recipe.components.map((component) => {
+    const item = findDemoItem(component.sku);
+    const need = Number((component.qty * planned * (1 + component.loss / 100)).toFixed(3));
+    return {
+      ...component,
+      item,
+      need,
+      available: item?.available ?? 0,
+      short: (item?.available ?? 0) < need,
+      cost: need * (item?.costAvg ?? 0),
+    };
+  });
+}
+
 type ProductionPickListJob = { id: string; code: string; title: string; orders: DemoProductionOrder[]; generatedAt: string };
 
 function ProductionPickListDocument({ job }: { job: ProductionPickListJob | null }) {
@@ -243,10 +261,16 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
   const nextId = React.useRef(0);
   const [recipeId, setRecipeId] = React.useState(DEMO_RECIPES[0]?.id ?? "");
   const [quantity, setQuantity] = React.useState("24");
+  const [date, setDate] = React.useState("hoje");
+  const [responsible, setResponsible] = React.useState("Camila");
   const recipe = DEMO_RECIPES.find((item) => item.id === recipeId) ?? DEMO_RECIPES[0];
+  const rows = plannedMaterialRows(recipeId, quantity);
+  const anyShort = rows.some((row) => row.short);
+  const estimated = rows.reduce((sum, row) => sum + row.cost, 0);
+  const planned = Math.max(1, Number.parseInt(quantity, 10) || 1);
+  const responsibleOptions = ["Camila", "Equipe", "Operacao", "Ana", "Bruna"].map((name) => ({ value: name, label: name }));
 
   const submit = () => {
-    const planned = Math.max(1, Number.parseInt(quantity, 10) || 1);
     const next = nextId.current++;
     const id = `${idPrefix}-${next}`;
     onCreate({
@@ -259,20 +283,83 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
       recipeVer: recipe.version,
       planned,
       status: "aguardando_materiais",
-      date: "hoje",
-      resp: "Equipe",
+      date: date.trim() || "hoje",
+      resp: responsible,
     });
-    toast("Ordem de producao planejada nesta sessao.", "info");
+    toast(anyShort ? "OP planejada com material faltante." : "Ordem de producao planejada nesta sessao.", "info");
     onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} icon="producao" title="Planejar producao" subtitle="Crie uma OP local para organizar a bancada" width={520}
+    <Modal open={open} onClose={onClose} icon="producao" title="Planejar producao" subtitle="Crie uma OP local para organizar a bancada" width={820}
       footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="default" icon="plus" onClick={submit}>Planejar</Button></>}>
-      <Field label="Receita">
-        <Select value={recipeId} onChange={setRecipeId} options={DEMO_RECIPES.map((item) => ({ value: item.id, label: `${item.name} ${item.version}` }))} />
-      </Field>
-      <Field label="Quantidade planejada"><Input value={quantity} inputMode="numeric" onChange={(event) => setQuantity(event.target.value)} /></Field>
+      <div className="prod-plan-layout">
+        <div className="prod-plan-main">
+          <section className="order-form-section">
+            <div className="block-label">Plano</div>
+            <div className="ff-grid">
+              <Field label="Receita">
+                <Select value={recipeId} onChange={setRecipeId} options={DEMO_RECIPES.map((item) => ({ value: item.id, label: `${item.name} ${item.version}` }))} />
+              </Field>
+              <Field label="Quantidade planejada"><Input value={quantity} inputMode="numeric" onChange={(event) => setQuantity(event.target.value)} /></Field>
+            </div>
+            <div className="ff-grid">
+              <Field label="Data planejada"><Input value={date} onChange={(event) => setDate(event.target.value)} placeholder="hoje, 07/06, proxima segunda..." /></Field>
+              <Field label="Responsavel"><Select value={responsible} onChange={setResponsible} options={responsibleOptions} /></Field>
+            </div>
+          </section>
+
+          <section className="order-form-section">
+            <div className="row between" style={{ marginBottom: 10 }}>
+              <div>
+                <div className="block-label" style={{ marginBottom: 2 }}>Materiais disponiveis</div>
+                <div className="section-title">{recipe?.productName ?? "Produto"}</div>
+              </div>
+              {anyShort ? <Badge tone="bad" dot>Material faltante</Badge> : <Badge tone="ok" dot>Material ok</Badge>}
+            </div>
+            <table className="minitable prod-plan-materials">
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.sku}>
+                    <td>
+                      <div className="item-cell">
+                        <div className={row.item?.type === "emb" ? "swatch swatch--emb" : "swatch swatch--mp"}><Icon name={row.item?.type === "emb" ? "package2" : "droplet"} size={15} /></div>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="cell-title">{row.name}</div>
+                          <div className="cell-sub sku">{row.sku} - perda {row.loss}%</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="r muted">{row.need} {row.unit}</td>
+                    <td className="r muted">{row.available} {row.unit}</td>
+                    <td className="r">{row.short ? <Badge tone="bad">faltam {Number((row.need - row.available).toFixed(3))}</Badge> : <Badge tone="ok" dot>ok</Badge>}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td className="muted">Selecione uma receita para ver materiais.</td></tr>}
+              </tbody>
+            </table>
+          </section>
+        </div>
+
+        <aside className="prod-plan-side">
+          <div className="block-label">Resumo</div>
+          <div className="order-summary-box">
+            <div className="field"><span className="field-k">Produto</span><span className="field-v">{recipe?.productName ?? "-"}</span></div>
+            <div className="field"><span className="field-k">Planejado</span><span className="field-v">{planned} un</span></div>
+            <div className="field"><span className="field-k">Data</span><span className="field-v">{date.trim() || "hoje"}</span></div>
+            <div className="field"><span className="field-k">Responsavel</span><span className="field-v">{responsible}</span></div>
+            <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimated)}</span></div>
+          </div>
+
+          <div className={anyShort ? "prod-plan-callout prod-plan-callout--warn" : "prod-plan-callout prod-plan-callout--ok"}>
+            <Icon name={anyShort ? "alertCircle" : "checkCircle"} size={17} />
+            <div>
+              <strong>{anyShort ? "Pode planejar com pendencia" : "Materiais suficientes"}</strong>
+              <span>{anyShort ? "A OP entra como aguardando materiais e a separacao vai sinalizar o faltante." : "A pick list ja pode seguir para separacao no modo operacao."}</span>
+            </div>
+          </div>
+        </aside>
+      </div>
     </Modal>
   );
 }
