@@ -2,7 +2,7 @@
 
 ## Summary
 
-Manual inventory movements are now implemented and committed in `6df0121 Add manual inventory movements`. The current hardening pass added owner/admin write authorization for catalog and inventory mutations. The next slice should focus on validation coverage, auditability, and operational usability.
+Manual inventory movements are now implemented and committed in `6df0121 Add manual inventory movements`. The hardening pass in `c21312a Add manual screen and restrict write actions by role` added owner/admin write authorization for catalog and inventory mutations. The coverage pass in `2f966de Add inventory movement validation coverage` added focused unit coverage for parser validation, source capacity, and block/release balance math. The next slice should focus on auditability and operational usability.
 
 ## Current State
 
@@ -13,19 +13,20 @@ Manual inventory movements are now implemented and committed in `6df0121 Add man
 - Per-location stock balance handling now reflects block and release movements between normal and blocked locations.
 - Catalog item create/update, item stock adjustment, and inventory movement creation are limited to `owner` and `admin`.
 - Operator UI no longer shows catalog edit, item stock adjustment, or inventory movement creation controls.
+- `npm.cmd test` covers `parseInventoryMovementInput`, source-capacity validation, and block/release stock balance math.
 - Manual QA was completed by the user.
 
 ## Verified
 
 - `npm.cmd run lint`
+- `npm.cmd test`
 - `npm.cmd run build`
 - App running locally at `http://localhost:3000`
 - Manual inventory movement flow tested in the UI.
-- Role-check hardening passes lint and production build.
+- Operator API probes for catalog and inventory mutations return `403`.
 
 ## Recommended Next Steps
 
-- Add focused automated coverage for `parseInventoryMovementInput`, source-capacity validation, and block/release balance math.
 - Decide whether inventory permissions need a finer matrix beyond the current owner/admin write policy.
 - Add an inventory movement detail or audit view so users can inspect who made a manual adjustment and why.
 - Improve recent movements filtering with item, type, location, actor, and date range filters.
@@ -38,6 +39,7 @@ Manual inventory movements are now implemented and committed in `6df0121 Add man
 ## Test Plan For The Next Slice
 
 - Run `npm.cmd run lint`.
+- Run `npm.cmd test`.
 - Run `npm.cmd run build`.
 - Seed a local database and verify all five movement types against at least two active locations plus one blocked location.
 - Confirm insufficient stock returns `409` and does not insert stock movements or audit logs.
