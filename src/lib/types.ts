@@ -7,6 +7,7 @@ export interface Route {
   tab?: string;
   mode?: string;
   order?: string;
+  production?: string;
 }
 
 export type Go = (screen: string, params?: Partial<Route>) => void;

@@ -46,6 +46,7 @@
 .op-coltitle { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--op-mut); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
 .op-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--op-line); background: var(--op-card); margin-bottom: 10px; transition: border-color .16s, background .16s; }
 .op-item--done { border-color: rgba(74,222,128,.4); background: rgba(74,222,128,.06); }
+.op-item--warn { border-color: rgba(251,191,36,.45); background: rgba(251,191,36,.06); }
 .op-item-check { width: 30px; height: 30px; border-radius: 8px; border: 2px solid #34373f; display: grid; place-items: center; flex-shrink: 0; color: transparent; }
 .op-item--done .op-item-check { background: var(--op-ok); border-color: var(--op-ok); color: #07210f; }
 .op-item-body { flex: 1; min-width: 0; }

@@ -53,7 +53,7 @@ export type DemoOrder = {
   freight: number;
   discount: number;
   total: number;
-  items: { sku: string; qty: number }[];
+  items: { sku: string; qty: number; unitPrice?: number }[];
   tracking: string | null;
   note: string | null;
 };

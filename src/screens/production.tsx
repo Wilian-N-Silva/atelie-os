@@ -17,6 +17,7 @@ import {
   Stat,
   toast,
 } from "@/components/ui";
+import { Barcode } from "@/components/barcode";
 import {
   BRL,
   DEMO_PRODUCTION,
@@ -51,11 +52,120 @@ function materialRows(order: DemoProductionOrder) {
   });
 }
 
+function materialLocation(sku: string) {
+  if (sku.startsWith("CER-")) return "MP / Ceras";
+  if (sku.startsWith("ESS-")) return "MP / Essencias";
+  if (sku.startsWith("VID-")) return "Embalagens / Vidros";
+  if (sku.startsWith("TMP-")) return "Embalagens / Tampas";
+  return "Almoxarifado";
+}
+
 function estimatedCost(order: DemoProductionOrder) {
   return materialRows(order).reduce((sum, row) => sum + row.need * (findDemoItem(row.sku)?.costAvg ?? 0), 0);
 }
 
-function ProductionDrawer({ order, go, onClose }: { order: DemoProductionOrder; go: Go; onClose: () => void }) {
+type ProductionPickListJob = { id: string; code: string; title: string; orders: DemoProductionOrder[]; generatedAt: string };
+
+function ProductionPickListDocument({ job }: { job: ProductionPickListJob | null }) {
+  if (!job) return null;
+  const totalOps = job.orders.length;
+  const totalLines = job.orders.reduce((sum, order) => sum + materialRows(order).length, 0);
+  const totalUnits = job.orders.reduce((sum, order) => sum + order.planned, 0);
+
+  return (
+    <div className="print-doc pickdoc" aria-hidden="true">
+      <div className="pickdoc-page">
+        <header className="pickdoc-head">
+          <div>
+            <div className="pickdoc-kicker">Atelie OS - documento de bancada</div>
+            <h1 className="pickdoc-title">{job.title}</h1>
+            <div className="pickdoc-meta">
+              <span>Gerado: {job.generatedAt}</span>
+              <span>OPs: {totalOps}</span>
+              <span>Linhas: {totalLines}</span>
+              <span>Unidades planejadas: {totalUnits}</span>
+            </div>
+          </div>
+          <Barcode code={job.orders.length === 1 ? job.orders[0].code : job.code} size="lg" />
+        </header>
+
+        <section className="pickdoc-summary">
+          <div><span>Documento</span><strong>{job.code}</strong></div>
+          <div><span>OPs</span><strong>{totalOps}</strong></div>
+          <div><span>Unidades</span><strong>{totalUnits}</strong></div>
+          <div><span>Uso</span><strong>Producao</strong></div>
+        </section>
+
+        {job.orders.map((order) => {
+          const rows = materialRows(order);
+          const recipe = recipeFor(order);
+          return (
+            <article className="pickdoc-order" key={order.id}>
+              <div className="pickdoc-order-head">
+                <div>
+                  <div className="pickdoc-order-title">{order.num} - {order.productName}</div>
+                  <div className="pickdoc-order-sub">
+                    Receita: {recipe?.name ?? order.recipe} {order.recipeVer} - Planejado: {order.planned} un<br />
+                    OP: <span className="pickdoc-code">{order.code}</span> - Responsavel: {order.resp}
+                  </div>
+                </div>
+                <Barcode code={order.code} size="md" />
+              </div>
+
+              <table className="pickdoc-table">
+                <thead>
+                  <tr>
+                    <th className="pickdoc-check">Ok</th>
+                    <th>Material</th>
+                    <th>SKU</th>
+                    <th>Codigo</th>
+                    <th>Separar</th>
+                    <th>Disponivel</th>
+                    <th>Local</th>
+                    <th>Conferencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const item = findDemoItem(row.sku);
+                    return (
+                      <tr key={row.sku}>
+                        <td className="pickdoc-check"><span className="pickdoc-box" /></td>
+                        <td>
+                          <div className="pickdoc-item">{row.name}</div>
+                          <div>Perda tecnica: {row.loss}%</div>
+                        </td>
+                        <td className="pickdoc-code">{row.sku}</td>
+                        <td className="pickdoc-code">{item?.code ?? "-"}</td>
+                        <td className="pickdoc-qty">{row.need} {row.unit}</td>
+                        <td>{row.available} {row.unit}{row.short ? " - faltante" : ""}</td>
+                        <td>{materialLocation(row.sku)}</td>
+                        <td><span className="pickdoc-box" /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="pickdoc-sign">
+                <span>Separado por / hora</span>
+                <span>Conferido por / hora</span>
+                <span>Producao iniciada por / hora</span>
+              </div>
+            </article>
+          );
+        })}
+
+        <div className="pickdoc-flow">
+          <strong>Fluxo recomendado</strong>
+          1. No Modo Operacao, bipe o codigo de barras da OP. 2. Separe cada material da lista. 3. Finalize a separacao. 4. Avance para o checklist de producao do lote.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductionDrawer({ order, go, onClose, onPrint }: { order: DemoProductionOrder; go: Go; onClose: () => void; onPrint: (orders: DemoProductionOrder[], title: string) => void }) {
   const status = PROD_STATUS[order.status];
   const recipe = recipeFor(order);
   const rows = materialRows(order);
@@ -117,11 +227,11 @@ function ProductionDrawer({ order, go, onClose }: { order: DemoProductionOrder; 
         </div>
 
         <div className="drawer-foot">
-          {order.status === "aguardando_materiais" && <Button variant="default" icon="scan" style={{ flex: 1 }} onClick={() => go("operacao", { mode: "separacao" })}>Separar materiais</Button>}
+          {order.status === "aguardando_materiais" && <Button variant="default" icon="scan" style={{ flex: 1 }} onClick={() => go("operacao", { mode: "materiais", production: order.id })}>Separar materiais</Button>}
           {order.status === "em_producao" && <Button variant="default" icon="check" style={{ flex: 1 }}>Finalizar producao</Button>}
           {order.status === "em_cura" && <Button variant="outline" icon="clock" style={{ flex: 1 }}>Estender cura</Button>}
           {order.status === "aguardando_revisao" && <Button variant="brand" icon="unlock" style={{ flex: 1 }}>Liberar lote</Button>}
-          <Button variant="outline" icon="printer" onClick={() => window.print()}>Pick list</Button>
+          <Button variant="outline" icon="printer" onClick={() => onPrint([order], `Pick list ${order.num}`)}>Pick list</Button>
         </div>
       </aside>
     </>
@@ -167,11 +277,45 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
   );
 }
 
-export function ProductionScreen({ go }: { go: Go; route: Route }) {
+export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
   const [orders, setOrders] = React.useState<DemoProductionOrder[]>(() => [...DEMO_PRODUCTION]);
-  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [planOpen, setPlanOpen] = React.useState(false);
+  const [printJob, setPrintJob] = React.useState<ProductionPickListJob | null>(null);
+  const printCounter = React.useRef(1);
   const openOrder = orders.find((order) => order.id === openId);
+  const printableOrders = orders.filter((order) => order.status === "aguardando_materiais");
+
+  React.useEffect(() => {
+    if (route.open) setOpenId(route.open);
+  }, [route.open]);
+
+  const printPickList = React.useCallback((selected: DemoProductionOrder[], title: string) => {
+    const next = printCounter.current++;
+    setPrintJob({
+      id: `prod-pick-${next}`,
+      code: `039900${String(100000 + next).slice(-6)}`,
+      title,
+      orders: selected,
+      generatedAt: "agora",
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!printJob) return;
+    document.body.dataset.printMode = "picklist";
+    const clear = () => {
+      delete document.body.dataset.printMode;
+      setPrintJob(null);
+    };
+    window.addEventListener("afterprint", clear, { once: true });
+    const timer = window.setTimeout(() => window.print(), 80);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", clear);
+      delete document.body.dataset.printMode;
+    };
+  }, [printJob]);
 
   return (
     <div className="page page--wide fade-in">
@@ -181,7 +325,14 @@ export function ProductionScreen({ go }: { go: Go; route: Route }) {
           <p className="page-lede">{orders.length} ordens - fluxo configuravel em Configuracoes</p>
         </div>
         <div className="row-wrap">
-          <Button variant="outline" icon="fileText" onClick={() => window.print()}>Pick list de producao</Button>
+          <Button
+            variant="outline"
+            icon="fileText"
+            onClick={() => printPickList(printableOrders, `Pick list de producao - ${printableOrders.length} OPs`)}
+            disabled={!printableOrders.length}
+          >
+            Pick list de producao{printableOrders.length ? ` (${printableOrders.length})` : ""}
+          </Button>
           <Button variant="default" icon="plus" onClick={() => setPlanOpen(true)}>Planejar producao</Button>
         </div>
       </div>
@@ -225,8 +376,9 @@ export function ProductionScreen({ go }: { go: Go; route: Route }) {
         })}
       </div>
 
-      {openOrder && <ProductionDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} />}
+      {openOrder && <ProductionDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} />}
       <PlanProductionModal open={planOpen} onClose={() => setPlanOpen(false)} onCreate={(order) => setOrders((current) => [order, ...current])} />
+      <ProductionPickListDocument job={printJob} />
     </div>
   );
 }

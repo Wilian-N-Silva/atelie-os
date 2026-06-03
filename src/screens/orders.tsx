@@ -10,7 +10,6 @@ import {
   Field,
   Icon,
   Input,
-  Modal,
   Select,
   Sep,
   SortTh,
@@ -40,6 +39,10 @@ type LabelKind = NonNullable<DemoOrder["labelKind"]>;
 
 function orderQuantity(order: DemoOrder) {
   return order.items.reduce((sum, item) => sum + item.qty, 0);
+}
+
+function orderLinePrice(line: DemoOrder["items"][number]) {
+  return line.unitPrice ?? findDemoItem(line.sku)?.price ?? 0;
 }
 
 function canPick(order: DemoOrder) {
@@ -129,8 +132,8 @@ function PickListDocument({ job }: { job: PickListJob | null }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((line) => (
-                    <tr key={line.sku}>
+                  {lines.map((line, index) => (
+                    <tr key={`${line.sku}-${index}`}>
                       <td className="pickdoc-check"><span className="pickdoc-box" /></td>
                       <td className="pickdoc-qty">{line.qty}</td>
                       <td>
@@ -179,7 +182,7 @@ function OrderDrawer({
 }) {
   const status = ORDER_STATUS[order.status];
   const lines = order.items.map((line) => ({ ...line, item: findDemoItem(line.sku) }));
-  const subtotal = lines.reduce((sum, line) => sum + (line.item?.price ?? 0) * line.qty, 0);
+  const subtotal = lines.reduce((sum, line) => sum + orderLinePrice(line) * line.qty, 0);
   const waitingPayment = order.payment !== "pago" || order.status === "aguardando_pagamento";
   const nextAction =
     canPick(order)
@@ -235,8 +238,8 @@ function OrderDrawer({
           <div className="block-label">Itens do pedido</div>
           <table className="minitable" style={{ marginBottom: 18 }}>
             <tbody>
-              {lines.map((line) => (
-                <tr key={line.sku}>
+              {lines.map((line, index) => (
+                <tr key={`${line.sku}-${index}`}>
                   <td>
                     <div className="item-cell">
                       <div className={line.item?.type === "kit" ? "swatch swatch--kit" : "swatch"}><Icon name="flame" size={15} /></div>
@@ -246,8 +249,8 @@ function OrderDrawer({
                       </div>
                     </div>
                   </td>
-                  <td className="r muted" style={{ whiteSpace: "nowrap" }}>{line.qty} x {BRL(line.item?.price ?? 0)}</td>
-                  <td className="r" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{BRL((line.item?.price ?? 0) * line.qty)}</td>
+                  <td className="r muted" style={{ whiteSpace: "nowrap" }}>{line.qty} x {BRL(orderLinePrice(line))}</td>
+                  <td className="r" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{BRL(orderLinePrice(line) * line.qty)}</td>
                 </tr>
               ))}
             </tbody>
@@ -313,7 +316,14 @@ function OrderDrawer({
   );
 }
 
-type DraftLine = { id: number; sku: string; qty: string };
+type DraftLine = { id: number; sku: string; qty: string; unitPrice: string };
+type DraftLineView = DraftLine & {
+  item: ReturnType<typeof findDemoItem>;
+  qtyNumber: number;
+  unitPriceNumber: number;
+  total: number;
+  overStock: boolean;
+};
 
 function parseMoney(value: string) {
   const clean = value.trim().replace(/\s/g, "");
@@ -322,11 +332,36 @@ function parseMoney(value: string) {
   return Math.max(0, Number.parseFloat(normalized.replace(/[^\d.]/g, "")) || 0);
 }
 
-function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (order: DemoOrder) => void }) {
+function moneyInput(value: number) {
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function makeDraftLine(id: number, sku: string): DraftLine {
+  return { id, sku, qty: "1", unitPrice: moneyInput(findDemoItem(sku)?.price ?? 0) };
+}
+
+function buildOrderItems(lines: DraftLineView[]) {
+  const grouped = new Map<string, { qty: number; total: number }>();
+  for (const line of lines) {
+    if (!line.sku) continue;
+    const current = grouped.get(line.sku) ?? { qty: 0, total: 0 };
+    current.qty += line.qtyNumber;
+    current.total += line.total;
+    grouped.set(line.sku, current);
+  }
+  return Array.from(grouped, ([sku, value]) => ({
+    sku,
+    qty: value.qty,
+    unitPrice: value.qty ? value.total / value.qty : undefined,
+  }));
+}
+
+function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: (order: DemoOrder) => void }) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
   const nextLineId = React.useRef(1);
   const products = productOptions();
+  const firstSku = products[0]?.sku ?? "";
   const [customer, setCustomer] = React.useState("Cliente novo");
   const [city, setCity] = React.useState("Sao Paulo - SP");
   const [channel, setChannel] = React.useState<DemoOrder["channel"]>("whatsapp");
@@ -335,25 +370,40 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
   const [freight, setFreight] = React.useState("24,90");
   const [discount, setDiscount] = React.useState("0,00");
   const [tracking, setTracking] = React.useState("");
-  const [lines, setLines] = React.useState<DraftLine[]>(() => [{ id: 0, sku: products[0]?.sku ?? "", qty: "1" }]);
+  const [lines, setLines] = React.useState<DraftLine[]>(() => [makeDraftLine(0, firstSku)]);
   const [note, setNote] = React.useState("");
 
-  const draftLines = lines.map((line) => {
+  const draftLineBase = lines.map((line) => {
     const item = findDemoItem(line.sku);
-    const qty = Math.max(1, Number.parseInt(line.qty, 10) || 1);
-    return { ...line, item, qty, total: (item?.price ?? 0) * qty };
+    const qtyNumber = Math.max(1, Number.parseInt(line.qty, 10) || 1);
+    const unitPriceNumber = parseMoney(line.unitPrice);
+    return {
+      ...line,
+      item,
+      qtyNumber,
+      unitPriceNumber,
+      total: unitPriceNumber * qtyNumber,
+      overStock: false,
+    };
   });
+  const demandBySku = draftLineBase.reduce((map, line) => {
+    map.set(line.sku, (map.get(line.sku) ?? 0) + line.qtyNumber);
+    return map;
+  }, new Map<string, number>());
+  const draftLines = draftLineBase.map((line) => ({ ...line, overStock: !!line.item && (demandBySku.get(line.sku) ?? 0) > line.item.available }));
   const subtotal = draftLines.reduce((sum, line) => sum + line.total, 0);
   const freightValue = parseMoney(freight);
   const discountValue = Math.min(parseMoney(discount), subtotal + freightValue);
   const total = Math.max(0, subtotal + freightValue - discountValue);
+  const stockAlerts = Array.from(new Map(draftLines.filter((line) => line.overStock).map((line) => [line.sku, line])).values());
+  const itemCount = draftLines.reduce((sum, line) => sum + line.qtyNumber, 0);
 
   const setLine = (lineId: number, patch: Partial<DraftLine>) => {
     setLines((current) => current.map((line) => line.id === lineId ? { ...line, ...patch } : line));
   };
 
   const addLine = () => {
-    setLines((current) => [...current, { id: nextLineId.current++, sku: products[0]?.sku ?? "", qty: "1" }]);
+    setLines((current) => [...current, makeDraftLine(nextLineId.current++, firstSku)]);
   };
 
   const removeLine = (lineId: number) => {
@@ -361,12 +411,7 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
   };
 
   const submit = () => {
-    const aggregated = new Map<string, number>();
-    for (const line of draftLines) {
-      if (!line.sku) continue;
-      aggregated.set(line.sku, (aggregated.get(line.sku) ?? 0) + line.qty);
-    }
-    const items = Array.from(aggregated, ([sku, qty]) => ({ sku, qty }));
+    const items = buildOrderItems(draftLines);
     if (!items.length) {
       toast("Adicione pelo menos um item ao pedido.", "bad");
       return;
@@ -391,17 +436,58 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
       tracking: tracking.trim() || null,
       note: note.trim() || null,
     });
-    toast("Pedido criado nesta sessao.", "info");
-    onClose();
+    toast(stockAlerts.length ? "Pedido criado com alerta de estoque." : "Pedido criado nesta sessao.", stockAlerts.length ? "info" : "ok");
+    onCancel();
   };
 
   return (
-    <Modal open={open} onClose={onClose} icon="pedidos" title="Novo pedido" subtitle="Rascunho local para a operacao" width={760}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="default" icon="plus" onClick={submit}>Criar pedido</Button></>}>
-      <div className="order-form-layout">
-        <div className="order-form-main">
-          <section className="order-form-section">
-            <div className="block-label">Cliente e origem</div>
+    <div className="page page--wide fade-in order-create-page">
+      <div className="page-head">
+        <div>
+          <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+            <Button variant="ghost" size="sm" icon="arrowLeft" onClick={onCancel}>Pedidos</Button>
+            <Badge tone={payment === "pago" ? "ok" : "warn"} dot>{payment === "pago" ? "Pago" : "Aguardando pagamento"}</Badge>
+            <ChannelBadge channel={channel} />
+          </div>
+          <h1 className="page-h1">Novo pedido</h1>
+          <p className="page-lede">Cadastre o pedido manualmente e libere a operacao mesmo sem integracao.</p>
+        </div>
+        <div className="row-wrap">
+          <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+          <Button variant="default" icon="plus" onClick={submit}>Criar pedido</Button>
+        </div>
+      </div>
+
+      <div className="order-create-layout">
+        <aside className="order-create-menu">
+          <div className="order-create-menu-title">Cadastro</div>
+          {[
+            ["Cliente", customer],
+            ["Itens", `${itemCount} un em ${draftLines.length} linha(s)`],
+            ["Valores", BRL(total)],
+            ["Envio", tracking.trim() || "pendente"],
+          ].map(([label, value]) => (
+            <a key={label} href={`#${label.toLowerCase()}`} className="order-create-menu-item">
+              <span>{label}</span>
+              <small>{value}</small>
+            </a>
+          ))}
+          {stockAlerts.length > 0 && (
+            <div className="order-stock-menu-alert">
+              <Icon name="alertCircle" size={16} />
+              <span>{stockAlerts.length} alerta(s) de estoque</span>
+            </div>
+          )}
+        </aside>
+
+        <main className="order-create-main">
+          <section className="order-create-section" id="cliente">
+            <div className="order-section-head">
+              <div>
+                <div className="block-label">Cliente</div>
+                <h2>Origem e pagamento</h2>
+              </div>
+            </div>
             <div className="ff-grid">
               <Field label="Cliente"><Input value={customer} onChange={(event) => setCustomer(event.target.value)} /></Field>
               <Field label="Cidade"><Input value={city} onChange={(event) => setCity(event.target.value)} /></Field>
@@ -427,32 +513,70 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
             </div>
           </section>
 
-          <section className="order-form-section">
-            <div className="row between" style={{ marginBottom: 8 }}>
-              <div className="block-label" style={{ marginBottom: 0 }}>Itens do pedido</div>
+          <section className="order-create-section" id="itens">
+            <div className="order-section-head">
+              <div>
+                <div className="block-label">Itens</div>
+                <h2>Produtos, quantidade e preco</h2>
+              </div>
               <Button variant="outline" size="sm" icon="plus" onClick={addLine}>Adicionar item</Button>
             </div>
-            <div className="order-line-list">
+            {stockAlerts.length > 0 && (
+              <div className="order-stock-alert">
+                <Icon name="alertCircle" size={17} />
+                <div>
+                  <strong>Pedido acima do estoque disponivel</strong>
+                  <span>O pedido pode ser criado, mas a separacao ficara com pendencia ate reposicao ou producao.</span>
+                </div>
+              </div>
+            )}
+            <div className="order-line-list order-line-list--full">
               {draftLines.map((line, index) => (
-                <div key={line.id} className="order-line-edit">
-                  <Field label={index === 0 ? "Produto" : ""} style={{ flex: 1, marginBottom: 0 }}>
-                    <Select value={line.sku} onChange={(value) => setLine(line.id, { sku: value })} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} />
+                <div key={line.id} className={line.overStock ? "order-line-edit order-line-edit--warn" : "order-line-edit"}>
+                  <Field label={index === 0 ? "Produto" : ""} style={{ marginBottom: 0 }}>
+                    <Select
+                      value={line.sku}
+                      onChange={(value) => setLine(line.id, { sku: value, unitPrice: moneyInput(findDemoItem(value)?.price ?? 0) })}
+                      options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
+                    />
                   </Field>
                   <Field label={index === 0 ? "Qtd" : ""} style={{ width: 78, marginBottom: 0 }}>
                     <Input value={line.qty} inputMode="numeric" onChange={(event) => setLine(line.id, { qty: event.target.value })} />
                   </Field>
+                  <Field label={index === 0 ? "Valor un." : ""} style={{ width: 112, marginBottom: 0 }}>
+                    <Input value={line.unitPrice} inputMode="decimal" onChange={(event) => setLine(line.id, { unitPrice: event.target.value })} />
+                  </Field>
                   <div className="order-line-price">
-                    <span>{BRL(line.item?.price ?? 0)}</span>
+                    <span>{line.item ? `${line.item.available} disp.` : "sem item"}</span>
                     <strong>{BRL(line.total)}</strong>
                   </div>
                   <Button variant="ghost" size="icon" icon="x" onClick={() => removeLine(line.id)} disabled={lines.length === 1} aria-label="Remover item" />
+                  {line.overStock && <div className="order-line-warning">Demanda total do SKU acima do estoque: {demandBySku.get(line.sku) ?? line.qtyNumber} pedido(s), {line.item?.available ?? 0} disponivel.</div>}
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="order-form-section">
-            <div className="block-label">Envio e etiqueta</div>
+          <section className="order-create-section" id="valores">
+            <div className="order-section-head">
+              <div>
+                <div className="block-label">Valores</div>
+                <h2>Frete, desconto e total</h2>
+              </div>
+            </div>
+            <div className="ff-grid">
+              <Field label="Frete"><Input value={freight} inputMode="decimal" onChange={(event) => setFreight(event.target.value)} /></Field>
+              <Field label="Desconto"><Input value={discount} inputMode="decimal" onChange={(event) => setDiscount(event.target.value)} /></Field>
+            </div>
+          </section>
+
+          <section className="order-create-section" id="envio">
+            <div className="order-section-head">
+              <div>
+                <div className="block-label">Envio</div>
+                <h2>Rastreio, etiqueta e observacoes</h2>
+              </div>
+            </div>
             <div className="ff-grid">
               <Field label="Rastreio">
                 <Input value={tracking} onChange={(event) => setTracking(event.target.value)} placeholder="BR000000000BR ou pendente" />
@@ -466,16 +590,12 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
             </div>
             <Field label="Observacao"><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Cartao, retirada, embalagem especial..." /></Field>
           </section>
-        </div>
+        </main>
 
-        <aside className="order-form-side">
+        <aside className="order-create-summary">
           <div className="block-label">Valores</div>
           <div className="order-summary-box">
             <div className="field"><span className="field-k">Subtotal</span><span className="field-v">{BRL(subtotal)}</span></div>
-            <div className="order-money-fields">
-              <Field label="Frete" style={{ marginBottom: 0 }}><Input value={freight} inputMode="decimal" onChange={(event) => setFreight(event.target.value)} /></Field>
-              <Field label="Desconto" style={{ marginBottom: 0 }}><Input value={discount} inputMode="decimal" onChange={(event) => setDiscount(event.target.value)} /></Field>
-            </div>
             <div className="field"><span className="field-k">Frete</span><span className="field-v">{freightValue ? BRL(freightValue) : "a definir"}</span></div>
             {discountValue > 0 && <div className="field"><span className="field-k">Desconto</span><span className="field-v om-text--bad">- {BRL(discountValue)}</span></div>}
             <div className="field order-total-row"><span>Total</span><span>{BRL(total)}</span></div>
@@ -489,9 +609,26 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
             <div className="field"><span className="field-k">Etiqueta</span><span className="field-v"><LabelBadge kind={labelKind} /></span></div>
             <div className="field"><span className="field-k">Status inicial</span><span className="field-v">{payment === "pago" ? ORDER_STATUS.pago.label : ORDER_STATUS.aguardando_pagamento.label}</span></div>
           </div>
+          {stockAlerts.length > 0 && (
+            <>
+              <div className="block-label" style={{ marginTop: 16 }}>Alertas</div>
+              <div className="order-summary-box order-alert-list">
+                {stockAlerts.map((line) => (
+                  <div key={line.id} className="order-alert-row">
+                    <Icon name="alertCircle" size={15} />
+                    <span>{line.item?.name ?? line.sku}: {demandBySku.get(line.sku) ?? line.qtyNumber} pedido(s), {line.item?.available ?? 0} disponivel.</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="order-create-actions">
+            <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+            <Button variant="default" icon="plus" onClick={submit}>Criar pedido</Button>
+          </div>
         </aside>
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -576,6 +713,21 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
     };
   }, [printJob]);
 
+  if (newOpen) {
+    return (
+      <>
+        <NewOrderView
+          onCancel={() => setNewOpen(false)}
+          onCreate={(order) => {
+            writeDemoCustomOrder(order);
+            setOrders((current) => [order, ...current]);
+          }}
+        />
+        <PickListDocument job={printJob} />
+      </>
+    );
+  }
+
   return (
     <div className="page page--wide fade-in">
       <div className="page-head">
@@ -638,14 +790,6 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
       </Card>
 
       {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} />}
-      <NewOrderModal
-        open={newOpen}
-        onClose={() => setNewOpen(false)}
-        onCreate={(order) => {
-          writeDemoCustomOrder(order);
-          setOrders((current) => [order, ...current]);
-        }}
-      />
       <PickListDocument job={printJob} />
       <Sep style={{ marginTop: 18 }} />
     </div>
