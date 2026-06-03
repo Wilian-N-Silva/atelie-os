@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
-import { createInventoryMovement, parseInventoryMovementInput } from "@/lib/inventory-server";
+import { createInventoryMovement } from "@/lib/inventory-server";
+import { parseInventoryMovementInput } from "@/lib/inventory-validation";
 import { INVENTORY_WRITE_ROLES } from "@/lib/permissions";
 
 export const runtime = "nodejs";
