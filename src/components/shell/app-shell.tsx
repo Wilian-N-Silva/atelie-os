@@ -24,6 +24,7 @@ export const NAV = [
   ] },
   { group: "Sistema", items: [
     { id: "configuracoes", label: "Configurações", icon: "settings" },
+    { id: "manual", label: "Manual & ajuda", icon: "fileText" },
   ] },
 ] as const;
 
@@ -37,6 +38,7 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   etiquetas: { title: "Etiquetas", sub: "Editor de modelos e impressão" },
   ia: { title: "Conteúdo IA", sub: "Textos na voz da marca" },
   configuracoes: { title: "Configurações", sub: "White-label · marca, fluxos, etiquetas" },
+  manual: { title: "Manual & ajuda", sub: "Guia de uso do sistema" },
 };
 
 export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, onSignOut, children }: {

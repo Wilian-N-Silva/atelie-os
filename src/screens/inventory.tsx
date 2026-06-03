@@ -39,7 +39,8 @@ import {
   ITEM_TYPE_TONES,
   type ItemMovementType,
 } from "@/lib/items";
-import type { Go, Route } from "@/lib/types";
+import { canManageInventory } from "@/lib/permissions";
+import type { Go, Route, Session } from "@/lib/types";
 
 type InventoryTab = "all" | "with_physical" | "reserved" | "cure" | "blocked" | "below_minimum";
 
@@ -525,7 +526,7 @@ function matchesTab(item: InventoryItemBalance, tab: InventoryTab) {
   }
 }
 
-export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
+export function InventoryScreen({ go, route, session }: { go: Go; route: Route; session: Session }) {
   const [data, setData] = React.useState<InventoryResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -561,6 +562,7 @@ export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
   const cards = data?.cards ?? EMPTY_CARDS;
   const locations = data?.locations ?? [];
   const selectedLocation = locations.find((location) => location.id === locationId) ?? null;
+  const canCreateMovement = canManageInventory(session.user.role);
 
   const tabs = React.useMemo(() => {
     const items = data?.items ?? [];
@@ -605,14 +607,16 @@ export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
           </p>
         </div>
         <div className="row-wrap">
-          <Button
-            variant="default"
-            icon="plus"
-            onClick={() => setMovementOpen(true)}
-            disabled={loading || !data || data.items.length === 0 || data.locations.every((location) => !location.isActive)}
-          >
-            Novo movimento
-          </Button>
+          {canCreateMovement && (
+            <Button
+              variant="default"
+              icon="plus"
+              onClick={() => setMovementOpen(true)}
+              disabled={loading || !data || data.items.length === 0 || data.locations.every((location) => !location.isActive)}
+            >
+              Novo movimento
+            </Button>
+          )}
           <Button variant="outline" icon="itens" onClick={() => go("itens")}>Itens / SKUs</Button>
           <Button variant="outline" icon="refresh" onClick={() => void load(locationId)} disabled={loading}>Atualizar</Button>
         </div>
@@ -767,13 +771,15 @@ export function InventoryScreen({ go, route }: { go: Go; route: Route }) {
         </CardContent>
       </Card>
 
-      <InventoryMovementModal
-        open={movementOpen}
-        data={data}
-        selectedLocationId={locationId}
-        onClose={() => setMovementOpen(false)}
-        onCreated={() => void load(locationId)}
-      />
+      {canCreateMovement && (
+        <InventoryMovementModal
+          open={movementOpen}
+          data={data}
+          selectedLocationId={locationId}
+          onClose={() => setMovementOpen(false)}
+          onCreated={() => void load(locationId)}
+        />
+      )}
     </div>
   );
 }

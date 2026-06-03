@@ -14,6 +14,7 @@ import { Onboarding } from "@/components/onboarding/onboarding";
 import { Dashboard } from "@/screens/dashboard";
 import { InventoryScreen } from "@/screens/inventory";
 import { ItemsScreen } from "@/screens/items";
+import { ManualScreen } from "@/screens/manual";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
@@ -36,6 +37,7 @@ const SCREENS: Record<string, React.ComponentType<ScreenProps>> = {
   hoje: Dashboard as React.ComponentType<ScreenProps>,
   itens: ItemsScreen as React.ComponentType<ScreenProps>,
   estoque: InventoryScreen as React.ComponentType<ScreenProps>,
+  manual: ManualScreen as React.ComponentType<ScreenProps>,
 };
 
 function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => void }) {

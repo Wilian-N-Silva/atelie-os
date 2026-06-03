@@ -37,6 +37,7 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
     { id: "n-estoque", kind: "nav", icon: "estoque", title: "Estoque", sub: "Saldos e movimentos", go: { screen: "estoque" } },
     { id: "n-etiq", kind: "nav", icon: "tag", title: "Etiquetas", sub: "Editor e impressao", go: { screen: "etiquetas" } },
     { id: "n-ia", kind: "nav", icon: "ia", title: "Conteudo IA", sub: "Textos da marca", go: { screen: "ia" } },
+    { id: "n-manual", kind: "nav", icon: "fileText", title: "Manual & ajuda", sub: "Guia de uso", go: { screen: "manual" } },
   ];
 
   const actions: Hit[] = [

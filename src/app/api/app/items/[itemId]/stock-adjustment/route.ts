@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { auditLogs, items, stockMovements, units } from "@/db/schema";
-import { requireAppRouteContext } from "@/lib/app-route-context";
+import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
+import { INVENTORY_WRITE_ROLES } from "@/lib/permissions";
 import { emptyStockBalance, getStockBalancesForCompany, roundStock } from "@/lib/stock-balances";
 
 export const runtime = "nodejs";
@@ -44,6 +45,9 @@ export async function POST(
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, INVENTORY_WRITE_ROLES);
+  if (roleError) return roleError;
+
   const { itemId } = await params;
   const parsed = parseAdjustmentPayload(await request.json().catch(() => null));
 

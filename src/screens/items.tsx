@@ -45,7 +45,8 @@ import {
   type ItemsResponse,
   type StockAdjustmentDirection,
 } from "@/lib/items";
-import type { Go, Route } from "@/lib/types";
+import { canManageCatalog, canManageInventory } from "@/lib/permissions";
+import type { Go, Route, Session } from "@/lib/types";
 
 type ItemTab = "all" | ItemType | "below_minimum";
 
@@ -626,11 +627,15 @@ function StockAdjustmentModal({
 
 function ItemDrawer({
   item,
+  canEditCatalog,
+  canAdjustStock,
   onClose,
   onAdjusted,
   onEdit,
 }: {
   item: CatalogItem;
+  canEditCatalog: boolean;
+  canAdjustStock: boolean;
   onClose: () => void;
   onAdjusted: () => void;
   onEdit: () => void;
@@ -757,27 +762,29 @@ function ItemDrawer({
           </div>
 
           <div className="drawer-foot">
-            <Button variant="outline" icon="itens" onClick={onEdit}>Editar cadastro</Button>
-            <Button variant="default" icon="sliders" onClick={() => setAdjustOpen(true)}>Ajustar estoque</Button>
+            {canEditCatalog && <Button variant="outline" icon="itens" onClick={onEdit}>Editar cadastro</Button>}
+            {canAdjustStock && <Button variant="default" icon="sliders" onClick={() => setAdjustOpen(true)}>Ajustar estoque</Button>}
             <Button variant="outline" onClick={onClose}>Fechar</Button>
           </div>
         </div>
       </div>
 
-      <StockAdjustmentModal
-        item={item}
-        open={adjustOpen}
-        onClose={() => setAdjustOpen(false)}
-        onAdjusted={() => {
-          void loadMovements();
-          onAdjusted();
-        }}
-      />
+      {canAdjustStock && (
+        <StockAdjustmentModal
+          item={item}
+          open={adjustOpen}
+          onClose={() => setAdjustOpen(false)}
+          onAdjusted={() => {
+            void loadMovements();
+            onAdjusted();
+          }}
+        />
+      )}
     </>
   );
 }
 
-export function ItemsScreen({ go, route }: { go: Go; route: Route }) {
+export function ItemsScreen({ go, route, session }: { go: Go; route: Route; session: Session }) {
   const [data, setData] = React.useState<ItemsResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -807,6 +814,8 @@ export function ItemsScreen({ go, route }: { go: Go; route: Route }) {
 
   const cards = data?.cards ?? EMPTY_CARDS;
   const lookups = data?.lookups ?? EMPTY_LOOKUPS;
+  const canEditCatalog = canManageCatalog(session.user.role);
+  const canAdjustStock = canManageInventory(session.user.role);
 
   const tabs = React.useMemo(() => ([
     { value: "all", label: "Todos", count: cards.total },
@@ -863,7 +872,7 @@ export function ItemsScreen({ go, route }: { go: Go; route: Route }) {
           </p>
         </div>
         <div className="row-wrap">
-          <Button variant="default" icon="plus" onClick={() => setCreateOpen(true)}>Novo item</Button>
+          {canEditCatalog && <Button variant="default" icon="plus" onClick={() => setCreateOpen(true)}>Novo item</Button>}
           <Button variant="outline" icon="refresh" onClick={load} disabled={loading}>Atualizar</Button>
         </div>
       </div>
@@ -964,6 +973,8 @@ export function ItemsScreen({ go, route }: { go: Go; route: Route }) {
       {selected && (
         <ItemDrawer
           item={selected}
+          canEditCatalog={canEditCatalog}
+          canAdjustStock={canAdjustStock}
           onClose={() => go("itens")}
           onAdjusted={load}
           onEdit={() => setEditingItem(selected)}

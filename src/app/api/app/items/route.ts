@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAppRouteContext } from "@/lib/app-route-context";
+import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
+import { CATALOG_WRITE_ROLES } from "@/lib/permissions";
 import {
   buildItemsResponse,
   createCatalogItem,
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, CATALOG_WRITE_ROLES);
+  if (roleError) return roleError;
+
   const parsed = parseItemInput(await request.json().catch(() => null));
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
