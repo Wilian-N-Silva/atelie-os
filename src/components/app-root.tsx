@@ -15,6 +15,13 @@ import { Dashboard } from "@/screens/dashboard";
 import { InventoryScreen } from "@/screens/inventory";
 import { ItemsScreen } from "@/screens/items";
 import { ManualScreen } from "@/screens/manual";
+import { OrdersScreen } from "@/screens/orders";
+import { ProductionScreen } from "@/screens/production";
+import { RecipesScreen } from "@/screens/recipes";
+import { LabelsScreen } from "@/screens/labels";
+import { AIContentScreen } from "@/screens/ai-content";
+import { SettingsScreen } from "@/screens/settings";
+import { OperationScreen } from "@/screens/operation";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
@@ -35,8 +42,14 @@ type ScreenProps = { go: Go; route: Route; session: Session };
 
 const SCREENS: Record<string, React.ComponentType<ScreenProps>> = {
   hoje: Dashboard as React.ComponentType<ScreenProps>,
+  pedidos: OrdersScreen as React.ComponentType<ScreenProps>,
+  producao: ProductionScreen as React.ComponentType<ScreenProps>,
   itens: ItemsScreen as React.ComponentType<ScreenProps>,
+  receitas: RecipesScreen as React.ComponentType<ScreenProps>,
   estoque: InventoryScreen as React.ComponentType<ScreenProps>,
+  etiquetas: LabelsScreen as React.ComponentType<ScreenProps>,
+  ia: AIContentScreen as React.ComponentType<ScreenProps>,
+  configuracoes: SettingsScreen as React.ComponentType<ScreenProps>,
   manual: ManualScreen as React.ComponentType<ScreenProps>,
 };
 
@@ -97,11 +110,10 @@ function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => 
     if (c) c.scrollTop = 0;
   };
 
-  // fullscreen Modo Operação (no shell) — placeholder until ported
   if (route.screen === "operacao") {
     return (
       <>
-        <div className="app app--noframe"><div className="main"><div className="content"><Placeholder name="Modo Operação" /></div></div></div>
+        <OperationScreen go={go} route={route} />
         {cmdOpen && <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} go={go} />}
       </>
     );
