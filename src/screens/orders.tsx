@@ -36,6 +36,7 @@ import type { Go, Route } from "@/lib/types";
 type OrderFilter = "todos" | "a_separar" | "a_embalar" | "envio" | "pagamento" | "enviados";
 type PickListJob = { id: string; code: string; title: string; orders: DemoOrder[]; generatedAt: string };
 type OrderPatch = Partial<Pick<DemoOrder, "payment" | "status">>;
+type LabelKind = NonNullable<DemoOrder["labelKind"]>;
 
 function orderQuantity(order: DemoOrder) {
   return order.items.reduce((sum, item) => sum + item.qty, 0);
@@ -56,6 +57,18 @@ function itemLocation(sku: string) {
 function ChannelBadge({ channel }: { channel: DemoOrder["channel"] }) {
   const external = channel === "mercadolivre" || channel === "shopee";
   return <Badge tone={external ? "warn" : "neutral"}>{CHANNELS[channel]}</Badge>;
+}
+
+function defaultLabelKind(channel: DemoOrder["channel"]): LabelKind {
+  return channel === "mercadolivre" || channel === "shopee" ? "pdf_attached" : "internal";
+}
+
+function orderLabelKind(order: Pick<DemoOrder, "channel" | "labelKind">): LabelKind {
+  return order.labelKind ?? defaultLabelKind(order.channel);
+}
+
+function LabelBadge({ kind }: { kind: LabelKind }) {
+  return kind === "pdf_attached" ? <Badge tone="info">PDF anexada</Badge> : <Badge tone="neutral">Interna</Badge>;
 }
 
 function PickListDocument({ job }: { job: PickListJob | null }) {
@@ -247,7 +260,7 @@ function OrderDrawer({
 
           <div className="block-label" style={{ marginTop: 18 }}>Envio</div>
           <div className="field"><span className="field-k">Rastreio</span><span className="field-v">{order.tracking ? <span className="sku">{order.tracking}</span> : <span className="muted">pendente</span>}</span></div>
-          <div className="field"><span className="field-k">Etiqueta</span><span className="field-v">{order.channel === "mercadolivre" || order.channel === "shopee" ? <Badge tone="info">PDF anexada</Badge> : <span className="muted">interna</span>}</span></div>
+          <div className="field"><span className="field-k">Etiqueta</span><span className="field-v"><LabelBadge kind={orderLabelKind(order)} /></span></div>
 
           <div className="block-label" style={{ marginTop: 18 }}>Fluxo</div>
           <div className="stepper">
@@ -302,6 +315,13 @@ function OrderDrawer({
 
 type DraftLine = { id: number; sku: string; qty: string };
 
+function parseMoney(value: string) {
+  const clean = value.trim().replace(/\s/g, "");
+  if (!clean) return 0;
+  const normalized = clean.includes(",") ? clean.replace(/\./g, "").replace(",", ".") : clean;
+  return Math.max(0, Number.parseFloat(normalized.replace(/[^\d.]/g, "")) || 0);
+}
+
 function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (order: DemoOrder) => void }) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
@@ -311,8 +331,22 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
   const [city, setCity] = React.useState("Sao Paulo - SP");
   const [channel, setChannel] = React.useState<DemoOrder["channel"]>("whatsapp");
   const [payment, setPayment] = React.useState<DemoOrder["payment"]>("pago");
+  const [labelKind, setLabelKind] = React.useState<LabelKind>("internal");
+  const [freight, setFreight] = React.useState("24,90");
+  const [discount, setDiscount] = React.useState("0,00");
+  const [tracking, setTracking] = React.useState("");
   const [lines, setLines] = React.useState<DraftLine[]>(() => [{ id: 0, sku: products[0]?.sku ?? "", qty: "1" }]);
   const [note, setNote] = React.useState("");
+
+  const draftLines = lines.map((line) => {
+    const item = findDemoItem(line.sku);
+    const qty = Math.max(1, Number.parseInt(line.qty, 10) || 1);
+    return { ...line, item, qty, total: (item?.price ?? 0) * qty };
+  });
+  const subtotal = draftLines.reduce((sum, line) => sum + line.total, 0);
+  const freightValue = parseMoney(freight);
+  const discountValue = Math.min(parseMoney(discount), subtotal + freightValue);
+  const total = Math.max(0, subtotal + freightValue - discountValue);
 
   const setLine = (lineId: number, patch: Partial<DraftLine>) => {
     setLines((current) => current.map((line) => line.id === lineId ? { ...line, ...patch } : line));
@@ -328,19 +362,15 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
 
   const submit = () => {
     const aggregated = new Map<string, number>();
-    for (const line of lines) {
+    for (const line of draftLines) {
       if (!line.sku) continue;
-      const quantity = Math.max(1, Number.parseInt(line.qty, 10) || 1);
-      aggregated.set(line.sku, (aggregated.get(line.sku) ?? 0) + quantity);
+      aggregated.set(line.sku, (aggregated.get(line.sku) ?? 0) + line.qty);
     }
     const items = Array.from(aggregated, ([sku, qty]) => ({ sku, qty }));
     if (!items.length) {
       toast("Adicione pelo menos um item ao pedido.", "bad");
       return;
     }
-    const freight = 24.9;
-    const subtotal = items.reduce((sum, line) => sum + (findDemoItem(line.sku)?.price ?? 0) * line.qty, 0);
-    const total = subtotal + freight;
     const next = nextId.current++;
     const id = `${idPrefix}-${next}`;
     onCreate({
@@ -348,16 +378,17 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
       code: `040100${String(900000 + next).slice(-6)}`,
       num: `#${1044 + next}`,
       channel,
+      labelKind,
       customerName: customer.trim() || "Cliente novo",
       city: city.trim() || "Sao Paulo - SP",
       status: payment === "pago" ? "pago" : "aguardando_pagamento",
       payment,
       createdAt: "agora",
-      freight,
-      discount: 0,
+      freight: freightValue,
+      discount: discountValue,
       total,
       items,
-      tracking: null,
+      tracking: tracking.trim() || null,
       note: note.trim() || null,
     });
     toast("Pedido criado nesta sessao.", "info");
@@ -365,40 +396,101 @@ function NewOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: ()
   };
 
   return (
-    <Modal open={open} onClose={onClose} icon="pedidos" title="Novo pedido" subtitle="Rascunho local para a operacao" width={560}
+    <Modal open={open} onClose={onClose} icon="pedidos" title="Novo pedido" subtitle="Rascunho local para a operacao" width={760}
       footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="default" icon="plus" onClick={submit}>Criar pedido</Button></>}>
-      <div className="ff-grid">
-        <Field label="Cliente"><Input value={customer} onChange={(event) => setCustomer(event.target.value)} /></Field>
-        <Field label="Cidade"><Input value={city} onChange={(event) => setCity(event.target.value)} /></Field>
-      </div>
-      <div className="ff-grid">
-        <Field label="Canal">
-          <Select value={channel} onChange={(value) => setChannel(value as DemoOrder["channel"])} options={Object.entries(CHANNELS).map(([value, label]) => ({ value, label }))} />
-        </Field>
-        <Field label="Pagamento">
-          <Select value={payment} onChange={(value) => setPayment(value as DemoOrder["payment"])} options={[
-            { value: "pago", label: "Pago" },
-            { value: "aguardando", label: "Aguardando pagamento" },
-          ]} />
-        </Field>
-      </div>
+      <div className="order-form-layout">
+        <div className="order-form-main">
+          <section className="order-form-section">
+            <div className="block-label">Cliente e origem</div>
+            <div className="ff-grid">
+              <Field label="Cliente"><Input value={customer} onChange={(event) => setCustomer(event.target.value)} /></Field>
+              <Field label="Cidade"><Input value={city} onChange={(event) => setCity(event.target.value)} /></Field>
+            </div>
+            <div className="ff-grid">
+              <Field label="Canal">
+                <Select
+                  value={channel}
+                  onChange={(value) => {
+                    const next = value as DemoOrder["channel"];
+                    setChannel(next);
+                    setLabelKind(defaultLabelKind(next));
+                  }}
+                  options={Object.entries(CHANNELS).map(([value, label]) => ({ value, label }))}
+                />
+              </Field>
+              <Field label="Pagamento">
+                <Select value={payment} onChange={(value) => setPayment(value as DemoOrder["payment"])} options={[
+                  { value: "pago", label: "Pago" },
+                  { value: "aguardando", label: "Aguardando pagamento" },
+                ]} />
+              </Field>
+            </div>
+          </section>
 
-      <div className="block-label" style={{ marginTop: 4 }}>Itens</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
-        {lines.map((line, index) => (
-          <div key={line.id} className="row" style={{ gap: 8, alignItems: "flex-end" }}>
-            <Field label={index === 0 ? "Produto" : ""} style={{ flex: 1 }}>
-              <Select value={line.sku} onChange={(value) => setLine(line.id, { sku: value })} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} />
-            </Field>
-            <Field label={index === 0 ? "Qtd" : ""} style={{ width: 92 }}>
-              <Input value={line.qty} inputMode="numeric" onChange={(event) => setLine(line.id, { qty: event.target.value })} />
-            </Field>
-            <Button variant="ghost" size="icon" icon="x" onClick={() => removeLine(line.id)} disabled={lines.length === 1} aria-label="Remover item" />
+          <section className="order-form-section">
+            <div className="row between" style={{ marginBottom: 8 }}>
+              <div className="block-label" style={{ marginBottom: 0 }}>Itens do pedido</div>
+              <Button variant="outline" size="sm" icon="plus" onClick={addLine}>Adicionar item</Button>
+            </div>
+            <div className="order-line-list">
+              {draftLines.map((line, index) => (
+                <div key={line.id} className="order-line-edit">
+                  <Field label={index === 0 ? "Produto" : ""} style={{ flex: 1, marginBottom: 0 }}>
+                    <Select value={line.sku} onChange={(value) => setLine(line.id, { sku: value })} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} />
+                  </Field>
+                  <Field label={index === 0 ? "Qtd" : ""} style={{ width: 78, marginBottom: 0 }}>
+                    <Input value={line.qty} inputMode="numeric" onChange={(event) => setLine(line.id, { qty: event.target.value })} />
+                  </Field>
+                  <div className="order-line-price">
+                    <span>{BRL(line.item?.price ?? 0)}</span>
+                    <strong>{BRL(line.total)}</strong>
+                  </div>
+                  <Button variant="ghost" size="icon" icon="x" onClick={() => removeLine(line.id)} disabled={lines.length === 1} aria-label="Remover item" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="order-form-section">
+            <div className="block-label">Envio e etiqueta</div>
+            <div className="ff-grid">
+              <Field label="Rastreio">
+                <Input value={tracking} onChange={(event) => setTracking(event.target.value)} placeholder="BR000000000BR ou pendente" />
+              </Field>
+              <Field label="Etiqueta">
+                <Select value={labelKind} onChange={(value) => setLabelKind(value as LabelKind)} options={[
+                  { value: "internal", label: "Interna" },
+                  { value: "pdf_attached", label: "PDF anexada manualmente" },
+                ]} />
+              </Field>
+            </div>
+            <Field label="Observacao"><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Cartao, retirada, embalagem especial..." /></Field>
+          </section>
+        </div>
+
+        <aside className="order-form-side">
+          <div className="block-label">Valores</div>
+          <div className="order-summary-box">
+            <div className="field"><span className="field-k">Subtotal</span><span className="field-v">{BRL(subtotal)}</span></div>
+            <div className="order-money-fields">
+              <Field label="Frete" style={{ marginBottom: 0 }}><Input value={freight} inputMode="decimal" onChange={(event) => setFreight(event.target.value)} /></Field>
+              <Field label="Desconto" style={{ marginBottom: 0 }}><Input value={discount} inputMode="decimal" onChange={(event) => setDiscount(event.target.value)} /></Field>
+            </div>
+            <div className="field"><span className="field-k">Frete</span><span className="field-v">{freightValue ? BRL(freightValue) : "a definir"}</span></div>
+            {discountValue > 0 && <div className="field"><span className="field-k">Desconto</span><span className="field-v om-text--bad">- {BRL(discountValue)}</span></div>}
+            <div className="field order-total-row"><span>Total</span><span>{BRL(total)}</span></div>
           </div>
-        ))}
+
+          <div className="block-label" style={{ marginTop: 16 }}>Resumo operacional</div>
+          <div className="order-summary-box">
+            <div className="field"><span className="field-k">Canal</span><span className="field-v">{CHANNELS[channel]}</span></div>
+            <div className="field"><span className="field-k">Pagamento</span><span className="field-v">{payment === "pago" ? <Badge tone="ok" dot>Pago</Badge> : <Badge tone="warn" dot>Aguardando</Badge>}</span></div>
+            <div className="field"><span className="field-k">Rastreio</span><span className="field-v">{tracking.trim() ? <span className="sku">{tracking.trim()}</span> : <span className="muted">pendente</span>}</span></div>
+            <div className="field"><span className="field-k">Etiqueta</span><span className="field-v"><LabelBadge kind={labelKind} /></span></div>
+            <div className="field"><span className="field-k">Status inicial</span><span className="field-v">{payment === "pago" ? ORDER_STATUS.pago.label : ORDER_STATUS.aguardando_pagamento.label}</span></div>
+          </div>
+        </aside>
       </div>
-      <Button variant="outline" size="sm" icon="plus" onClick={addLine}>Adicionar item</Button>
-      <Field label="Observacao"><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Cartao, retirada, embalagem especial..." /></Field>
     </Modal>
   );
 }

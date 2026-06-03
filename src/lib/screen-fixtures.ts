@@ -44,6 +44,7 @@ export type DemoOrder = {
   code: string;
   num: string;
   channel: keyof typeof CHANNELS;
+  labelKind?: "internal" | "pdf_attached";
   customerName: string;
   city: string;
   status: DemoOrderStatus;
