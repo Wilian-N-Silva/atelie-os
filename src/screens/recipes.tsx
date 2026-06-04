@@ -16,7 +16,6 @@ import {
   Select,
   Sep,
   Stat,
-  Stepper,
   Tabs,
   Textarea,
   ViewToggle,
@@ -330,42 +329,68 @@ function RecipeFormModal({
             <Button variant="outline" size="sm" icon="plus" onClick={addComponent}>Adicionar item</Button>
           </div>
 
-          <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 10, overflow: "hidden" }}>
-            {resolvedComponents.map((component) => (
-              <div className="line-add" key={component.key} style={{ padding: 10, alignItems: "flex-start" }}>
-                <div style={{ flex: 1, minWidth: 210 }}>
-                  <Select
-                    value={component.sku}
-                    onChange={(value) => setComponent(component.key, { sku: value })}
-                    options={MATERIAL_OPTIONS.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
-                  />
-                  <div className="cell-sub" style={{ marginTop: 4 }}>
-                    <span className="sku">{component.sku}</span> - {component.available} {component.unit} disp. - {BRL(component.item?.costAvg ?? 0)}/{component.unit}
-                  </div>
-                </div>
-                <div style={{ width: 110 }}>
-                  <Field label="Qtd">
-                    <Stepper
-                      value={component.qtyNumber}
-                      onChange={(value) => setComponent(component.key, { qty: String(value) })}
-                      min={0}
-                      step={component.qtyNumber < 1 ? 0.01 : 1}
-                    />
-                  </Field>
-                </div>
-                <div style={{ width: 86 }}>
-                  <Field label="Perda">
-                    <Input inputMode="decimal" value={component.loss} onChange={(event) => setComponent(component.key, { loss: event.target.value })} />
-                  </Field>
-                </div>
-                <div style={{ width: 92, textAlign: "right", paddingTop: 24 }}>
-                  <div style={{ fontWeight: 650 }}>{BRL(component.cost)}</div>
-                </div>
-                <button className="wf-handle-btn" onClick={() => removeComponent(component.key)} disabled={components.length === 1} style={{ marginTop: 25 }}>
-                  <Icon name="x" size={15} />
-                </button>
-              </div>
-            ))}
+          <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 10, overflowX: "auto" }}>
+            <table className="om-table" style={{ minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th style={{ width: 112 }}>Qtd</th>
+                  <th style={{ width: 88 }}>Perda</th>
+                  <th className="om-td-right" style={{ width: 116 }}>Disponivel</th>
+                  <th className="om-td-right" style={{ width: 112 }}>Custo</th>
+                  <th style={{ width: 44 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {resolvedComponents.map((component) => (
+                  <tr key={component.key}>
+                    <td style={{ minWidth: 260 }}>
+                      <Select
+                        value={component.sku}
+                        onChange={(value) => setComponent(component.key, { sku: value })}
+                        options={MATERIAL_OPTIONS.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
+                      />
+                      <div className="cell-sub" style={{ marginTop: 4 }}>
+                        <span className="sku">{component.sku}</span> - {BRL(component.item?.costAvg ?? 0)}/{component.unit}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="row" style={{ gap: 6 }}>
+                        <Input
+                          inputMode="decimal"
+                          value={component.qty}
+                          onChange={(event) => setComponent(component.key, { qty: event.target.value })}
+                          style={{ width: 78 }}
+                        />
+                        <span className="muted" style={{ fontSize: 12.5 }}>{component.unit}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="row" style={{ gap: 6 }}>
+                        <Input
+                          inputMode="decimal"
+                          value={component.loss}
+                          onChange={(event) => setComponent(component.key, { loss: event.target.value })}
+                          style={{ width: 58 }}
+                        />
+                        <span className="muted" style={{ fontSize: 12.5 }}>%</span>
+                      </div>
+                    </td>
+                    <td className="om-td-right">
+                      <Badge tone={component.available >= component.qtyNumber ? "ok" : "warn"}>
+                        {component.available} {component.unit}
+                      </Badge>
+                    </td>
+                    <td className="om-td-right" style={{ fontWeight: 650 }}>{BRL(component.cost)}</td>
+                    <td className="om-td-right">
+                      <button className="wf-handle-btn" onClick={() => removeComponent(component.key)} disabled={components.length === 1}>
+                        <Icon name="x" size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <Field label={mode === "version" ? "Observacao da nova versao" : "Nota de teste inicial"} style={{ marginTop: 14 }}>
