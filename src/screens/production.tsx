@@ -42,6 +42,12 @@ function recipeFor(order: DemoProductionOrder) {
   return DEMO_RECIPES.find((recipe) => recipe.product === order.product);
 }
 
+function formatPlannedDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value || "a definir";
+  return `${match[3]}/${match[2]}`;
+}
+
 function materialRows(order: DemoProductionOrder) {
   const recipe = recipeFor(order);
   if (!recipe) return [];
@@ -240,7 +246,7 @@ function ProductionDrawer({ order, go, onClose, onPrint }: { order: DemoProducti
           </table>
 
           <div className="field"><span className="field-k">Responsavel</span><span className="field-v">{order.resp}</span></div>
-          <div className="field"><span className="field-k">Data planejada</span><span className="field-v">{order.date}</span></div>
+          <div className="field"><span className="field-k">Data planejada</span><span className="field-v">{formatPlannedDate(order.date)}</span></div>
           <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimatedCost(order))}</span></div>
         </div>
 
@@ -261,7 +267,7 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
   const nextId = React.useRef(0);
   const [recipeId, setRecipeId] = React.useState(DEMO_RECIPES[0]?.id ?? "");
   const [quantity, setQuantity] = React.useState("24");
-  const [date, setDate] = React.useState("hoje");
+  const [date, setDate] = React.useState("");
   const [responsible, setResponsible] = React.useState("Camila");
   const recipe = DEMO_RECIPES.find((item) => item.id === recipeId) ?? DEMO_RECIPES[0];
   const rows = plannedMaterialRows(recipeId, quantity);
@@ -283,7 +289,7 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
       recipeVer: recipe.version,
       planned,
       status: "aguardando_materiais",
-      date: date.trim() || "hoje",
+      date: date || "a definir",
       resp: responsible,
     });
     toast(anyShort ? "OP planejada com material faltante." : "Ordem de producao planejada nesta sessao.", "info");
@@ -304,7 +310,7 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
               <Field label="Quantidade planejada"><Input value={quantity} inputMode="numeric" onChange={(event) => setQuantity(event.target.value)} /></Field>
             </div>
             <div className="ff-grid">
-              <Field label="Data planejada"><Input value={date} onChange={(event) => setDate(event.target.value)} placeholder="hoje, 07/06, proxima segunda..." /></Field>
+              <Field label="Data planejada"><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></Field>
               <Field label="Responsavel"><Select value={responsible} onChange={setResponsible} options={responsibleOptions} /></Field>
             </div>
           </section>
@@ -346,7 +352,7 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
           <div className="order-summary-box">
             <div className="field"><span className="field-k">Produto</span><span className="field-v">{recipe?.productName ?? "-"}</span></div>
             <div className="field"><span className="field-k">Planejado</span><span className="field-v">{planned} un</span></div>
-            <div className="field"><span className="field-k">Data</span><span className="field-v">{date.trim() || "hoje"}</span></div>
+            <div className="field"><span className="field-k">Data</span><span className="field-v">{formatPlannedDate(date)}</span></div>
             <div className="field"><span className="field-k">Responsavel</span><span className="field-v">{responsible}</span></div>
             <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimated)}</span></div>
           </div>
@@ -443,7 +449,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
                     <div className="kcard" key={order.id} onClick={() => setOpenId(order.id)}>
                       <div className="kcard-top">
                         <span className="code-pill">{order.num}</span>
-                        <span className="muted" style={{ fontSize: 11.5 }}>{order.date}</span>
+                        <span className="muted" style={{ fontSize: 11.5 }}>{formatPlannedDate(order.date)}</span>
                       </div>
                       <div className="kcard-title">{order.productName}</div>
                       <div className="kcard-sub">{order.planned} un - {order.recipe} {order.recipeVer}</div>
