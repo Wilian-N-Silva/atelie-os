@@ -15,6 +15,13 @@
       "when": 1780423962872,
       "tag": "0001_sudden_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780587812081,
+      "tag": "0002_common_lightspeed",
+      "breakpoints": true
     }
   ]
 }

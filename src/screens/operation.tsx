@@ -6,7 +6,6 @@ import { Icon, cn } from "@/components/ui";
 import {
   CHANNELS,
   DEMO_ITEMS,
-  DEMO_ORDERS,
   DEMO_PRODUCTION,
   DEMO_RECIPES,
   ORDER_STATUS,
@@ -16,7 +15,7 @@ import {
   type DemoOrder,
   type DemoProductionOrder,
 } from "@/lib/screen-fixtures";
-import { loadDemoOrders } from "@/lib/demo-order-overrides";
+import { loadOrders } from "@/lib/orders-client";
 import { normalizeScanValue, scanCandidates } from "@/lib/scan-candidates";
 import type { Go, Route } from "@/lib/types";
 
@@ -195,7 +194,7 @@ function orderLines(order: DemoOrder | null): OperationLine[] {
 }
 
 export function OperationScreen({ go, route }: { go: Go; route: Route }) {
-  const [orders, setOrders] = React.useState<DemoOrder[]>(() => [...DEMO_ORDERS]);
+  const [orders, setOrders] = React.useState<DemoOrder[]>([]);
   const [productionOrders] = React.useState<DemoProductionOrder[]>(() => [...DEMO_PRODUCTION]);
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(route.order ?? null);
   const [selectedProductionId, setSelectedProductionId] = React.useState<string | null>(route.production ?? null);
@@ -218,7 +217,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
 
   React.useEffect(() => {
     let alive = true;
-    loadDemoOrders()
+    loadOrders()
       .then((nextOrders) => {
         if (alive) setOrders(nextOrders);
       })

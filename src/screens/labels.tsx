@@ -22,9 +22,10 @@ import { LabelSheetModelModal } from "@/components/label-sheet-model-modal";
 import {
   CHANNELS,
   DEMO_ITEMS,
-  DEMO_ORDERS,
   DEMO_PRODUCTION,
+  type DemoOrder,
 } from "@/lib/screen-fixtures";
+import { loadOrders } from "@/lib/orders-client";
 import {
   BARCODE_TYPE_OPTIONS,
   type BarcodeType,
@@ -197,7 +198,7 @@ function defaultFields(template: LabelTemplate): FieldState {
   return Object.fromEntries(template.fields.map((field) => [field, true])) as FieldState;
 }
 
-function entityOptionsFor(target: LabelTarget): EntityOption[] {
+function entityOptionsFor(target: LabelTarget, orders: DemoOrder[] = []): EntityOption[] {
   switch (target) {
     case "item":
       return DEMO_ITEMS.map((item) => ({
@@ -229,7 +230,7 @@ function entityOptionsFor(target: LabelTarget): EntityOption[] {
         },
       }));
     case "pedido":
-      return DEMO_ORDERS.map((order) => ({
+      return orders.map((order) => ({
         id: order.code,
         label: order.num,
         sub: order.customerName,
@@ -338,17 +339,19 @@ function AddLabelModal({
   onClose,
   onAdd,
   defaultBarcodeType,
+  orders,
 }: {
   open: boolean;
   onClose: () => void;
   onAdd: (item: QueueItem) => void;
   defaultBarcodeType: BarcodeType;
+  orders: DemoOrder[];
 }) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
   const [templateId, setTemplateId] = React.useState(LABEL_TEMPLATES[0].id);
   const template = LABEL_TEMPLATES.find((item) => item.id === templateId) ?? LABEL_TEMPLATES[0];
-  const entityOptions = React.useMemo(() => entityOptionsFor(template.target), [template.target]);
+  const entityOptions = React.useMemo(() => entityOptionsFor(template.target, orders), [orders, template.target]);
   const [entityId, setEntityId] = React.useState(entityOptions[0]?.id ?? "");
   const [fields, setFields] = React.useState<FieldState>(() => defaultFields(template));
   const [barcodeType, setBarcodeType] = React.useState<BarcodeType>(defaultBarcodeType);
@@ -359,16 +362,16 @@ function AddLabelModal({
     const firstTemplate = LABEL_TEMPLATES[0];
     setTemplateId(firstTemplate.id);
     setFields(defaultFields(firstTemplate));
-    setEntityId(entityOptionsFor(firstTemplate.target)[0]?.id ?? "");
+    setEntityId(entityOptionsFor(firstTemplate.target, orders)[0]?.id ?? "");
     setBarcodeType(defaultBarcodeType);
     setCopies(1);
-  }, [defaultBarcodeType, open]);
+  }, [defaultBarcodeType, open, orders]);
 
   React.useEffect(() => {
-    const nextOptions = entityOptionsFor(template.target);
+    const nextOptions = entityOptionsFor(template.target, orders);
     setFields(defaultFields(template));
     setEntityId(nextOptions[0]?.id ?? "");
-  }, [template]);
+  }, [orders, template]);
 
   const selected = entityOptions.find((option) => option.id === entityId) ?? entityOptions[0];
   const entity = selected?.entity ?? {};
@@ -525,6 +528,7 @@ function assignmentFor(queue: QueueItem[], skip: number[], perSheet: number) {
 export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
   const [sheets, setSheets] = useLabelSheets();
   const [defaultBarcodeType] = useBarcodeType();
+  const [orders, setOrders] = React.useState<DemoOrder[]>([]);
   const [sheetId, setSheetId] = React.useState(sheets[0]?.id ?? "");
   const [queue, setQueue] = React.useState<QueueItem[]>([]);
   const [skip, setSkip] = React.useState<number[]>([]);
@@ -545,6 +549,16 @@ export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
   React.useEffect(() => {
     if (!sheet && sheets[0]) setSheetId(sheets[0].id);
   }, [sheet, sheets]);
+
+  React.useEffect(() => {
+    let alive = true;
+    loadOrders()
+      .then((nextOrders) => {
+        if (alive) setOrders(nextOrders);
+      })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, []);
 
   React.useEffect(() => {
     setSkip([]);
@@ -722,7 +736,7 @@ export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
         </div>
       </div>
 
-      <AddLabelModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={addToQueue} defaultBarcodeType={defaultBarcodeType} />
+      <AddLabelModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={addToQueue} defaultBarcodeType={defaultBarcodeType} orders={orders} />
       <LabelSheetModelModal
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}

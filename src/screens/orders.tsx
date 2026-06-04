@@ -22,14 +22,13 @@ import { Barcode } from "@/components/barcode";
 import {
   BRL,
   CHANNELS,
-  DEMO_ORDERS,
   ORDER_STATUS,
   findDemoItem,
   productOptions,
   type DemoOrder,
   type DemoOrderStatus,
 } from "@/lib/screen-fixtures";
-import { loadDemoOrders, writeDemoCustomOrder, writeDemoOrderOverride } from "@/lib/demo-order-overrides";
+import { createOrder, loadOrders, updateOrder as saveOrderPatch } from "@/lib/orders-client";
 import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
 import type { Go, Route } from "@/lib/types";
 
@@ -655,7 +654,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
 
 export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   const [workflows] = useWorkflows();
-  const [orders, setOrders] = React.useState<DemoOrder[]>(() => [...DEMO_ORDERS]);
+  const [orders, setOrders] = React.useState<DemoOrder[]>([]);
   const [filter, setFilter] = React.useState<OrderFilter>((route.filter as OrderFilter) || "todos");
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [query, setQuery] = React.useState("");
@@ -665,7 +664,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
 
   React.useEffect(() => {
     let alive = true;
-    loadDemoOrders()
+    loadOrders()
       .then((nextOrders) => {
         if (alive) setOrders(nextOrders);
       })
@@ -712,7 +711,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   const openOrder = orders.find((order) => order.id === openId);
   const updateOrder = React.useCallback((orderId: string, patch: OrderPatch) => {
     setOrders((current) => current.map((order) => order.id === orderId ? { ...order, ...patch } : order));
-    void writeDemoOrderOverride(orderId, patch)
+    void saveOrderPatch(orderId, patch)
       .then(setOrders)
       .catch(() => toast("Nao foi possivel salvar a alteracao do pedido.", "bad"));
   }, []);
@@ -750,7 +749,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
           onCancel={() => setNewOpen(false)}
           onCreate={(order) => {
             setOrders((current) => [order, ...current]);
-            void writeDemoCustomOrder(order)
+            void createOrder(order)
               .then(setOrders)
               .catch(() => toast("Nao foi possivel salvar o pedido.", "bad"));
           }}

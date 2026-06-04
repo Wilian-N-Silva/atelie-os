@@ -3,14 +3,17 @@ import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { db, sqlClient } from "@/db/client";
-import { seedItems } from "@/db/seed-data";
+import { seedItems, seedOrders } from "@/db/seed-data";
 import {
   account,
+  auditLogs,
   categories,
   companies,
   companyMembers,
   inventoryLocations,
   items,
+  orderItems,
+  orders,
   stockMovements,
   units,
   user,
@@ -280,10 +283,78 @@ async function seedCatalog(companyId: string, ownerId: string) {
   }
 }
 
+async function seedDemoOrders(companyId: string, ownerId: string) {
+  const itemRows = await db.query.items.findMany({
+    where: eq(items.companyId, companyId),
+    columns: { id: true, sku: true },
+  });
+  const skuToItemId = new Map(itemRows.map((item) => [item.sku, item.id]));
+
+  for (const sample of seedOrders) {
+    let order = await db.query.orders.findFirst({
+      where: and(eq(orders.companyId, companyId), eq(orders.code, sample.code)),
+      columns: { id: true },
+    });
+
+    if (!order) {
+      [order] = await db
+        .insert(orders)
+        .values({
+          companyId,
+          code: sample.code,
+          number: sample.number,
+          channelKey: sample.channelKey,
+          customerName: sample.customerName,
+          city: sample.city,
+          status: sample.status,
+          paymentStatus: sample.paymentStatus,
+          labelKind: sample.labelKind ?? "internal",
+          freight: sample.freight.toString(),
+          discount: sample.discount.toString(),
+          total: sample.total.toString(),
+          tracking: sample.tracking,
+          note: sample.note,
+          source: "seed.demo_order",
+          createdByUserId: ownerId,
+          metadata: { createdAtLabel: sample.createdAtLabel },
+        })
+        .returning({ id: orders.id });
+
+      await db.insert(auditLogs).values({
+        companyId,
+        actorUserId: ownerId,
+        action: "order.create",
+        entityType: "order",
+        entityId: order.id,
+        metadata: {
+          code: sample.code,
+          number: sample.number,
+          source: "seed.demo_order",
+        },
+      });
+    }
+
+    const existingLine = await db.query.orderItems.findFirst({
+      where: eq(orderItems.orderId, order.id),
+      columns: { id: true },
+    });
+    if (existingLine) continue;
+
+    await db.insert(orderItems).values(sample.items.map((line) => ({
+      orderId: order.id,
+      itemId: skuToItemId.get(line.sku) ?? null,
+      sku: line.sku,
+      quantity: line.qty.toString(),
+      unitPrice: line.unitPrice == null ? null : line.unitPrice.toString(),
+    })));
+  }
+}
+
 async function main() {
   const owner = await ensureOwnerUser();
   const company = await ensureCompany(owner.id);
   await seedCatalog(company.id, owner.id);
+  await seedDemoOrders(company.id, owner.id);
 
   await ensureSeedAuditLog({
     companyId: company.id,
@@ -293,6 +364,7 @@ async function main() {
     metadata: {
       ownerEmail: OWNER_EMAIL,
       catalogItems: seedItems.length,
+      orders: seedOrders.length,
     },
   });
 

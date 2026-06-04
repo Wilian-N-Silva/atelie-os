@@ -115,6 +115,8 @@ export const auditActionEnum = pgEnum("audit_action", [
   "workflow.update",
   "item.create",
   "item.update",
+  "order.create",
+  "order.update",
   "stock.adjust",
   "seed.run",
 ]);
@@ -286,6 +288,38 @@ export const salesChannels = pgTable(
   }),
 );
 
+export const orders = pgTable(
+  "orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    number: text("number").notNull(),
+    channelKey: text("channel_key").notNull(),
+    customerName: text("customer_name").notNull(),
+    city: text("city").notNull(),
+    status: text("status").notNull(),
+    paymentStatus: text("payment_status").notNull(),
+    labelKind: text("label_kind").notNull().default("internal"),
+    freight: numeric("freight", { precision: 12, scale: 2 }).notNull().default("0"),
+    discount: numeric("discount", { precision: 12, scale: 2 }).notNull().default("0"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    tracking: text("tracking"),
+    note: text("note"),
+    source: text("source").notNull().default("manual"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCodeIdx: uniqueIndex("orders_company_code_idx").on(table.companyId, table.code),
+    companyStatusIdx: index("orders_company_status_idx").on(table.companyId, table.status),
+    companyCreatedIdx: index("orders_company_created_idx").on(table.companyId, table.createdAt),
+  }),
+);
+
 export const items = pgTable(
   "items",
   {
@@ -322,6 +356,26 @@ export const items = pgTable(
     companySkuIdx: uniqueIndex("items_company_sku_idx").on(table.companyId, table.sku),
     companyCodeIdx: uniqueIndex("items_company_internal_code_idx").on(table.companyId, table.internalCode),
     companyTypeIdx: index("items_company_type_idx").on(table.companyId, table.type),
+  }),
+);
+
+export const orderItems = pgTable(
+  "order_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "set null" }),
+    sku: text("sku").notNull(),
+    quantity: numeric("quantity", { precision: 12, scale: 3 }).notNull(),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    orderIdx: index("order_items_order_idx").on(table.orderId),
+    itemIdx: index("order_items_item_idx").on(table.itemId),
   }),
 );
 
