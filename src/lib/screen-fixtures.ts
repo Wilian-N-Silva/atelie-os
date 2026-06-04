@@ -93,11 +93,18 @@ export type DemoProductionOrder = {
 export type DemoLabelSheet = {
   id: string;
   name: string;
+  brand?: string;
   code: string;
+  pageW?: number;
+  pageH?: number;
   cols: number;
   rows: number;
   labelW: number;
   labelH: number;
+  mTop?: number;
+  mLeft?: number;
+  gutX?: number;
+  gutY?: number;
   roll?: boolean;
 };
 
@@ -168,9 +175,9 @@ export const DEMO_PRODUCTION: DemoProductionOrder[] = [
 ];
 
 export const LABEL_SHEETS: DemoLabelSheet[] = [
-  { id: "a4-3x8", name: "Folha A4 - grade 3x8", code: "A4-3x8", cols: 3, rows: 8, labelW: 63.5, labelH: 33.9 },
-  { id: "a4-4x10", name: "Pimaco A4056", code: "A4056", cols: 4, rows: 10, labelW: 48, labelH: 25 },
-  { id: "roll-50x30", name: "Rolo termico 50x30", code: "ROLO-50x30", cols: 1, rows: 1, labelW: 50, labelH: 30, roll: true },
+  { id: "a4-3x8", name: "Folha A4 - grade 3x8", brand: "Generico", code: "A4-3x8", pageW: 210, pageH: 297, cols: 3, rows: 8, labelW: 63.5, labelH: 33.9, mTop: 9, mLeft: 7, gutX: 2.5, gutY: 0 },
+  { id: "a4-4x10", name: "Pimaco A4056", brand: "Pimaco", code: "A4056", pageW: 210, pageH: 297, cols: 4, rows: 10, labelW: 48, labelH: 25, mTop: 11, mLeft: 7, gutX: 2, gutY: 1.5 },
+  { id: "roll-50x30", name: "Rolo termico 50x30", brand: "Termica", code: "ROLO-50x30", pageW: 50, pageH: 30, cols: 1, rows: 1, labelW: 50, labelH: 30, mTop: 0, mLeft: 0, gutX: 0, gutY: 0, roll: true },
 ];
 
 export const LABEL_TEMPLATES = [

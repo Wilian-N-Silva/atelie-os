@@ -30,6 +30,7 @@ import {
   type DemoOrderStatus,
 } from "@/lib/screen-fixtures";
 import { loadDemoOrders, writeDemoCustomOrder, writeDemoOrderOverride } from "@/lib/demo-order-overrides";
+import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
 import type { Go, Route } from "@/lib/types";
 
 type OrderFilter = "todos" | "a_separar" | "a_embalar" | "envio" | "pagamento" | "enviados";
@@ -47,6 +48,24 @@ function orderLinePrice(line: DemoOrder["items"][number]) {
 
 function canPick(order: DemoOrder) {
   return order.status === "pago" || order.status === "a_separar";
+}
+
+function isOrderStatus(value: string): value is DemoOrderStatus {
+  return value in ORDER_STATUS;
+}
+
+function orderFlowFromWorkflow(steps: WorkflowStep[], currentStatus: DemoOrderStatus) {
+  const configured = steps.filter((step): step is WorkflowStep & { key: DemoOrderStatus } => isOrderStatus(step.key));
+  if (configured.some((step) => step.key === currentStatus)) return configured;
+  return [
+    ...configured,
+    {
+      key: currentStatus,
+      label: ORDER_STATUS[currentStatus].label,
+      color: ORDER_STATUS[currentStatus].tone as WorkflowStep["color"],
+      automation: "none" as const,
+    },
+  ];
 }
 
 function itemLocation(sku: string) {
@@ -173,12 +192,14 @@ function OrderDrawer({
   onClose,
   onPrint,
   onUpdate,
+  orderSteps,
 }: {
   order: DemoOrder;
   go: Go;
   onClose: () => void;
   onPrint: (orders: DemoOrder[], title: string) => void;
   onUpdate: (orderId: string, patch: OrderPatch) => void;
+  orderSteps: WorkflowStep[];
 }) {
   const status = ORDER_STATUS[order.status];
   const lines = order.items.map((line) => ({ ...line, item: findDemoItem(line.sku) }));
@@ -191,7 +212,7 @@ function OrderDrawer({
         ? { label: "Conferir separacao", icon: "listChecks", route: { screen: "operacao", mode: "conferencia", order: order.id } }
         : null;
 
-  const flow: DemoOrderStatus[] = ["pago", "a_separar", "separado", "embalado", "pronto_envio", "enviado"];
+  const flow = orderFlowFromWorkflow(orderSteps, order.status);
 
   return (
     <>
@@ -268,11 +289,11 @@ function OrderDrawer({
           <div className="block-label" style={{ marginTop: 18 }}>Fluxo</div>
           <div className="stepper">
             {flow.map((step, index) => {
-              const meta = ORDER_STATUS[step];
+              const meta = ORDER_STATUS[step.key];
               const done = status.step > meta.step;
-              const current = order.status === step;
+              const current = order.status === step.key;
               return (
-                <div className="step" key={step}>
+                <div className="step" key={step.key}>
                   <div className="step-rail">
                     <div className={`step-dot ${done ? "step-dot--done" : ""} ${current ? "step-dot--cur" : ""}`}>
                       {done ? <Icon name="check" size={12} /> : current ? <span style={{ width: 7, height: 7, borderRadius: 99, background: "currentColor" }} /> : null}
@@ -280,7 +301,7 @@ function OrderDrawer({
                     {index < flow.length - 1 && <div className={`step-line ${done ? "step-line--done" : ""}`} />}
                   </div>
                   <div className="step-body">
-                    <div className="step-label">{meta.label}</div>
+                    <div className="step-label">{step.label}</div>
                     {(done || current) && <div className="step-time">{current ? `${order.createdAt} - agora` : "concluido"}</div>}
                   </div>
                 </div>
@@ -633,6 +654,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
 }
 
 export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
+  const [workflows] = useWorkflows();
   const [orders, setOrders] = React.useState<DemoOrder[]>(() => [...DEMO_ORDERS]);
   const [filter, setFilter] = React.useState<OrderFilter>((route.filter as OrderFilter) || "todos");
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
@@ -789,7 +811,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
         {sort.sorted.length === 0 && <Empty icon="pedidos" title="Nenhum pedido nesta visao" hint="Ajuste o filtro ou registre um novo pedido." />}
       </Card>
 
-      {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} />}
+      {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} orderSteps={workflows.order} />}
       <PickListDocument job={printJob} />
       <Sep style={{ marginTop: 18 }} />
     </div>

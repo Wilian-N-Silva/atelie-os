@@ -27,9 +27,10 @@ import {
   type DemoProductionOrder,
   type DemoProductionStatus,
 } from "@/lib/screen-fixtures";
+import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
 import type { Go, Route } from "@/lib/types";
 
-const PRODUCTION_COLUMNS: DemoProductionStatus[] = [
+const PRODUCTION_STATUS_COLUMNS: DemoProductionStatus[] = [
   "aguardando_materiais",
   "em_producao",
   "em_cura",
@@ -37,6 +38,27 @@ const PRODUCTION_COLUMNS: DemoProductionStatus[] = [
   "liberada",
   "finalizada",
 ];
+
+function isProductionStatus(value: string): value is DemoProductionStatus {
+  return value in PROD_STATUS;
+}
+
+function productionColumnIcon(step: WorkflowStep) {
+  return isProductionStatus(step.key) ? PROD_STATUS[step.key].icon : "producao";
+}
+
+function productionColumnsFromWorkflow(steps: WorkflowStep[]) {
+  const seen = new Set(steps.map((step) => step.key));
+  const missing = PRODUCTION_STATUS_COLUMNS
+    .filter((status) => !seen.has(status))
+    .map<WorkflowStep>((status) => ({
+      key: status,
+      label: PROD_STATUS[status].label,
+      color: PROD_STATUS[status].tone as WorkflowStep["color"],
+      automation: "none",
+    }));
+  return [...steps, ...missing];
+}
 
 function recipeFor(order: DemoProductionOrder) {
   return DEMO_RECIPES.find((recipe) => recipe.product === order.product);
@@ -371,6 +393,7 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
 }
 
 export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
+  const [workflows] = useWorkflows();
   const [orders, setOrders] = React.useState<DemoProductionOrder[]>(() => [...DEMO_PRODUCTION]);
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [planOpen, setPlanOpen] = React.useState(false);
@@ -378,6 +401,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
   const printCounter = React.useRef(1);
   const openOrder = orders.find((order) => order.id === openId);
   const printableOrders = orders.filter((order) => order.status === "aguardando_materiais");
+  const columns = React.useMemo(() => productionColumnsFromWorkflow(workflows.production), [workflows.production]);
 
   React.useEffect(() => {
     if (route.open) setOpenId(route.open);
@@ -431,14 +455,13 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
       </div>
 
       <div className="kanban">
-        {PRODUCTION_COLUMNS.map((column) => {
-          const meta = PROD_STATUS[column];
-          const cards = orders.filter((order) => order.status === column);
+        {columns.map((column) => {
+          const cards = orders.filter((order) => order.status === column.key);
           return (
-            <div className="kcol" key={column}>
+            <div className="kcol" key={column.key}>
               <div className="kcol-head">
-                <div className={`chip chip--${meta.tone}`} style={{ width: 26, height: 26, borderRadius: 7 }}><Icon name={meta.icon} size={14} /></div>
-                <span className="kcol-title">{meta.label}</span>
+                <div className={`chip chip--${column.color}`} style={{ width: 26, height: 26, borderRadius: 7 }}><Icon name={productionColumnIcon(column)} size={14} /></div>
+                <span className="kcol-title">{column.label}</span>
                 <span className="kcol-count">{cards.length}</span>
               </div>
               <div className="kcol-body">
@@ -462,7 +485,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
                     </div>
                   );
                 })}
-                {cards.length === 0 && <Empty icon={meta.icon} title="Sem ordens" />}
+                {cards.length === 0 && <Empty icon={productionColumnIcon(column)} title="Sem ordens" />}
               </div>
             </div>
           );
