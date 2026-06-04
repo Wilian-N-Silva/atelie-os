@@ -20,7 +20,7 @@
 .op-mode--on { background: #262932; color: #fff; }
 .op-mode:disabled { opacity: .35; cursor: not-allowed; }
 .op-head-code { color: #f7f7f8; }
-.op-head-code .barcode-bars { height: 26px; max-width: 126px; }
+.op-head-code .barcode-bars { height: 26px; max-width: none; }
 .op-head-code .barcode-label { font-size: 8px; color: var(--op-mut); }
 .op-prog-ring { position: relative; width: 44px; height: 44px; }
 .op-scan { padding: 22px 20px; border-bottom: 1px solid var(--op-line); }
@@ -92,7 +92,7 @@
 .op-order-sub { color: #c9ccd4; font-size: 12.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .op-order-status { color: var(--op-mut); font-size: 11.5px; margin-top: 5px; }
 .op-order-card .barcode { color: #f7f7f8; flex-shrink: 0; }
-.op-order-card .barcode-bars { max-width: 92px; }
+.op-order-card .barcode-bars { max-width: none; }
 .op-order-card .barcode-label { color: var(--op-mut); }
 @media (max-width: 880px) {
   .op-body { grid-template-columns: 1fr; }

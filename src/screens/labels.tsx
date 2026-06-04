@@ -151,6 +151,48 @@ function barcodeTypeLabel(type: BarcodeType) {
   return BARCODE_TYPE_OPTIONS.find((option) => option.value === type)?.label.split(" - ")[0] ?? type;
 }
 
+function previewBarcodeHeight(type: BarcodeType, template: LabelTemplate) {
+  if (type === "qr") {
+    if (template.w >= 80) return 74;
+    if (template.w >= 60) return 62;
+    return 50;
+  }
+  if (template.w >= 80) return 58;
+  if (template.w >= 60) return 44;
+  return 34;
+}
+
+function previewBarcodeScale(type: BarcodeType, template: LabelTemplate) {
+  if (type === "code39") {
+    if (template.w >= 80) return 0.62;
+    if (template.w >= 60) return 0.52;
+    return 0.43;
+  }
+  if (type === "ean13") {
+    if (template.w >= 80) return 1.25;
+    if (template.w >= 60) return 1.05;
+    return 0.92;
+  }
+  if (template.w >= 80) return 1.15;
+  if (template.w >= 60) return 1;
+  return 0.85;
+}
+
+function printBarcodeHeight(type: BarcodeType, sheet: LabelSheet) {
+  if (type === "qr") return Math.max(12, Math.min(24, sheet.labelW - 5, sheet.labelH - 7));
+  return Math.max(10, Math.min(22, sheet.labelH * 0.48));
+}
+
+function printBarcodeScale(type: BarcodeType, sheet: LabelSheet) {
+  if (type === "code39") return sheet.labelW >= 60 ? 0.24 : 0.22;
+  if (type === "ean13") return 0.33;
+  return 0.28;
+}
+
+function printBarcodeMaxWidth(sheet: LabelSheet) {
+  return Math.max(8, sheet.labelW - 3);
+}
+
 function defaultFields(template: LabelTemplate): FieldState {
   return Object.fromEntries(template.fields.map((field) => [field, true])) as FieldState;
 }
@@ -246,7 +288,7 @@ function LabelPreview({
         <div style={{ flex: 1 }} />
         {fields.barcode && (
           <div>
-            <LabelBarcode code={entity.code} type={barcodeType} height={big ? 60 : template.w >= 60 ? 46 : 34} scale={big ? 2.2 : 1.6} />
+            <LabelBarcode code={entity.code} type={barcodeType} height={previewBarcodeHeight(barcodeType, template)} scale={previewBarcodeScale(barcodeType, template)} />
             <div className="lab-code-h" style={{ fontSize: big ? 13 : 10.5, marginTop: 3 }}>{entity.code}</div>
           </div>
         )}
@@ -276,7 +318,14 @@ function PrintLabel({ spec, sheet }: { spec: PrintSpec; sheet: LabelSheet }) {
       </div>
       {fields.barcode && (
         <div>
-          <LabelBarcode code={entity.code} type={barcodeType} height={Math.max(18, sheet.labelH * 1.4)} scale={1.3} />
+          <LabelBarcode
+            code={entity.code}
+            type={barcodeType}
+            height={printBarcodeHeight(barcodeType, sheet)}
+            scale={printBarcodeScale(barcodeType, sheet)}
+            unit="mm"
+            maxWidth={printBarcodeMaxWidth(sheet)}
+          />
           <div className="label-print-code">{entity.code}</div>
         </div>
       )}

@@ -322,6 +322,28 @@ const SHEET_PREVIEW_CODES = [
   "050100000017",
 ];
 
+function settingsBarcodeHeight(type: BarcodeType) {
+  return type === "qr" ? 84 : 54;
+}
+
+function settingsBarcodeScale(type: BarcodeType) {
+  if (type === "code39") return 0.58;
+  if (type === "ean13") return 1.15;
+  return 0.95;
+}
+
+function sheetPreviewBarcodeHeight(type: BarcodeType, sheet: LabelSheet, scale: number) {
+  if (type === "qr") return Math.max(24, Math.min(54, Math.min(sheet.labelW, sheet.labelH) * scale * 0.72));
+  return Math.max(12, Math.min(28, sheet.labelH * scale * 0.42));
+}
+
+function sheetPreviewBarcodeScale(type: BarcodeType, sheet: LabelSheet, scale: number) {
+  const cellWidth = Math.max(18, sheet.labelW * scale - 8);
+  if (type === "code39") return Math.max(0.18, Math.min(0.55, cellWidth / 260));
+  if (type === "ean13") return Math.max(0.28, Math.min(0.95, cellWidth / 130));
+  return Math.max(0.24, Math.min(0.9, cellWidth / 145));
+}
+
 function sheetToForm(sheet: LabelSheet): SheetEditForm {
   return {
     name: sheet.name,
@@ -376,8 +398,8 @@ function LabelSheetPreview({ sheet, barcodeType }: { sheet: LabelSheet; barcodeT
   const width = sheet.pageW * scale;
   const height = sheet.pageH * scale;
   const perSheet = Math.min(sheet.cols * sheet.rows, 80);
-  const barcodeHeight = Math.max(12, Math.min(26, sheet.labelH * scale * 0.42));
-  const barcodeScale = Math.max(0.28, Math.min(0.75, (sheet.labelW * scale) / 180));
+  const barcodeHeight = sheetPreviewBarcodeHeight(barcodeType, sheet, scale);
+  const barcodeScale = sheetPreviewBarcodeScale(barcodeType, sheet, scale);
 
   return (
     <div className="sheet-detail-stage">
@@ -571,7 +593,7 @@ function LabelsTab() {
               </div>
             </div>
             <div className="settings-barcode-preview">
-              <LabelBarcode code="010300001287" type={barcodeType} height={54} scale={barcodeType === "code39" ? 1.1 : 1.45} />
+              <LabelBarcode code="010300001287" type={barcodeType} height={settingsBarcodeHeight(barcodeType)} scale={settingsBarcodeScale(barcodeType)} />
               <div className="settings-barcode-code">010300001287</div>
             </div>
           </div>

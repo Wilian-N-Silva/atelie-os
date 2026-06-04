@@ -137,12 +137,10 @@
 .lab-variant { color: #555; font-weight: 500; }
 .lab-sku { font-family: 'Geist Mono', monospace; font-weight: 600; overflow-wrap: anywhere; }
 .lab-meta { font-family: 'Geist Mono', monospace; color: #444; overflow-wrap: anywhere; }
-.lab-barcode { display: flex; align-items: flex-end; justify-content: center; gap: 1px; overflow: hidden; max-width: 100%; }
-.lab-barcode > div { flex-shrink: 0; }
+.lab-barcode { display: block; margin: 0 auto; overflow: visible; max-width: 100%; background: #fff; }
 .lab-code-h { font-family: 'Geist Mono', monospace; text-align: center; letter-spacing: .14em; color: #111; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lab-qr { display: grid; grid-template-columns: repeat(13, 1fr); gap: 1px; padding: 3px; background: #fff; border: 1px solid #111; margin: 0 auto; box-sizing: border-box; }
-.lab-qr-cell { display: block; background: #fff; aspect-ratio: 1; min-width: 0; }
-.lab-qr-cell--on { background: #111; }
+.lab-qr { display: block; padding: 0; background: #fff; border: none; margin: 0 auto; box-sizing: border-box; image-rendering: pixelated; }
+.lab-barcode svg, .lab-qr svg { display: block; width: 100%; height: 100%; overflow: visible; background: #fff; color: #111; }
 .lab-stepper { display: inline-flex; align-items: center; border: 1px solid hsl(var(--input)); border-radius: 8px; overflow: hidden; background: hsl(var(--background)); }
 .lab-stepper button { width: 34px; height: 34px; border: none; background: hsl(var(--background)); color: hsl(var(--foreground)); cursor: pointer; display: grid; place-items: center; }
 .lab-stepper button:hover { background: hsl(var(--accent)); }
@@ -173,7 +171,11 @@
   body[data-print-mode="labels"] .label-print-doc { display: block !important; position: absolute; inset: 0; }
   body[data-print-mode="labels"] .label-print-page { break-after: page; page-break-after: always; }
   body[data-print-mode="labels"] .label-print-page:last-child { break-after: auto; page-break-after: auto; }
-  body[data-print-mode="labels"] .lab-barcode > div,
-  body[data-print-mode="labels"] .lab-qr-cell--on { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body[data-print-mode="labels"] .lab-barcode,
+  body[data-print-mode="labels"] .lab-barcode rect,
+  body[data-print-mode="labels"] .lab-barcode path,
+  body[data-print-mode="labels"] .lab-qr,
+  body[data-print-mode="labels"] .lab-qr rect,
+  body[data-print-mode="labels"] .lab-qr path { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   @page { margin: 0; }
 }

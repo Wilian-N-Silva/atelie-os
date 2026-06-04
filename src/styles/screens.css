@@ -54,8 +54,8 @@
 
 /* barcode rendering used by labels, pick lists and operation handoff */
 .barcode { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; color: currentColor; }
-.barcode-bars { height: 42px; display: flex; align-items: stretch; justify-content: center; overflow: hidden; background: #fff; padding: 3px 5px; border-radius: 3px; border: 1px solid #111; }
-.barcode-bars span { display: block; height: 100%; background: #111; flex-shrink: 0; }
+.barcode-bars { height: 42px; display: flex; align-items: stretch; justify-content: center; overflow: visible; background: #fff; padding: 3px 5px; border-radius: 0; border: none; }
+.barcode-bars svg { display: block; height: 100%; width: auto; flex-shrink: 0; overflow: visible; background: #fff; color: #111; }
 .barcode-label { font-family: 'Geist Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
 .barcode--sm .barcode-bars { height: 30px; }
 .barcode--sm .barcode-label { font-size: 9px; }
@@ -233,6 +233,9 @@
   body[data-print-mode="picklist"] .print-doc * { visibility: visible !important; }
   body[data-print-mode="picklist"] .print-doc { display: block !important; position: absolute; inset: 0; width: 100%; }
   body[data-print-mode="picklist"] .app-shell { display: block; }
-  body[data-print-mode="picklist"] .barcode-bars { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body[data-print-mode="picklist"] .barcode-bars,
+  body[data-print-mode="picklist"] .barcode-bars svg,
+  body[data-print-mode="picklist"] .barcode-bars rect,
+  body[data-print-mode="picklist"] .barcode-bars path { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   @page { size: A4; margin: 0; }
 }

@@ -17,6 +17,7 @@ import {
   type DemoProductionOrder,
 } from "@/lib/screen-fixtures";
 import { loadDemoOrders } from "@/lib/demo-order-overrides";
+import { normalizeScanValue, scanCandidates } from "@/lib/scan-candidates";
 import type { Go, Route } from "@/lib/types";
 
 const ORDER_PACK_CHECKLIST = [
@@ -90,29 +91,19 @@ function isMode(value: unknown): value is OperationMode {
   return value === "separacao" || value === "conferencia" || value === "embalagem" || value === "materiais" || value === "producao";
 }
 
-function normalize(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, "");
-}
-
-function digits(value: string) {
-  return value.replace(/\D/g, "");
-}
-
 function findOrderByScan(orders: DemoOrder[], raw: string) {
-  const value = normalize(raw);
-  const numeric = digits(raw);
+  const values = scanCandidates(raw);
   return orders.find((order) => {
-    const num = normalize(order.num);
-    return order.id.toLowerCase() === value || num === value || order.code === value || (!!numeric && order.code === numeric);
+    const num = normalizeScanValue(order.num);
+    return values.has(order.id.toLowerCase()) || values.has(num) || values.has(order.code);
   });
 }
 
 function findProductionByScan(orders: DemoProductionOrder[], raw: string) {
-  const value = normalize(raw);
-  const numeric = digits(raw);
+  const values = scanCandidates(raw);
   return orders.find((order) => {
-    const num = normalize(order.num);
-    return order.id.toLowerCase() === value || num === value || order.code === value || (!!numeric && order.code === numeric);
+    const num = normalizeScanValue(order.num);
+    return values.has(order.id.toLowerCase()) || values.has(num) || values.has(order.code);
   });
 }
 
@@ -364,7 +355,8 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     }
 
     const value = raw.trim().toLowerCase();
-    if (!value) return;
+    const values = scanCandidates(raw);
+    if (!value || values.size === 0) return;
     setInput("");
 
     const orderHit = findOrderByScan(orders, value);
@@ -410,7 +402,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     }
 
     const hit = expected.find((line) =>
-      line.code === value || line.sku.toLowerCase() === value || line.name.toLowerCase().includes(value),
+      values.has(line.code) || values.has(line.sku.toLowerCase()) || line.name.toLowerCase().includes(value),
     );
 
     if (hit) {
@@ -433,7 +425,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
       return;
     }
 
-    const other = DEMO_ITEMS.find((item) => item.code === value || item.sku.toLowerCase() === value);
+    const other = DEMO_ITEMS.find((item) => values.has(item.code) || values.has(item.sku.toLowerCase()));
     if (other) {
       const doc = production ? production.num : order?.num;
       setFeedback({ kind: "bad", name: targetKind === "production" ? "Material errado" : "Item errado", sub: `${other.name} nao pertence a ${doc}`, fix: "Separe o item correto da lista." });
