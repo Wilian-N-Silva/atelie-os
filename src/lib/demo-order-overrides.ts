@@ -1,51 +1,39 @@
 "use client";
 
-import type { DemoOrder } from "@/lib/screen-fixtures";
+import { DEMO_ORDERS, type DemoOrder } from "@/lib/screen-fixtures";
 
 type DemoOrderOverride = Partial<Pick<DemoOrder, "payment" | "status">>;
 
-const OVERRIDES_KEY = "atelie-demo-order-overrides";
-const CUSTOM_ORDERS_KEY = "atelie-demo-custom-orders";
-
-export function readDemoOrderOverrides(): Record<string, DemoOrderOverride> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(OVERRIDES_KEY);
-    return raw ? JSON.parse(raw) as Record<string, DemoOrderOverride> : {};
-  } catch {
-    return {};
-  }
+async function parseOrdersResponse(res: Response) {
+  if (!res.ok) throw new Error("demo_orders_request_failed");
+  const payload = await res.json() as { orders?: DemoOrder[] };
+  return payload.orders ?? [...DEMO_ORDERS];
 }
 
-export function applyDemoOrderOverrides(orders: DemoOrder[]) {
-  const overrides = readDemoOrderOverrides();
-  return orders.map((order) => ({ ...order, ...(overrides[order.id] ?? {}) }));
+export async function loadDemoOrders() {
+  const res = await fetch("/api/app/demo-orders", {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseOrdersResponse(res);
 }
 
-export function writeDemoOrderOverride(orderId: string, override: DemoOrderOverride) {
-  if (typeof window === "undefined") return;
-  const current = readDemoOrderOverrides();
-  window.localStorage.setItem(OVERRIDES_KEY, JSON.stringify({ ...current, [orderId]: { ...(current[orderId] ?? {}), ...override } }));
+export async function writeDemoOrderOverride(orderId: string, override: DemoOrderOverride) {
+  const res = await fetch("/api/app/demo-orders", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ orderId, override }),
+  });
+  return parseOrdersResponse(res);
 }
 
-export function readDemoCustomOrders(): DemoOrder[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_ORDERS_KEY);
-    return raw ? JSON.parse(raw) as DemoOrder[] : [];
-  } catch {
-    return [];
-  }
-}
-
-export function writeDemoCustomOrder(order: DemoOrder) {
-  if (typeof window === "undefined") return;
-  const current = readDemoCustomOrders().filter((item) => item.id !== order.id);
-  window.localStorage.setItem(CUSTOM_ORDERS_KEY, JSON.stringify([order, ...current]));
-}
-
-export function loadDemoOrders(baseOrders: DemoOrder[]) {
-  const custom = readDemoCustomOrders();
-  const customIds = new Set(custom.map((order) => order.id));
-  return applyDemoOrderOverrides([...custom, ...baseOrders.filter((order) => !customIds.has(order.id))]);
+export async function writeDemoCustomOrder(order: DemoOrder) {
+  const res = await fetch("/api/app/demo-orders", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ order }),
+  });
+  return parseOrdersResponse(res);
 }

@@ -4,6 +4,7 @@ export type AppRole = SessionUser["role"];
 
 export const CATALOG_WRITE_ROLES: readonly AppRole[] = ["owner", "admin"];
 export const INVENTORY_WRITE_ROLES: readonly AppRole[] = ["owner", "admin"];
+export const SETTINGS_WRITE_ROLES: readonly AppRole[] = ["owner", "admin"];
 
 export function canManageCatalog(role: AppRole) {
   return CATALOG_WRITE_ROLES.includes(role);
@@ -11,4 +12,8 @@ export function canManageCatalog(role: AppRole) {
 
 export function canManageInventory(role: AppRole) {
   return INVENTORY_WRITE_ROLES.includes(role);
+}
+
+export function canManageSettings(role: AppRole) {
+  return SETTINGS_WRITE_ROLES.includes(role);
 }

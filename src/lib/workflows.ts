@@ -152,26 +152,38 @@ export function defaultWorkflows(): WorkflowState {
   };
 }
 
-let tenantWorkflows = defaultWorkflows();
-const listeners = new Set<() => void>();
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return tenantWorkflows;
-}
-
-function setTenantWorkflows(updater: React.SetStateAction<WorkflowState>) {
-  tenantWorkflows = typeof updater === "function"
-    ? (updater as (value: WorkflowState) => WorkflowState)(tenantWorkflows)
-    : updater;
-  listeners.forEach((listener) => listener());
-}
-
 export function useWorkflows() {
-  const workflows = React.useSyncExternalStore(subscribe, getSnapshot, defaultWorkflows);
-  return [workflows, setTenantWorkflows] as const;
+  const [workflows, setWorkflows] = React.useState<WorkflowState>(() => defaultWorkflows());
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/workflows", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: { workflows?: WorkflowState } | null) => {
+        if (alive && payload?.workflows) setWorkflows(payload.workflows);
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => { alive = false; };
+  }, []);
+
+  const saveWorkflows = React.useCallback(async (next: WorkflowState) => {
+    const res = await fetch("/api/app/workflows", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ workflows: next }),
+    });
+
+    if (!res.ok) throw new Error("workflow_save_failed");
+    const payload = await res.json() as { workflows: WorkflowState };
+    setWorkflows(payload.workflows);
+    return payload.workflows;
+  }, []);
+
+  return [workflows, setWorkflows, saveWorkflows, loading] as const;
 }

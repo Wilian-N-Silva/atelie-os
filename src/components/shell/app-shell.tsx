@@ -41,21 +41,19 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   manual: { title: "Manual & ajuda", sub: "Guia de uso do sistema" },
 };
 
-export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, onSignOut, children }: {
+export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, logoUrl, onSignOut, children }: {
   route: Route; go: Go; theme: string; setTheme: (t: string) => void; unread: number;
   onOpenCmd: () => void; onOpenNotif: () => void;
-  user?: SessionUser; company?: string | null; onSignOut?: () => void; children: React.ReactNode;
+  user?: SessionUser; company?: string | null; logoUrl?: string | null; onSignOut?: () => void; children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [acctOpen, setAcctOpen] = React.useState(false);
-  const [logo, setLogo] = React.useState<string | null>(null);
   const [isMac, setIsMac] = React.useState(false);
   const meta = PAGE_META[route.screen] || { title: "", sub: "" };
 
   React.useEffect(() => { setMobileOpen(false); }, [route.screen]);
   React.useEffect(() => {
     setIsMac(typeof navigator !== "undefined" && /Mac/.test(navigator.platform));
-    setLogo(localStorage.getItem("atelie-logo"));
   }, []);
   React.useEffect(() => {
     if (!acctOpen) return;
@@ -73,7 +71,7 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
       {mobileOpen && <div className="sb-backdrop" onClick={() => setMobileOpen(false)} />}
       <aside className={cn("sb", mobileOpen && "sb--open")}>
         <div className="sb-brand">
-          <div className="sb-mark">{logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /> : <Icon name="flame" size={18} strokeWidth={2.2} />}</div>
+          <div className="sb-mark">{logoUrl ? <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /> : <Icon name="flame" size={18} strokeWidth={2.2} />}</div>
           <div>
             <div className="sb-brand-name">{brandName}</div>
             <div className="sb-brand-sub">Ateliê OS</div>

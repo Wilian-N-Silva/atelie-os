@@ -664,7 +664,13 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   const printCounter = React.useRef(1);
 
   React.useEffect(() => {
-    setOrders(loadDemoOrders(DEMO_ORDERS));
+    let alive = true;
+    loadDemoOrders()
+      .then((nextOrders) => {
+        if (alive) setOrders(nextOrders);
+      })
+      .catch(() => null);
+    return () => { alive = false; };
   }, []);
 
   React.useEffect(() => {
@@ -705,8 +711,10 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   }, "status", "asc");
   const openOrder = orders.find((order) => order.id === openId);
   const updateOrder = React.useCallback((orderId: string, patch: OrderPatch) => {
-    writeDemoOrderOverride(orderId, patch);
     setOrders((current) => current.map((order) => order.id === orderId ? { ...order, ...patch } : order));
+    void writeDemoOrderOverride(orderId, patch)
+      .then(setOrders)
+      .catch(() => toast("Nao foi possivel salvar a alteracao do pedido.", "bad"));
   }, []);
   const printPickList = React.useCallback((selected: DemoOrder[], title: string) => {
     const next = printCounter.current++;
@@ -741,8 +749,10 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
         <NewOrderView
           onCancel={() => setNewOpen(false)}
           onCreate={(order) => {
-            writeDemoCustomOrder(order);
             setOrders((current) => [order, ...current]);
+            void writeDemoCustomOrder(order)
+              .then(setOrders)
+              .catch(() => toast("Nao foi possivel salvar o pedido.", "bad"));
           }}
         />
         <PickListDocument job={printJob} />

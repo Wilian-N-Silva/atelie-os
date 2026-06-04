@@ -29,7 +29,7 @@ import {
   useBarcodeType,
   useLabelSheets,
 } from "@/lib/label-sheets";
-import { Theme } from "@/lib/theme";
+import { Theme, type BrandTheme } from "@/lib/theme";
 import {
   AUTO_LABELS,
   AUTOMATIONS,
@@ -68,16 +68,83 @@ const NAV: { id: SettingsTab; label: string; sub: string; icon: string }[] = [
   { id: "labels", label: "Modelos de etiqueta", sub: "Folhas e tamanhos", icon: "tag" },
 ];
 
-function BrandingTab() {
-  const [activePreset, setActivePreset] = React.useState<string>(() => BRAND_PRESETS[0].id ?? "neutro");
-  const [companyName, setCompanyName] = React.useState("Instante Ambar");
+type BrandingResponse = {
+  companyName: string;
+  logoUrl: string | null;
+  themeTokens: BrandTheme | null;
+};
+
+function BrandingTab({
+  session,
+  onSessionPatch,
+}: {
+  session: Session;
+  onSessionPatch?: (patch: Partial<Session>) => void;
+}) {
+  const [activePreset, setActivePreset] = React.useState<string>(() => session.companyBranding?.themeTokens?.id ?? BRAND_PRESETS[0].id ?? "neutro");
+  const [companyName, setCompanyName] = React.useState(session.companyName ?? "");
+  const [logoUrl, setLogoUrl] = React.useState<string | null>(session.companyBranding?.logoUrl ?? null);
+  const [saving, setSaving] = React.useState(false);
+
+  const syncBranding = React.useCallback((payload: BrandingResponse) => {
+    setCompanyName(payload.companyName);
+    setLogoUrl(payload.logoUrl);
+    setActivePreset(payload.themeTokens?.id ?? "custom");
+    if (payload.themeTokens) Theme.apply(payload.themeTokens);
+    onSessionPatch?.({
+      companyName: payload.companyName,
+      companyBranding: {
+        logoUrl: payload.logoUrl,
+        themeTokens: payload.themeTokens,
+      },
+    });
+  }, [onSessionPatch]);
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/branding", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: BrandingResponse | null) => {
+        if (alive && payload) syncBranding(payload);
+      })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, [syncBranding]);
+
+  const saveBranding = async (patch: { companyName?: string; logoUrl?: string | null; themeTokens?: BrandTheme }) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/app/branding", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(patch),
+      });
+
+      if (!res.ok) throw new Error("branding_update_failed");
+      syncBranding(await res.json() as BrandingResponse);
+      toast("Marca atualizada.", "ok");
+    } catch {
+      toast("Nao foi possivel salvar a marca.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const applyPreset = (id: string) => {
     const preset = BRAND_PRESETS.find((item) => item.id === id);
     if (!preset) return;
-    setActivePreset(id);
-    Theme.apply(preset);
-    toast(`Tema "${preset.name}" aplicado.`, "info");
+    void saveBranding({ themeTokens: preset });
+  };
+
+  const onLogo = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      void saveBranding({ logoUrl: reader.result as string });
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -87,13 +154,25 @@ function BrandingTab() {
         <CardContent>
           <div className="ff-grid">
             <Field label="Nome exibido no shell"><Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></Field>
-            <Field label="Logo"><Button variant="outline" icon="upload" onClick={() => toast("Upload de logo ficara conectado ao backend depois.", "info")}>Escolher arquivo</Button></Field>
+            <Field label="Logo">
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <label className="om-btn om-btn--outline" style={{ cursor: "pointer" }}>
+                  <Icon name="upload" size={15} /> Escolher arquivo
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={onLogo} style={{ display: "none" }} />
+                </label>
+                {logoUrl && <Button variant="ghost" icon="trash" onClick={() => saveBranding({ logoUrl: null })}>Remover</Button>}
+              </div>
+            </Field>
+          </div>
+          <div className="row" style={{ gap: 10, marginTop: 14 }}>
+            {logoUrl && <div className="sb-mark"><img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /></div>}
+            <Button variant="default" icon="check" disabled={saving} onClick={() => saveBranding({ companyName })}>{saving ? "Salvando..." : "Salvar identidade"}</Button>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Presets de tema</CardTitle><Button variant="ghost" size="sm" onClick={() => { Theme.restore(); toast("Tema restaurado.", "info"); }}>Restaurar</Button></CardHeader>
+        <CardHeader><CardTitle>Presets de tema</CardTitle><Button variant="ghost" size="sm" disabled={saving} onClick={() => applyPreset(BRAND_PRESETS[0].id ?? "neutro")}>Restaurar</Button></CardHeader>
         <CardContent>
           <div className="preset-grid">
             {BRAND_PRESETS.map((preset) => (
@@ -163,7 +242,7 @@ const WORKFLOW_FLAGS: { key: WorkflowFlagKey; label: string }[] = [
 ];
 
 function WorkflowsTab() {
-  const [workflows, setWorkflows] = useWorkflows();
+  const [workflows, setWorkflows, saveWorkflows] = useWorkflows();
   const [entity, setEntity] = React.useState<WorkflowEntity>("production");
   const [colorPop, setColorPop] = React.useState<number | null>(null);
   const [saved, setSaved] = React.useState(false);
@@ -198,10 +277,15 @@ function WorkflowsTab() {
     if (preset) update(cloneWorkflowSteps(preset.steps));
   };
 
-  const save = () => {
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
-    toast("Fluxo atualizado para o tenant.", "ok");
+  const save = async () => {
+    try {
+      await saveWorkflows(workflows);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+      toast("Fluxo atualizado para o tenant.", "ok");
+    } catch {
+      toast("Nao foi possivel salvar o fluxo.", "bad");
+    }
   };
 
   const availabilityStep = steps.find((step) => step.blocks_availability)?.key ?? "waiting_release";
@@ -656,7 +740,17 @@ function LabelsTab() {
   );
 }
 
-export function SettingsScreen({ go, route, session }: { go: Go; route: Route; session: Session }) {
+export function SettingsScreen({
+  go,
+  route,
+  session,
+  onSessionPatch,
+}: {
+  go: Go;
+  route: Route;
+  session: Session;
+  onSessionPatch?: (patch: Partial<Session>) => void;
+}) {
   const tab = (route.tab as SettingsTab) || "branding";
   const setTab = (next: SettingsTab) => go("configuracoes", { tab: next });
 
@@ -680,7 +774,7 @@ export function SettingsScreen({ go, route, session }: { go: Go; route: Route; s
         </nav>
 
         <div>
-          {tab === "branding" && <BrandingTab />}
+          {tab === "branding" && <BrandingTab session={session} onSessionPatch={onSessionPatch} />}
           {tab === "users" && <UsersTab session={session} />}
           {tab === "workflows" && <WorkflowsTab />}
           {tab === "labels" && <LabelsTab />}

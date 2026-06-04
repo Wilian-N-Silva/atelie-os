@@ -39,11 +39,6 @@ export const BARCODE_TYPE_OPTIONS: { value: BarcodeType; label: string }[] = [
 
 const DEFAULT_BARCODE_TYPE: BarcodeType = "code128";
 
-let tenantLabelSheets = LABEL_SHEETS.map((sheet) => normalizeLabelSheet(sheet));
-const listeners = new Set<() => void>();
-let tenantBarcodeType: BarcodeType = DEFAULT_BARCODE_TYPE;
-const barcodeListeners = new Set<() => void>();
-
 function defaultGutter(total: number, margin: number, count: number, size: number) {
   if (count <= 1) return 0;
   return Math.max(0, +(total - margin * 2 - count * size).toFixed(2)) / (count - 1);
@@ -90,47 +85,63 @@ export function createLabelSheet(input: LabelSheetInput): LabelSheet {
   });
 }
 
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return tenantLabelSheets;
-}
-
-function getServerSnapshot() {
-  return defaultLabelSheets();
-}
-
-function setTenantLabelSheets(updater: React.SetStateAction<LabelSheet[]>) {
-  tenantLabelSheets = typeof updater === "function"
-    ? (updater as (value: LabelSheet[]) => LabelSheet[])(tenantLabelSheets)
-    : updater;
-  listeners.forEach((listener) => listener());
-}
-
 export function useLabelSheets() {
-  const sheets = React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [sheets, setLocalSheets] = React.useState<LabelSheet[]>(() => defaultLabelSheets());
 
-  return [sheets, setTenantLabelSheets] as const;
-}
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/label-settings", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: { sheets?: LabelSheet[] } | null) => {
+        if (alive && payload?.sheets) setLocalSheets(payload.sheets.map(normalizeLabelSheet));
+      })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, []);
 
-function subscribeBarcode(listener: () => void) {
-  barcodeListeners.add(listener);
-  return () => barcodeListeners.delete(listener);
-}
+  const setSheets = React.useCallback((updater: React.SetStateAction<LabelSheet[]>) => {
+    setLocalSheets((current) => {
+      const next = typeof updater === "function"
+        ? (updater as (value: LabelSheet[]) => LabelSheet[])(current)
+        : updater;
 
-function getBarcodeSnapshot() {
-  return tenantBarcodeType;
-}
+      void fetch("/api/app/label-settings", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sheets: next }),
+      }).catch(() => null);
 
-function setTenantBarcodeType(type: BarcodeType) {
-  tenantBarcodeType = type;
-  barcodeListeners.forEach((listener) => listener());
+      return next;
+    });
+  }, []);
+
+  return [sheets, setSheets] as const;
 }
 
 export function useBarcodeType() {
-  const barcodeType = React.useSyncExternalStore(subscribeBarcode, getBarcodeSnapshot, () => DEFAULT_BARCODE_TYPE);
-  return [barcodeType, setTenantBarcodeType] as const;
+  const [barcodeType, setLocalBarcodeType] = React.useState<BarcodeType>(DEFAULT_BARCODE_TYPE);
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/label-settings", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: { defaultBarcodeType?: BarcodeType } | null) => {
+        if (alive && payload?.defaultBarcodeType) setLocalBarcodeType(payload.defaultBarcodeType);
+      })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, []);
+
+  const setBarcodeType = React.useCallback((type: BarcodeType) => {
+    setLocalBarcodeType(type);
+    void fetch("/api/app/label-settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ defaultBarcodeType: type }),
+    }).catch(() => null);
+  }, []);
+
+  return [barcodeType, setBarcodeType] as const;
 }

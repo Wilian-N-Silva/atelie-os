@@ -217,7 +217,13 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
   const flashTimer = React.useRef<number | null>(null);
 
   React.useEffect(() => {
-    setOrders(loadDemoOrders(DEMO_ORDERS));
+    let alive = true;
+    loadDemoOrders()
+      .then((nextOrders) => {
+        if (alive) setOrders(nextOrders);
+      })
+      .catch(() => null);
+    return () => { alive = false; };
   }, []);
 
   React.useEffect(() => {

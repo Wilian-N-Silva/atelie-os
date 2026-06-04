@@ -1,4 +1,5 @@
 /* Shared app-level types (routing + session). */
+import type { BrandTheme } from "@/lib/theme";
 
 export interface Route {
   screen: string;
@@ -21,5 +22,9 @@ export interface SessionUser {
 export interface Session {
   user: SessionUser;
   companyName: string | null;
+  companyBranding?: {
+    logoUrl: string | null;
+    themeTokens: BrandTheme | null;
+  } | null;
   onboarded: boolean;
 }

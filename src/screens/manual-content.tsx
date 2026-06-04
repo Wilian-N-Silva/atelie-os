@@ -82,17 +82,35 @@ function Flow({ steps }: { steps: React.ReactNode[] }) {
 }
 
 function Check({ id, items }: { id: string; items: string[] }) {
-  const key = 'atelie-manual-check-' + id;
   const [done, setDone] = React.useState<Set<number>>(() => new Set<number>());
+
   React.useEffect(() => {
-    try { setDone(new Set<number>(JSON.parse(localStorage.getItem(key) || '[]'))); } catch { setDone(new Set<number>()); }
-  }, [key]);
+    let alive = true;
+    fetch(`/api/app/manual-checklists/${encodeURIComponent(id)}`, { cache: 'no-store', credentials: 'include' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: { completed?: number[] } | null) => {
+        if (alive && payload?.completed) setDone(new Set(payload.completed));
+      })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, [id]);
+
+  const persist = (next: Set<number>) => {
+    void fetch(`/api/app/manual-checklists/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ completed: [...next], labels: items }),
+    }).catch(() => null);
+  };
+
   const toggle = (i: number) => setDone((prev) => {
     const next = new Set(prev);
     next.has(i) ? next.delete(i) : next.add(i);
-    if (typeof window !== 'undefined') localStorage.setItem(key, JSON.stringify([...next]));
+    persist(next);
     return next;
   });
+
   return (
     <div className="mn-check">
       {items.map((label, i) => (
