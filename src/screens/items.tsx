@@ -131,6 +131,135 @@ const MUTATION_ERROR_LABELS: Record<string, string> = {
   item_not_found: "Item nao encontrado.",
 };
 
+const INTERNAL_CODE_PREFIXES: Record<ItemType, string> = {
+  raw_material: "0101",
+  packaging: "0102",
+  finished_good: "0103",
+  kit: "0104",
+  auxiliary: "0105",
+};
+
+const SKU_TYPE_PREFIXES: Record<ItemType, string> = {
+  raw_material: "MP",
+  packaging: "EMB",
+  finished_good: "VEL",
+  kit: "KIT",
+  auxiliary: "AUX",
+};
+
+const SKU_STOP_WORDS = new Set([
+  "A",
+  "AS",
+  "COM",
+  "DA",
+  "DAS",
+  "DE",
+  "DO",
+  "DOS",
+  "E",
+  "EM",
+  "PARA",
+  "VELA",
+  "VELAS",
+  "ESSENCIA",
+  "ESSENCIAS",
+  "CERA",
+  "CERAS",
+  "VIDRO",
+  "VIDROS",
+  "TAMPA",
+  "TAMPAS",
+  "CAIXA",
+  "CAIXAS",
+]);
+
+const SKU_TOKEN_ALIASES: Record<string, string> = {
+  FRANCESA: "FR",
+  KRAFT: "KFT",
+  PINUS: "PIN",
+  SOJA: "SOJ",
+};
+
+function normalizeSkuText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+}
+
+function skuTokens(value: string) {
+  return normalizeSkuText(value)
+    .split(/\s+/)
+    .filter((token) => token && !SKU_STOP_WORDS.has(token));
+}
+
+function skuTokenCode(token: string, length = 3) {
+  const alias = SKU_TOKEN_ALIASES[token];
+  if (alias) return alias.slice(0, length);
+  return token.replace(/[^A-Z0-9]/g, "").slice(0, length || 3) || "ITEM";
+}
+
+function variantCode(variant: string) {
+  const normalized = normalizeSkuText(variant);
+  const digits = normalized.match(/\d+/g)?.join("");
+  if (digits) {
+    return digits.length <= 2 ? digits.padStart(3, "0") : digits.slice(0, 6);
+  }
+  const token = skuTokens(variant)[0];
+  return token ? skuTokenCode(token) : "";
+}
+
+function skuPrefix(type: ItemType, name: string) {
+  const normalized = normalizeSkuText(name);
+  if (normalized.includes("VELA")) return "VEL";
+  if (normalized.includes("ESSENCIA")) return "ESS";
+  if (normalized.includes("CERA")) return "CER";
+  if (normalized.includes("VIDRO")) return "VID";
+  if (normalized.includes("TAMPA")) return "TMP";
+  if (normalized.includes("CAIXA")) return "CXA";
+  return SKU_TYPE_PREFIXES[type];
+}
+
+function uniqueSku(baseSku: string, existingItems: CatalogItem[]) {
+  const used = new Set(existingItems.map((item) => item.sku.toUpperCase()));
+  if (!used.has(baseSku)) return baseSku;
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${baseSku}-${String(index).padStart(2, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${baseSku}-${Date.now().toString().slice(-4)}`;
+}
+
+function generatedSku(form: ItemFormState, existingItems: CatalogItem[]) {
+  const prefix = skuPrefix(form.type, form.name);
+  const tokens = skuTokens(form.name);
+  const primary = skuTokenCode(tokens[0] ?? "ITEM");
+  const secondary = tokens[1] ? skuTokenCode(tokens[1], prefix === "ESS" ? 2 : 3) : "";
+  const variant = variantCode(form.variant);
+  const tail = prefix === "ESS" && secondary ? secondary : variant || secondary || "001";
+  return uniqueSku([prefix, primary, tail].join("-"), existingItems);
+}
+
+function generatedInternalCode(type: ItemType, existingItems: CatalogItem[]) {
+  const prefix = INTERNAL_CODE_PREFIXES[type];
+  const nextSequence = existingItems.reduce((max, item) => {
+    if (!item.code.startsWith(prefix)) return max;
+    const sequence = Number(item.code.slice(prefix.length));
+    return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
+  }, 0) + 1;
+  return `${prefix}${String(nextSequence).padStart(8, "0")}`;
+}
+
+function withGeneratedCodes(form: ItemFormState, existingItems: CatalogItem[]) {
+  return {
+    ...form,
+    internalCode: generatedInternalCode(form.type, existingItems),
+    sku: generatedSku(form, existingItems),
+  };
+}
+
 function defaultForm(lookups: ItemLookups): ItemFormState {
   return {
     internalCode: "",
@@ -315,6 +444,7 @@ function ItemFormModal({
   mode,
   item,
   lookups,
+  existingItems,
   onClose,
   onSaved,
 }: {
@@ -322,19 +452,30 @@ function ItemFormModal({
   mode: "create" | "edit";
   item?: CatalogItem | null;
   lookups: ItemLookups;
+  existingItems: CatalogItem[];
   onClose: () => void;
   onSaved: (result: ItemMutationResult) => Promise<void>;
 }) {
-  const [form, setForm] = React.useState<ItemFormState>(() => defaultForm(lookups));
+  const [form, setForm] = React.useState<ItemFormState>(() => withGeneratedCodes(defaultForm(lookups), existingItems));
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
-    setForm(item ? formFromItem(item, lookups) : defaultForm(lookups));
+    setForm(item ? formFromItem(item, lookups) : withGeneratedCodes(defaultForm(lookups), existingItems));
     setError(null);
     setBusy(false);
-  }, [open, item, lookups]);
+  }, [open, item, lookups, existingItems]);
+
+  React.useEffect(() => {
+    if (!open || mode !== "create") return;
+    setForm((current) => {
+      const nextInternalCode = generatedInternalCode(current.type, existingItems);
+      const nextSku = generatedSku(current, existingItems);
+      if (current.internalCode === nextInternalCode && current.sku === nextSku) return current;
+      return { ...current, internalCode: nextInternalCode, sku: nextSku };
+    });
+  }, [open, mode, form.type, form.name, form.variant, existingItems]);
 
   const setField = <K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -383,19 +524,21 @@ function ItemFormModal({
       )}
     >
       <div className="ff-grid">
-        <Field label="Codigo interno" required hint="12 digitos numericos.">
+        <Field label="Codigo interno" required hint={mode === "create" ? "Gerado automaticamente pelo padrao TTSS + sequencia." : "12 digitos numericos."}>
           <Input
             value={form.internalCode}
             onChange={(event) => setField("internalCode", event.target.value.replace(/\D/g, "").slice(0, 12))}
             placeholder="010100000001"
             inputMode="numeric"
+            readOnly={mode === "create"}
           />
         </Field>
-        <Field label="SKU" required>
+        <Field label="SKU" required hint={mode === "create" ? "Sugerido automaticamente a partir de tipo, nome e variante." : undefined}>
           <Input
             value={form.sku}
             onChange={(event) => setField("sku", event.target.value.toUpperCase())}
             placeholder="VEL-EXEMPLO-001"
+            readOnly={mode === "create"}
           />
         </Field>
       </div>
@@ -985,6 +1128,7 @@ export function ItemsScreen({ go, route, session }: { go: Go; route: Route; sess
         open={createOpen}
         mode="create"
         lookups={lookups}
+        existingItems={data?.items ?? []}
         onClose={() => setCreateOpen(false)}
         onSaved={handleItemSaved}
       />
@@ -994,6 +1138,7 @@ export function ItemsScreen({ go, route, session }: { go: Go; route: Route; sess
         mode="edit"
         item={editingItem}
         lookups={lookups}
+        existingItems={data?.items ?? []}
         onClose={() => setEditingItem(null)}
         onSaved={handleItemSaved}
       />

@@ -195,16 +195,30 @@ function resolveMovementLocations(
   }
 }
 
+function defaultOperationalLocationId(
+  item: InventoryItemBalance | null,
+  locations: InventoryLocation[],
+  selectedLocationId: string,
+) {
+  return itemLocationFallback(item, selectedLocationId) || firstLocation(locations.filter((location) => location.isActive));
+}
+
 function InventoryMovementModal({
   open,
   data,
   selectedLocationId,
+  initialItemId,
+  initialMovementType,
+  initialReason,
   onClose,
   onCreated,
 }: {
   open: boolean;
   data: InventoryResponse | null;
   selectedLocationId: string;
+  initialItemId?: string | null;
+  initialMovementType?: InventoryManualMovementType;
+  initialReason?: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -212,7 +226,7 @@ function InventoryMovementModal({
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  const items = data?.items ?? [];
+  const items = React.useMemo(() => data?.items ?? [], [data?.items]);
   const activeLocations = React.useMemo(
     () => (data?.locations ?? []).filter((location) => location.isActive),
     [data?.locations],
@@ -233,10 +247,23 @@ function InventoryMovementModal({
 
   React.useEffect(() => {
     if (!open) return;
-    setForm(defaultMovementForm(data, selectedLocationId));
+    const base = defaultMovementForm(data, selectedLocationId);
+    const initialItem = initialItemId ? items.find((item) => item.id === initialItemId) ?? null : null;
+    const movementType = initialMovementType ?? base.movementType;
+    const selectedInitialItem = initialItem ?? items.find((item) => item.id === base.itemId) ?? null;
+    setForm({
+      ...base,
+      movementType,
+      itemId: selectedInitialItem?.id ?? base.itemId,
+      ...resolveMovementLocations(movementType, selectedInitialItem, activeLocations, selectedLocationId, {
+        fromLocationId: "",
+        toLocationId: "",
+      }),
+      reason: initialReason ?? "",
+    });
     setError(null);
     setBusy(false);
-  }, [open, data, selectedLocationId]);
+  }, [open, data, selectedLocationId, initialItemId, initialMovementType, initialReason, items, activeLocations]);
 
   const setField = <K extends keyof MovementFormState>(key: K, value: MovementFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -435,6 +462,351 @@ function InventoryMovementModal({
   );
 }
 
+function InventoryCountModal({
+  open,
+  data,
+  selectedLocationId,
+  initialItemId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  data: InventoryResponse | null;
+  selectedLocationId: string;
+  initialItemId?: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [itemId, setItemId] = React.useState("");
+  const [counted, setCounted] = React.useState("");
+  const [reason, setReason] = React.useState("Contagem fisica");
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const items = React.useMemo(() => data?.items ?? [], [data?.items]);
+  const activeLocations = React.useMemo(
+    () => (data?.locations ?? []).filter((location) => location.isActive),
+    [data?.locations],
+  );
+  const selectedItem = items.find((item) => item.id === itemId) ?? null;
+  const countValue = parseMovementQuantity(counted);
+  const diff = selectedItem && Number.isFinite(countValue) ? +(countValue - selectedItem.physical).toFixed(3) : 0;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const initialItem = initialItemId ? items.find((item) => item.id === initialItemId) ?? null : items[0] ?? null;
+    setItemId(initialItem?.id ?? "");
+    setCounted(initialItem ? String(initialItem.physical) : "");
+    setReason("Contagem fisica");
+    setError(null);
+    setBusy(false);
+  }, [open, initialItemId, items]);
+
+  const changeItem = (nextItemId: string) => {
+    const nextItem = items.find((item) => item.id === nextItemId) ?? null;
+    setItemId(nextItemId);
+    setCounted(nextItem ? String(nextItem.physical) : "");
+    setError(null);
+  };
+
+  const submit = async () => {
+    const trimmedReason = reason.trim();
+    if (!selectedItem) {
+      setError(MOVEMENT_ERROR_LABELS.item_required);
+      return;
+    }
+    if (!Number.isFinite(countValue) || countValue < 0) {
+      setError("Informe a contagem fisica com valor zero ou maior.");
+      return;
+    }
+    if (!trimmedReason) {
+      setError(MOVEMENT_ERROR_LABELS.reason_required);
+      return;
+    }
+    if (diff === 0) {
+      toast("Contagem registrada sem diferenca de saldo.", "info");
+      onClose();
+      return;
+    }
+
+    const locationId = defaultOperationalLocationId(selectedItem, activeLocations, selectedLocationId);
+    if (!locationId) {
+      setError("Selecione um local ou defina um local padrao para o item.");
+      return;
+    }
+
+    const movementType: InventoryManualMovementType = diff > 0 ? "purchase_entry" : "loss";
+    const input: InventoryManualMovementInput = {
+      movementType,
+      itemId: selectedItem.id,
+      quantity: Math.abs(diff),
+      fromLocationId: movementType === "loss" ? locationId : null,
+      toLocationId: movementType === "purchase_entry" ? locationId : null,
+      reason: `Contagem fisica: ${trimmedReason}`,
+    };
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await createInventoryMovement(input);
+      toast(`Contagem registrada (${diff > 0 ? "+" : ""}${num(diff)} ${selectedItem.unit}).`, diff < 0 ? "bad" : "ok");
+      onClose();
+      onCreated();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Nao foi possivel registrar a contagem.";
+      setError(movementErrorMessage(message));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Contagem de estoque"
+      subtitle="Conferencia fisica que gera ajuste pela diferenca"
+      icon="refresh"
+      width={620}
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button variant="default" icon="check" onClick={submit} disabled={busy || !data}>
+            {busy ? "Registrando..." : "Registrar contagem"}
+          </Button>
+        </>
+      )}
+    >
+      <Field label="Item" required>
+        <Select
+          value={itemId}
+          onChange={changeItem}
+          placeholder="Selecione um item"
+          options={items.map((item) => ({ value: item.id, label: `${itemTitle(item)} - ${item.sku}` }))}
+        />
+      </Field>
+
+      {selectedItem && (
+        <div className="grid cols-3" style={{ marginBottom: 16 }}>
+          <Stat label="Fisico no sistema" value={`${num(selectedItem.physical)} ${selectedItem.unit}`} />
+          <Stat label="Disponivel" value={`${num(selectedItem.available)} ${selectedItem.unit}`} tone={stockTone(selectedItem)} />
+          <Stat label="Diferenca" value={`${diff > 0 ? "+" : ""}${num(diff)} ${selectedItem.unit}`} tone={diff < 0 ? "bad" : diff > 0 ? "ok" : "neutral"} />
+        </div>
+      )}
+
+      <div className="ff-grid">
+        <Field label={`Contagem fisica${selectedItem ? ` (${selectedItem.unit})` : ""}`} required>
+          <Input inputMode="decimal" value={counted} onChange={(event) => { setCounted(event.target.value); setError(null); }} />
+        </Field>
+        <Field label="Local de referencia">
+          <Input value={selectedItem ? (selectedLocationId ? selectedItem.defaultLocation ?? "Local filtrado" : selectedItem.defaultLocation ?? "Sem local padrao") : ""} readOnly />
+        </Field>
+      </div>
+
+      <Field label="Motivo" required>
+        <Textarea value={reason} onChange={(event) => { setReason(event.target.value); setError(null); }} />
+      </Field>
+
+      {error && <div className="ff-error" style={{ marginTop: -6 }}>{error}</div>}
+    </Modal>
+  );
+}
+
+function InventoryAdjustmentModal({
+  open,
+  data,
+  selectedLocationId,
+  initialItemId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  data: InventoryResponse | null;
+  selectedLocationId: string;
+  initialItemId?: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [itemId, setItemId] = React.useState("");
+  const [direction, setDirection] = React.useState<"increase" | "decrease">("increase");
+  const [quantity, setQuantity] = React.useState("");
+  const [reason, setReason] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const items = React.useMemo(() => data?.items ?? [], [data?.items]);
+  const activeLocations = React.useMemo(
+    () => (data?.locations ?? []).filter((location) => location.isActive),
+    [data?.locations],
+  );
+  const selectedItem = items.find((item) => item.id === itemId) ?? null;
+  const parsedQuantity = parseMovementQuantity(quantity);
+  const nextPhysical = selectedItem && Number.isFinite(parsedQuantity)
+    ? selectedItem.physical + (direction === "increase" ? parsedQuantity : -parsedQuantity)
+    : selectedItem?.physical ?? 0;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const initialItem = initialItemId ? items.find((item) => item.id === initialItemId) ?? null : items[0] ?? null;
+    setItemId(initialItem?.id ?? "");
+    setDirection("increase");
+    setQuantity("");
+    setReason("");
+    setError(null);
+    setBusy(false);
+  }, [open, initialItemId, items]);
+
+  const submit = async () => {
+    const trimmedReason = reason.trim();
+    if (!selectedItem) {
+      setError(MOVEMENT_ERROR_LABELS.item_required);
+      return;
+    }
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setError(MOVEMENT_ERROR_LABELS.invalid_quantity);
+      return;
+    }
+    if (!trimmedReason) {
+      setError(MOVEMENT_ERROR_LABELS.reason_required);
+      return;
+    }
+
+    const locationId = defaultOperationalLocationId(selectedItem, activeLocations, selectedLocationId);
+    if (!locationId) {
+      setError("Selecione um local ou defina um local padrao para o item.");
+      return;
+    }
+
+    const movementType: InventoryManualMovementType = direction === "increase" ? "purchase_entry" : "loss";
+    const input: InventoryManualMovementInput = {
+      movementType,
+      itemId: selectedItem.id,
+      quantity: parsedQuantity,
+      fromLocationId: movementType === "loss" ? locationId : null,
+      toLocationId: movementType === "purchase_entry" ? locationId : null,
+      reason: `Ajuste manual: ${trimmedReason}`,
+    };
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await createInventoryMovement(input);
+      toast("Ajuste de estoque registrado.", "ok");
+      onClose();
+      onCreated();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Nao foi possivel registrar o ajuste.";
+      setError(movementErrorMessage(message));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Ajustar estoque"
+      subtitle="Entrada ou saida manual com motivo"
+      icon="sliders"
+      width={620}
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button variant="default" icon="check" onClick={submit} disabled={busy || !data}>
+            {busy ? "Registrando..." : "Registrar ajuste"}
+          </Button>
+        </>
+      )}
+    >
+      <Field label="Item" required>
+        <Select
+          value={itemId}
+          onChange={(value) => { setItemId(value); setError(null); }}
+          placeholder="Selecione um item"
+          options={items.map((item) => ({ value: item.id, label: `${itemTitle(item)} - ${item.sku}` }))}
+        />
+      </Field>
+
+      {selectedItem && (
+        <div className="grid cols-3" style={{ marginBottom: 16 }}>
+          <Stat label="Fisico atual" value={`${num(selectedItem.physical)} ${selectedItem.unit}`} />
+          <Stat label="Disponivel" value={`${num(selectedItem.available)} ${selectedItem.unit}`} tone={stockTone(selectedItem)} />
+          <Stat label="Novo fisico" value={`${num(Math.max(0, nextPhysical))} ${selectedItem.unit}`} tone={nextPhysical < 0 ? "bad" : undefined} />
+        </div>
+      )}
+
+      <div className="ff-grid">
+        <Field label="Operacao" required>
+          <Select
+            value={direction}
+            onChange={(value) => { setDirection(value as "increase" | "decrease"); setError(null); }}
+            options={[
+              { value: "increase", label: "Entrada manual" },
+              { value: "decrease", label: "Saida manual" },
+            ]}
+          />
+        </Field>
+        <Field label={`Quantidade${selectedItem ? ` (${selectedItem.unit})` : ""}`} required>
+          <Input inputMode="decimal" value={quantity} onChange={(event) => { setQuantity(event.target.value); setError(null); }} placeholder="0" />
+        </Field>
+      </div>
+
+      <Field label="Motivo" required>
+        <Textarea value={reason} onChange={(event) => { setReason(event.target.value); setError(null); }} placeholder="Ex.: quebra, perda, sobra de producao, uso interno" />
+      </Field>
+
+      {error && <div className="ff-error" style={{ marginTop: -6 }}>{error}</div>}
+    </Modal>
+  );
+}
+
+function InventoryItemActionsModal({
+  item,
+  canCreateMovement,
+  onClose,
+  onCount,
+  onAdjust,
+  onMove,
+  onLabels,
+  onOpenItem,
+}: {
+  item: InventoryItemBalance;
+  canCreateMovement: boolean;
+  onClose: () => void;
+  onCount: () => void;
+  onAdjust: () => void;
+  onMove: () => void;
+  onLabels: () => void;
+  onOpenItem: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={itemTitle(item)}
+      subtitle={`${item.sku} - ${item.code}`}
+      icon="estoque"
+      width={660}
+      footer={<><Button variant="outline" onClick={onClose}>Fechar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="ghost" iconRight="arrowRight" onClick={onOpenItem}>Cadastro do item</Button></>}
+    >
+      <div className="grid cols-4" style={{ marginBottom: 16 }}>
+        <Stat label="Fisico" value={`${num(item.physical)} ${item.unit}`} />
+        <Stat label="Disponivel" value={`${num(item.available)} ${item.unit}`} tone={stockTone(item)} />
+        <Stat label="Reservado" value={`${num(item.reserved)} ${item.unit}`} tone={item.reserved > 0 ? "info" : undefined} />
+        <Stat label="Minimo" value={`${num(item.min)} ${item.unit}`} />
+      </div>
+
+      <div className="grid cols-2" style={{ gap: 10 }}>
+        <Button variant="outline" icon="refresh" onClick={onCount} disabled={!canCreateMovement}>Contagem</Button>
+        <Button variant="outline" icon="sliders" onClick={onAdjust} disabled={!canCreateMovement}>Ajuste de estoque</Button>
+        <Button variant="outline" icon="layers" onClick={onMove} disabled={!canCreateMovement}>Movimentacao</Button>
+        <Button variant="default" icon="printer" onClick={onLabels}>Imprimir etiquetas</Button>
+      </div>
+    </Modal>
+  );
+}
+
 function itemTitle(item: { name: string; variant: string | null }) {
   return `${item.name}${item.variant ? ` ${item.variant}` : ""}`;
 }
@@ -533,7 +905,14 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
   const [query, setQuery] = React.useState("");
   const [tab, setTab] = React.useState<InventoryTab>("all");
   const [locationId, setLocationId] = React.useState(route.filter ?? "");
-  const [movementOpen, setMovementOpen] = React.useState(false);
+  const [actionItemId, setActionItemId] = React.useState<string | null>(null);
+  const [countItemId, setCountItemId] = React.useState<string | null>(null);
+  const [adjustItemId, setAdjustItemId] = React.useState<string | null>(null);
+  const [movementModal, setMovementModal] = React.useState<{
+    open: boolean;
+    itemId: string | null;
+    movementType?: InventoryManualMovementType;
+  }>({ open: false, itemId: null });
 
   const load = React.useCallback(async (nextLocationId: string) => {
     setLoading(true);
@@ -563,6 +942,7 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
   const locations = data?.locations ?? [];
   const selectedLocation = locations.find((location) => location.id === locationId) ?? null;
   const canCreateMovement = canManageInventory(session.user.role);
+  const actionItem = data?.items.find((item) => item.id === actionItemId) ?? null;
 
   const tabs = React.useMemo(() => {
     const items = data?.items ?? [];
@@ -611,7 +991,7 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
             <Button
               variant="default"
               icon="plus"
-              onClick={() => setMovementOpen(true)}
+              onClick={() => setMovementModal({ open: true, itemId: null })}
               disabled={loading || !data || data.items.length === 0 || data.locations.every((location) => !location.isActive)}
             >
               Novo movimento
@@ -689,7 +1069,7 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
                 </thead>
                 <tbody>
                   {sort.sorted.map((item) => (
-                    <tr key={item.id} className="om-row-click" onClick={() => go("itens", { open: item.code })}>
+                    <tr key={item.id} className="om-row-click" onClick={() => setActionItemId(item.id)}>
                       <td style={{ minWidth: 260 }}>
                         <div className="item-cell">
                           <div className={`swatch swatch--${item.type === "raw_material" ? "mp" : item.type === "packaging" ? "emb" : item.type === "kit" ? "kit" : ""}`}>
@@ -771,12 +1151,62 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
         </CardContent>
       </Card>
 
+      {actionItem && (
+        <InventoryItemActionsModal
+          item={actionItem}
+          canCreateMovement={canCreateMovement}
+          onClose={() => setActionItemId(null)}
+          onCount={() => {
+            setCountItemId(actionItem.id);
+            setActionItemId(null);
+          }}
+          onAdjust={() => {
+            setAdjustItemId(actionItem.id);
+            setActionItemId(null);
+          }}
+          onMove={() => {
+            setMovementModal({ open: true, itemId: actionItem.id, movementType: "transfer" });
+            setActionItemId(null);
+          }}
+          onLabels={() => {
+            setActionItemId(null);
+            toast(`${itemTitle(actionItem)} selecionado para impressao de etiquetas.`, "info");
+            go("etiquetas");
+          }}
+          onOpenItem={() => go("itens", { open: actionItem.code })}
+        />
+      )}
+
       {canCreateMovement && (
-        <InventoryMovementModal
-          open={movementOpen}
+        <InventoryCountModal
+          open={Boolean(countItemId)}
           data={data}
           selectedLocationId={locationId}
-          onClose={() => setMovementOpen(false)}
+          initialItemId={countItemId}
+          onClose={() => setCountItemId(null)}
+          onCreated={() => void load(locationId)}
+        />
+      )}
+
+      {canCreateMovement && (
+        <InventoryAdjustmentModal
+          open={Boolean(adjustItemId)}
+          data={data}
+          selectedLocationId={locationId}
+          initialItemId={adjustItemId}
+          onClose={() => setAdjustItemId(null)}
+          onCreated={() => void load(locationId)}
+        />
+      )}
+
+      {canCreateMovement && (
+        <InventoryMovementModal
+          open={movementModal.open}
+          data={data}
+          selectedLocationId={locationId}
+          initialItemId={movementModal.itemId}
+          initialMovementType={movementModal.movementType}
+          onClose={() => setMovementModal({ open: false, itemId: null })}
           onCreated={() => void load(locationId)}
         />
       )}

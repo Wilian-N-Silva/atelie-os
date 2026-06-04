@@ -16,14 +16,24 @@ import {
   Select,
   Sep,
   Stat,
+  Stepper,
   Tabs,
   Textarea,
   ViewToggle,
   toast,
   useView,
 } from "@/components/ui";
-import { BRL, DEMO_RECIPES, findDemoItem, productOptions, type DemoRecipe } from "@/lib/screen-fixtures";
+import { BRL, DEMO_ITEMS, DEMO_RECIPES, findDemoItem, productOptions, type DemoRecipe } from "@/lib/screen-fixtures";
 import type { Go, Route } from "@/lib/types";
+
+type RecipeComponentForm = {
+  key: string;
+  sku: string;
+  qty: string;
+  loss: string;
+};
+
+const MATERIAL_OPTIONS = DEMO_ITEMS.filter((item) => item.type === "mp" || item.type === "emb");
 
 function recipeCost(recipe: DemoRecipe) {
   return recipe.components.reduce((sum, component) => {
@@ -32,7 +42,54 @@ function recipeCost(recipe: DemoRecipe) {
   }, 0);
 }
 
-function RecipeDrawer({ recipe, go, onClose }: { recipe: DemoRecipe; go: Go; onClose: () => void }) {
+function parseRecipeNumber(value: string) {
+  const parsed = Number(value.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function recipeComponentFromSku(sku: string, index: number): RecipeComponentForm {
+  const defaults: Record<string, { qty: string; loss: string }> = {
+    "CER-SOJ-01": { qty: "0.142", loss: "3" },
+    "ESS-LAV-FR": { qty: "11", loss: "2" },
+    "VID-NAD-156": { qty: "1", loss: "1" },
+    "TMP-PIN-052": { qty: "1", loss: "0" },
+  };
+  const fallback = defaults[sku] ?? { qty: "1", loss: "2" };
+  return { key: `${sku}-${index}-${Date.now()}`, sku, qty: fallback.qty, loss: fallback.loss };
+}
+
+function defaultRecipeComponents() {
+  const preferred = ["CER-SOJ-01", "ESS-LAV-FR", "VID-NAD-156", "TMP-PIN-052"]
+    .filter((sku) => MATERIAL_OPTIONS.some((item) => item.sku === sku));
+  const skus = preferred.length ? preferred : MATERIAL_OPTIONS.slice(0, 2).map((item) => item.sku);
+  return skus.map(recipeComponentFromSku);
+}
+
+function componentsFromRecipe(recipe: DemoRecipe): RecipeComponentForm[] {
+  return recipe.components.map((component, index) => ({
+    key: `${component.sku}-${index}-${recipe.id}`,
+    sku: component.sku,
+    qty: String(component.qty),
+    loss: String(component.loss),
+  }));
+}
+
+function nextRecipeVersion(version: string) {
+  const numeric = Number(version.replace(/\D/g, ""));
+  return `v${Number.isFinite(numeric) && numeric > 0 ? numeric + 1 : 2}`;
+}
+
+function RecipeDrawer({
+  recipe,
+  go,
+  onClose,
+  onVersion,
+}: {
+  recipe: DemoRecipe;
+  go: Go;
+  onClose: () => void;
+  onVersion: (recipe: DemoRecipe) => void;
+}) {
   const components = recipe.components.map((component) => {
     const item = findDemoItem(component.sku);
     const cost = (item?.costAvg ?? 0) * component.qty * (1 + component.loss / 100);
@@ -68,8 +125,8 @@ function RecipeDrawer({ recipe, go, onClose }: { recipe: DemoRecipe; go: Go; onC
           <table className="om-table" style={{ marginBottom: 18 }}>
             <thead><tr><th>Item</th><th className="om-td-right">Qtd</th><th className="om-td-right">Perda</th><th className="om-td-right">Custo</th></tr></thead>
             <tbody>
-              {components.map((component) => (
-                <tr key={component.sku}>
+              {components.map((component, index) => (
+                <tr key={`${component.sku}-${index}`}>
                   <td><div className="cell-title">{component.name}</div><div className="cell-sub sku">{component.sku} - {component.available} disp.</div></td>
                   <td className="om-td-right">{component.qty} {component.unit}</td>
                   <td className="om-td-right muted">{component.loss}%</td>
@@ -94,50 +151,254 @@ function RecipeDrawer({ recipe, go, onClose }: { recipe: DemoRecipe; go: Go; onC
 
         <div className="drawer-foot">
           <Button variant="default" icon="producao" style={{ flex: 1 }} onClick={() => go("producao")}>Produzir com esta receita</Button>
-          <Button variant="outline" icon="copy" onClick={() => toast("Nova versao criada como rascunho.", "info")}>Nova versao</Button>
+          <Button variant="outline" icon="copy" onClick={() => onVersion(recipe)}>Nova versao</Button>
         </div>
       </aside>
     </>
   );
 }
 
-function NewRecipeModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (recipe: DemoRecipe) => void }) {
+function RecipeFormModal({
+  open,
+  mode,
+  baseRecipe,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  mode: "create" | "version";
+  baseRecipe?: DemoRecipe | null;
+  onClose: () => void;
+  onSave: (recipe: DemoRecipe) => void;
+}) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
-  const products = productOptions();
-  const [name, setName] = React.useState("Nova receita");
+  const products = React.useMemo(() => productOptions(), []);
+  const [name, setName] = React.useState("");
   const [productSku, setProductSku] = React.useState(products[0]?.sku ?? "");
+  const [yieldQty, setYieldQty] = React.useState("1");
+  const [yieldUnit, setYieldUnit] = React.useState("vela 156ml");
+  const [cureDays, setCureDays] = React.useState("14");
+  const [components, setComponents] = React.useState<RecipeComponentForm[]>(() => defaultRecipeComponents());
   const [note, setNote] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    if (mode === "version" && baseRecipe) {
+      setName(baseRecipe.name);
+      setProductSku(baseRecipe.product);
+      setYieldQty(String(baseRecipe.yield));
+      setYieldUnit(baseRecipe.yieldUnit);
+      setCureDays(String(baseRecipe.cureDays));
+      setComponents(componentsFromRecipe(baseRecipe));
+      setNote("");
+      setError(null);
+      return;
+    }
+
+    const firstProduct = products[0];
+    setName("");
+    setProductSku(firstProduct?.sku ?? "");
+    setYieldQty("1");
+    setYieldUnit(firstProduct?.variant ? `vela ${firstProduct.variant}` : "unidade");
+    setCureDays("14");
+    setComponents(defaultRecipeComponents());
+    setNote("");
+    setError(null);
+  }, [open, mode, baseRecipe, products]);
+
+  const product = products.find((item) => item.sku === productSku) ?? products[0];
+
+  const resolvedComponents = components.map((component) => {
+    const item = findDemoItem(component.sku);
+    const qty = parseRecipeNumber(component.qty);
+    const loss = parseRecipeNumber(component.loss);
+    const cost = (item?.costAvg ?? 0) * qty * (1 + loss / 100);
+    return {
+      ...component,
+      item,
+      qtyNumber: qty,
+      lossNumber: loss,
+      cost,
+      available: item?.available ?? 0,
+      unit: item?.unit ?? "un",
+      name: item?.name ?? component.sku,
+    };
+  });
+  const total = resolvedComponents.reduce((sum, component) => sum + component.cost, 0);
+
+  const setComponent = (key: string, patch: Partial<RecipeComponentForm>) => {
+    setComponents((current) => current.map((component) => component.key === key ? { ...component, ...patch } : component));
+    setError(null);
+  };
+
+  const addComponent = () => {
+    const nextSku = MATERIAL_OPTIONS.find((item) => !components.some((component) => component.sku === item.sku))?.sku
+      ?? MATERIAL_OPTIONS[0]?.sku
+      ?? "";
+    if (!nextSku) return;
+    setComponents((current) => [...current, recipeComponentFromSku(nextSku, current.length)]);
+  };
+
+  const removeComponent = (key: string) => {
+    setComponents((current) => current.length <= 1 ? current : current.filter((component) => component.key !== key));
+  };
 
   const submit = () => {
-    const product = products.find((item) => item.sku === productSku) ?? products[0];
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Informe o nome da receita.");
+      return;
+    }
+    if (!product) {
+      setError("Selecione o produto gerado.");
+      return;
+    }
+    if (resolvedComponents.some((component) => component.qtyNumber <= 0 || component.lossNumber < 0)) {
+      setError("Cada componente precisa ter quantidade maior que zero e perda zero ou maior.");
+      return;
+    }
+
     const next = nextId.current++;
-    onCreate({
+    onSave({
       id: `${idPrefix}-${next}`,
-      name: name.trim() || "Nova receita",
+      name: trimmedName,
       product: product.sku,
       productName: `${product.name} ${product.variant}`,
-      version: "v1",
+      version: mode === "version" && baseRecipe ? nextRecipeVersion(baseRecipe.version) : "v1",
       status: "rascunho",
-      yield: 1,
-      yieldUnit: "unidade",
-      cureDays: 14,
-      components: [
-        { sku: "CER-SOJ-01", name: "Cera de Soja Ecosoya", qty: 0.142, unit: "kg", loss: 3 },
-        { sku: "VID-NAD-156", name: "Vidro Nadir 156ml", qty: 1, unit: "un", loss: 1 },
-      ],
+      yield: Math.max(1, Math.round(parseRecipeNumber(yieldQty))),
+      yieldUnit: yieldUnit.trim() || "unidade",
+      cureDays: Math.max(0, Math.round(parseRecipeNumber(cureDays))),
+      components: resolvedComponents.map((component) => ({
+        sku: component.sku,
+        name: component.name,
+        qty: component.qtyNumber,
+        unit: component.unit,
+        loss: component.lossNumber,
+      })),
       tests: note.trim() ? [{ date: "hoje", qty: 1, result: "ajustar", note: note.trim() }] : [],
     });
-    toast("Receita criada como rascunho nesta sessao.", "info");
+    toast(mode === "version" ? "Nova versao criada como rascunho." : "Receita criada como rascunho.", "info");
     onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} icon="receitas" title="Nova receita" subtitle="Rascunho local para planejar a formula" width={540}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="default" icon="plus" onClick={submit}>Criar receita</Button></>}>
-      <Field label="Nome"><Input value={name} onChange={(event) => setName(event.target.value)} /></Field>
-      <Field label="Produto"><Select value={productSku} onChange={setProductSku} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} /></Field>
-      <Field label="Nota de teste inicial"><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="O que precisa testar ou ajustar?" /></Field>
+    <Modal
+      open={open}
+      onClose={onClose}
+      icon="receitas"
+      title={mode === "version" ? "Nova versao da receita" : "Nova receita"}
+      subtitle={mode === "version" && baseRecipe ? `${baseRecipe.name} ${baseRecipe.version} -> ${nextRecipeVersion(baseRecipe.version)}` : "Formula com componentes, rendimento e custo calculado"}
+      width={900}
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <div className="spacer" style={{ flex: 1 }} />
+          <span className="muted" style={{ fontSize: 13, marginRight: 8 }}>Custo/un {BRL(total)}</span>
+          <Button variant="default" icon="check" onClick={submit}>{mode === "version" ? "Criar versao" : "Criar receita"}</Button>
+        </>
+      )}
+    >
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1.7fr) minmax(260px, 0.8fr)", gap: 20 }}>
+        <div>
+          <div className="ff-grid">
+            <Field label="Nome da receita" required>
+              <Input value={name} onChange={(event) => { setName(event.target.value); setError(null); }} placeholder="Ex.: Lavanda Francesa" />
+            </Field>
+            <Field label="Produto gerado" required>
+              <Select value={productSku} onChange={setProductSku} options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))} />
+            </Field>
+          </div>
+
+          <div className="ff-grid-3">
+            <Field label="Rendimento" required>
+              <Input inputMode="numeric" value={yieldQty} onChange={(event) => setYieldQty(event.target.value.replace(/\D/g, ""))} />
+            </Field>
+            <Field label="Unidade de rendimento">
+              <Input value={yieldUnit} onChange={(event) => setYieldUnit(event.target.value)} placeholder="vela 156ml" />
+            </Field>
+            <Field label="Cura (dias)">
+              <Input inputMode="numeric" value={cureDays} onChange={(event) => setCureDays(event.target.value.replace(/\D/g, ""))} />
+            </Field>
+          </div>
+
+          <div className="row between" style={{ margin: "6px 0 8px" }}>
+            <div className="block-label">Componentes da formula</div>
+            <Button variant="outline" size="sm" icon="plus" onClick={addComponent}>Adicionar item</Button>
+          </div>
+
+          <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 10, overflow: "hidden" }}>
+            {resolvedComponents.map((component) => (
+              <div className="line-add" key={component.key} style={{ padding: 10, alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 210 }}>
+                  <Select
+                    value={component.sku}
+                    onChange={(value) => setComponent(component.key, { sku: value })}
+                    options={MATERIAL_OPTIONS.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
+                  />
+                  <div className="cell-sub" style={{ marginTop: 4 }}>
+                    <span className="sku">{component.sku}</span> - {component.available} {component.unit} disp. - {BRL(component.item?.costAvg ?? 0)}/{component.unit}
+                  </div>
+                </div>
+                <div style={{ width: 110 }}>
+                  <Field label="Qtd">
+                    <Stepper
+                      value={component.qtyNumber}
+                      onChange={(value) => setComponent(component.key, { qty: String(value) })}
+                      min={0}
+                      step={component.qtyNumber < 1 ? 0.01 : 1}
+                    />
+                  </Field>
+                </div>
+                <div style={{ width: 86 }}>
+                  <Field label="Perda">
+                    <Input inputMode="decimal" value={component.loss} onChange={(event) => setComponent(component.key, { loss: event.target.value })} />
+                  </Field>
+                </div>
+                <div style={{ width: 92, textAlign: "right", paddingTop: 24 }}>
+                  <div style={{ fontWeight: 650 }}>{BRL(component.cost)}</div>
+                </div>
+                <button className="wf-handle-btn" onClick={() => removeComponent(component.key)} disabled={components.length === 1} style={{ marginTop: 25 }}>
+                  <Icon name="x" size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <Field label={mode === "version" ? "Observacao da nova versao" : "Nota de teste inicial"} style={{ marginTop: 14 }}>
+            <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="O que mudou, precisa testar ou validar?" />
+          </Field>
+
+          {error && <div className="ff-error" style={{ marginTop: 10 }}>{error}</div>}
+        </div>
+
+        <div>
+          <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 10, padding: 14, position: "sticky", top: 0 }}>
+            <div className="block-label">Resumo</div>
+            <div className="grid cols-2" style={{ gap: 10, marginBottom: 14 }}>
+              <Stat label="Componentes" value={resolvedComponents.length} />
+              <Stat label="Cura" value={`${Math.max(0, Math.round(parseRecipeNumber(cureDays)))}d`} />
+              <Stat label="Rende" value={Math.max(1, Math.round(parseRecipeNumber(yieldQty)))} sub={yieldUnit || "unidade"} />
+              <Stat label="Custo/un" value={BRL(total)} tone="info" />
+            </div>
+            <Sep />
+            <div style={{ marginTop: 12 }}>
+              <div className="cell-title">{product ? `${product.name} ${product.variant}` : "Produto nao selecionado"}</div>
+              <div className="cell-sub">{mode === "version" && baseRecipe ? `Base: ${baseRecipe.version}` : "Rascunho inicial"}</div>
+            </div>
+            <div className="block-label" style={{ marginTop: 16 }}>Disponibilidade</div>
+            {resolvedComponents.map((component) => (
+              <div className="row between" key={`${component.key}-availability`} style={{ fontSize: 12.5, marginTop: 7, gap: 10 }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{component.name}</span>
+                <Badge tone={component.available >= component.qtyNumber ? "ok" : "warn"}>{component.available} {component.unit}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -148,7 +409,11 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"todas" | "ativa" | "rascunho">("todas");
   const [view, setView] = useView("receitas", "grid");
-  const [newOpen, setNewOpen] = React.useState(false);
+  const [recipeForm, setRecipeForm] = React.useState<{
+    open: boolean;
+    mode: "create" | "version";
+    baseRecipe: DemoRecipe | null;
+  }>({ open: false, mode: "create", baseRecipe: null });
 
   React.useEffect(() => { if (route.open) setOpenId(route.open); }, [route.open]);
 
@@ -164,7 +429,7 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
           <h1 className="page-h1">Receitas</h1>
           <p className="page-lede">{recipes.length} formulas - custo calculado pelos componentes</p>
         </div>
-        <Button variant="default" icon="plus" onClick={() => setNewOpen(true)}>Nova receita</Button>
+        <Button variant="default" icon="plus" onClick={() => setRecipeForm({ open: true, mode: "create", baseRecipe: null })}>Nova receita</Button>
       </div>
 
       <div className="toolbar">
@@ -220,8 +485,24 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
         </div>
       )}
 
-      {openRecipe && <RecipeDrawer recipe={openRecipe} go={go} onClose={() => setOpenId(null)} />}
-      <NewRecipeModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(recipe) => setRecipes((current) => [recipe, ...current])} />
+      {openRecipe && (
+        <RecipeDrawer
+          recipe={openRecipe}
+          go={go}
+          onClose={() => setOpenId(null)}
+          onVersion={(recipe) => setRecipeForm({ open: true, mode: "version", baseRecipe: recipe })}
+        />
+      )}
+      <RecipeFormModal
+        open={recipeForm.open}
+        mode={recipeForm.mode}
+        baseRecipe={recipeForm.baseRecipe}
+        onClose={() => setRecipeForm((current) => ({ ...current, open: false }))}
+        onSave={(recipe) => {
+          setRecipes((current) => [recipe, ...current]);
+          setOpenId(recipe.id);
+        }}
+      />
     </div>
   );
 }
