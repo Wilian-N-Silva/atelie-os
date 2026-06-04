@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { db, sqlClient } from "@/db/client";
-import { seedItems, seedOrders } from "@/db/seed-data";
+import { seedItems, seedOrders, seedProduction, seedRecipes } from "@/db/seed-data";
 import {
   account,
   auditLogs,
@@ -14,11 +14,18 @@ import {
   items,
   orderItems,
   orders,
+  productionOrders,
+  recipeComponents,
+  recipeVersions,
+  recipes,
   stockMovements,
   units,
   user,
+  workflowSteps,
+  workflows,
 } from "@/db/schema";
 import { ensureSeedAuditLog, seedCompanyDefaults } from "@/db/bootstrap";
+import { defaultWorkflows } from "@/lib/workflows";
 import { slugify } from "@/lib/slug";
 
 const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL?.trim() || "admin@example.com";
@@ -350,11 +357,190 @@ async function seedDemoOrders(companyId: string, ownerId: string) {
   }
 }
 
+async function seedDemoRecipes(companyId: string, ownerId: string) {
+  const itemRows = await db.query.items.findMany({
+    where: eq(items.companyId, companyId),
+    columns: { id: true, sku: true },
+  });
+  const skuToItemId = new Map(itemRows.map((item) => [item.sku, item.id]));
+
+  for (const sample of seedRecipes) {
+    let recipe = await db.query.recipes.findFirst({
+      where: and(
+        eq(recipes.companyId, companyId),
+        eq(recipes.productSku, sample.productSku),
+        eq(recipes.name, sample.name),
+      ),
+      columns: { id: true },
+    });
+
+    if (!recipe) {
+      [recipe] = await db
+        .insert(recipes)
+        .values({
+          companyId,
+          name: sample.name,
+          productItemId: skuToItemId.get(sample.productSku) ?? null,
+          productSku: sample.productSku,
+          productName: sample.productName,
+          createdByUserId: ownerId,
+        })
+        .returning({ id: recipes.id });
+
+      await db.insert(auditLogs).values({
+        companyId,
+        actorUserId: ownerId,
+        action: "recipe.create",
+        entityType: "recipe",
+        entityId: recipe.id,
+        metadata: { name: sample.name, productSku: sample.productSku, source: "seed.demo_recipe" },
+      });
+    }
+
+    const existingVersion = await db.query.recipeVersions.findFirst({
+      where: and(eq(recipeVersions.recipeId, recipe.id), eq(recipeVersions.version, sample.version)),
+      columns: { id: true },
+    });
+    if (existingVersion) continue;
+
+    const [version] = await db
+      .insert(recipeVersions)
+      .values({
+        recipeId: recipe.id,
+        version: sample.version,
+        status: sample.status,
+        yieldQty: sample.yieldQty.toString(),
+        yieldUnit: sample.yieldUnit,
+        cureDays: sample.cureDays,
+        tests: sample.tests,
+      })
+      .returning({ id: recipeVersions.id });
+
+    await db.insert(recipeComponents).values(sample.components.map((component, index) => ({
+      recipeVersionId: version.id,
+      itemId: skuToItemId.get(component.sku) ?? null,
+      sku: component.sku,
+      name: component.name,
+      quantity: component.qty.toString(),
+      unit: component.unit,
+      loss: component.loss.toString(),
+      position: index,
+    })));
+  }
+}
+
+async function seedDemoProduction(companyId: string, ownerId: string) {
+  const itemRows = await db.query.items.findMany({
+    where: eq(items.companyId, companyId),
+    columns: { id: true, sku: true },
+  });
+  const skuToItemId = new Map(itemRows.map((item) => [item.sku, item.id]));
+
+  for (const sample of seedProduction) {
+    const existing = await db.query.productionOrders.findFirst({
+      where: and(eq(productionOrders.companyId, companyId), eq(productionOrders.code, sample.code)),
+      columns: { id: true },
+    });
+    if (existing) continue;
+
+    const [order] = await db
+      .insert(productionOrders)
+      .values({
+        companyId,
+        code: sample.code,
+        number: sample.number,
+        productItemId: skuToItemId.get(sample.productSku) ?? null,
+        productSku: sample.productSku,
+        productName: sample.productName,
+        recipeName: sample.recipeName,
+        recipeVersion: sample.recipeVersion,
+        planned: sample.planned.toString(),
+        status: sample.status,
+        plannedDateLabel: sample.plannedDateLabel,
+        responsible: sample.responsible,
+        progress: sample.progress ?? null,
+        lot: sample.lot ?? null,
+        cureUntil: sample.cureUntil ?? null,
+        cureDayLeft: sample.cureDayLeft ?? null,
+        source: "seed.demo_production",
+        createdByUserId: ownerId,
+      })
+      .returning({ id: productionOrders.id });
+
+    await db.insert(auditLogs).values({
+      companyId,
+      actorUserId: ownerId,
+      action: "production.create",
+      entityType: "production_order",
+      entityId: order.id,
+      metadata: { code: sample.code, number: sample.number, source: "seed.demo_production" },
+    });
+  }
+}
+
+async function seedWorkflows(companyId: string) {
+  const state = defaultWorkflows();
+  const entities: Array<"production" | "order"> = ["production", "order"];
+
+  for (const entity of entities) {
+    const technicalKey = `default_${entity}`;
+    const [inserted] = await db
+      .insert(workflows)
+      .values({
+        companyId,
+        entity,
+        name: entity === "production" ? "Producao" : "Pedidos",
+        technicalKey,
+      })
+      .onConflictDoNothing()
+      .returning({ id: workflows.id });
+
+    const workflow = inserted ?? await db.query.workflows.findFirst({
+      where: and(
+        eq(workflows.companyId, companyId),
+        eq(workflows.entity, entity),
+        eq(workflows.technicalKey, technicalKey),
+      ),
+      columns: { id: true },
+    });
+    if (!workflow) continue;
+
+    const existingStep = await db.query.workflowSteps.findFirst({
+      where: eq(workflowSteps.workflowId, workflow.id),
+      columns: { id: true },
+    });
+    if (existingStep) continue;
+
+    await db.insert(workflowSteps).values(state[entity].map((step, index) => ({
+      workflowId: workflow.id,
+      technicalKey: step.key,
+      label: step.label,
+      automationType: step.automation ?? "none",
+      colorToken: step.color,
+      position: index + 1,
+      isInitial: Boolean(step.is_initial || index === 0),
+      isFinal: Boolean(step.is_final),
+      isProtected: false,
+      checklist: [{
+        stepOptions: {
+          blocks_availability: Boolean(step.blocks_availability),
+          requires_checklist: Boolean(step.requires_checklist),
+          requires_reason: Boolean(step.requires_reason),
+          requires_quantity_input: Boolean(step.requires_quantity_input),
+        },
+      }],
+    })));
+  }
+}
+
 async function main() {
   const owner = await ensureOwnerUser();
   const company = await ensureCompany(owner.id);
   await seedCatalog(company.id, owner.id);
+  await seedWorkflows(company.id);
   await seedDemoOrders(company.id, owner.id);
+  await seedDemoRecipes(company.id, owner.id);
+  await seedDemoProduction(company.id, owner.id);
 
   await ensureSeedAuditLog({
     companyId: company.id,
@@ -365,6 +551,8 @@ async function main() {
       ownerEmail: OWNER_EMAIL,
       catalogItems: seedItems.length,
       orders: seedOrders.length,
+      recipes: seedRecipes.length,
+      production: seedProduction.length,
     },
   });
 

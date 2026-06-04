@@ -13,10 +13,34 @@ import {
   Textarea,
   toast,
 } from "@/components/ui";
-import { AI_HISTORY, AI_TEMPLATES, BRAND_VOICE, productOptions } from "@/lib/screen-fixtures";
+import { type ItemSummary } from "@/lib/domain";
+import { useItemDirectory } from "@/lib/item-directory";
 import type { Go, Route } from "@/lib/types";
 
-function buildContent(templateId: string, product: ReturnType<typeof productOptions>[number], brief: string) {
+// Placeholder content for the not-yet-built AI module (plan phase 8). These stay
+// local to this screen until the AI backend (brand voice, templates, generation
+// history) is persisted; they are not shared domain data.
+const AI_TEMPLATES = [
+  { id: "catalogo", name: "Descricao de catalogo", icon: "fileText", desc: "Texto comercial curto e longo" },
+  { id: "lancamento", name: "Legenda de lancamento", icon: "ia", desc: "Post para Instagram" },
+  { id: "pos-venda", name: "Mensagem de pos-venda", icon: "pedidos", desc: "WhatsApp apos envio" },
+  { id: "cartao", name: "Texto de cartao", icon: "tag", desc: "Mensagem para a caixa" },
+];
+
+const BRAND_VOICE = {
+  personality: "Acolhedora, sofisticada, serena, poetica, minimalista",
+  promise: "Transformar o fim do dia em um ritual de paz e autocuidado",
+  prefer: ["pausa", "respiro", "aconchego", "calmaria", "refugio", "cuidado"],
+  avoid: ["compre agora", "promocao imperdivel", "terapeutico", "garantido"],
+};
+
+const AI_HISTORY = [
+  { id: "a1", product: "Vela Lavanda Francesa", type: "Descricao de catalogo", status: "aprovado", when: "30/05", text: "Quando a noite chega, a Lavanda Francesa convida a uma pausa. Um aroma sereno para fechar o dia com cuidado." },
+  { id: "a2", product: "Vela Baunilha & Ambar", type: "Legenda de lancamento", status: "usado", when: "28/05", text: "Chegou para morar nos seus fins de tarde: um refugio doce para desacelerar." },
+  { id: "a3", product: "Vela Capim-Limao", type: "Post de reposicao", status: "rascunho", when: "27/05", text: "O Capim-Limao voltou ao atelie: leve, citrico e cheio de manha." },
+];
+
+function buildContent(templateId: string, product: ItemSummary, brief: string) {
   const aroma = (product.aroma || "aroma do atelie").split(",")[0].trim().toLowerCase();
   const name = `${product.name} ${product.variant}`;
   const collection = product.collection || "Atelie";
@@ -35,15 +59,24 @@ function buildContent(templateId: string, product: ReturnType<typeof productOpti
 }
 
 export function AIContentScreen({ go }: { go: Go; route: Route }) {
-  const products = productOptions();
+  const dir = useItemDirectory();
+  const products = dir.products;
   const [templateId, setTemplateId] = React.useState(AI_TEMPLATES[0].id);
-  const [productSku, setProductSku] = React.useState(products[0]?.sku ?? "");
+  const [productSku, setProductSku] = React.useState("");
   const [brief, setBrief] = React.useState("");
   const [state, setState] = React.useState<"idle" | "generating" | "done">("idle");
   const [result, setResult] = React.useState("");
   const product = products.find((item) => item.sku === productSku) ?? products[0];
 
+  React.useEffect(() => {
+    if (!productSku && products.length) setProductSku(products[0].sku);
+  }, [productSku, products]);
+
   const generate = () => {
+    if (!product) {
+      toast("Cadastre um produto pronto para gerar conteudo.", "bad");
+      return;
+    }
     setState("generating");
     window.setTimeout(() => {
       setResult(buildContent(templateId, product, brief));

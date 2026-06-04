@@ -21,11 +21,14 @@ import { LabelBarcode } from "@/components/label-barcode";
 import { LabelSheetModelModal } from "@/components/label-sheet-model-modal";
 import {
   CHANNELS,
-  DEMO_ITEMS,
-  DEMO_PRODUCTION,
-  type DemoOrder,
-} from "@/lib/screen-fixtures";
+  type ItemSummary,
+  type Order,
+  type ProductionOrder,
+} from "@/lib/domain";
 import { loadOrders } from "@/lib/orders-client";
+import { loadProduction } from "@/lib/production-client";
+import { useItemDirectory } from "@/lib/item-directory";
+import { fetchInventory } from "@/lib/inventory";
 import {
   BARCODE_TYPE_OPTIONS,
   type BarcodeType,
@@ -121,13 +124,6 @@ const LABEL_TEMPLATES: LabelTemplate[] = [
   { id: "local", name: "Etiqueta de local", target: "local", icon: "mapPin", w: 60, h: 40, desc: "Prateleira, caixa ou bancada", fields: ["locName", "locType", "code", "barcode"] },
 ];
 
-const DEMO_LOCATIONS = [
-  { code: "050100000017", name: "Prateleira B1", type: "Prateleira" },
-  { code: "050200000024", name: "Caixa organizadora O3", type: "Caixa" },
-  { code: "050300000031", name: "Bancada de producao", type: "Bancada" },
-  { code: "050400000044", name: "Area de cura", type: "Cura" },
-];
-
 const FIELD_LABELS: Record<LabelField, string> = {
   name: "Nome do item",
   variant: "Variacao",
@@ -198,17 +194,21 @@ function defaultFields(template: LabelTemplate): FieldState {
   return Object.fromEntries(template.fields.map((field) => [field, true])) as FieldState;
 }
 
-function entityOptionsFor(target: LabelTarget, orders: DemoOrder[] = []): EntityOption[] {
+type LabelLocation = { code: string; name: string; type: string };
+type EntitySources = { orders: Order[]; items: ItemSummary[]; production: ProductionOrder[]; locations: LabelLocation[] };
+
+function entityOptionsFor(target: LabelTarget, sources: EntitySources): EntityOption[] {
+  const { orders, items, production, locations } = sources;
   switch (target) {
     case "item":
-      return DEMO_ITEMS.map((item) => ({
+      return items.map((item) => ({
         id: item.code,
         label: `${item.name} ${item.variant}`,
         sub: item.sku,
         entity: { name: item.name, variant: item.variant, sku: item.sku, code: item.code },
       }));
     case "lote":
-      return DEMO_PRODUCTION
+      return production
         .filter((order) => order.lot)
         .map((order) => ({
           id: order.lot ?? order.code,
@@ -217,7 +217,7 @@ function entityOptionsFor(target: LabelTarget, orders: DemoOrder[] = []): Entity
           entity: { name: order.productName, lot: order.lot, prodDate: order.date, code: order.lot ?? order.code },
         }));
     case "op":
-      return DEMO_PRODUCTION.map((order) => ({
+      return production.map((order) => ({
         id: order.code,
         label: order.num,
         sub: order.productName,
@@ -243,7 +243,7 @@ function entityOptionsFor(target: LabelTarget, orders: DemoOrder[] = []): Entity
         },
       }));
     case "local":
-      return DEMO_LOCATIONS.map((location) => ({
+      return locations.map((location) => ({
         id: location.code,
         label: location.name,
         sub: location.type,
@@ -339,19 +339,19 @@ function AddLabelModal({
   onClose,
   onAdd,
   defaultBarcodeType,
-  orders,
+  sources,
 }: {
   open: boolean;
   onClose: () => void;
   onAdd: (item: QueueItem) => void;
   defaultBarcodeType: BarcodeType;
-  orders: DemoOrder[];
+  sources: EntitySources;
 }) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
   const [templateId, setTemplateId] = React.useState(LABEL_TEMPLATES[0].id);
   const template = LABEL_TEMPLATES.find((item) => item.id === templateId) ?? LABEL_TEMPLATES[0];
-  const entityOptions = React.useMemo(() => entityOptionsFor(template.target, orders), [orders, template.target]);
+  const entityOptions = React.useMemo(() => entityOptionsFor(template.target, sources), [sources, template.target]);
   const [entityId, setEntityId] = React.useState(entityOptions[0]?.id ?? "");
   const [fields, setFields] = React.useState<FieldState>(() => defaultFields(template));
   const [barcodeType, setBarcodeType] = React.useState<BarcodeType>(defaultBarcodeType);
@@ -362,16 +362,16 @@ function AddLabelModal({
     const firstTemplate = LABEL_TEMPLATES[0];
     setTemplateId(firstTemplate.id);
     setFields(defaultFields(firstTemplate));
-    setEntityId(entityOptionsFor(firstTemplate.target, orders)[0]?.id ?? "");
+    setEntityId(entityOptionsFor(firstTemplate.target, sources)[0]?.id ?? "");
     setBarcodeType(defaultBarcodeType);
     setCopies(1);
-  }, [defaultBarcodeType, open, orders]);
+  }, [defaultBarcodeType, open, sources]);
 
   React.useEffect(() => {
-    const nextOptions = entityOptionsFor(template.target, orders);
+    const nextOptions = entityOptionsFor(template.target, sources);
     setFields(defaultFields(template));
     setEntityId(nextOptions[0]?.id ?? "");
-  }, [orders, template]);
+  }, [sources, template]);
 
   const selected = entityOptions.find((option) => option.id === entityId) ?? entityOptions[0];
   const entity = selected?.entity ?? {};
@@ -528,7 +528,14 @@ function assignmentFor(queue: QueueItem[], skip: number[], perSheet: number) {
 export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
   const [sheets, setSheets] = useLabelSheets();
   const [defaultBarcodeType] = useBarcodeType();
-  const [orders, setOrders] = React.useState<DemoOrder[]>([]);
+  const dir = useItemDirectory();
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [production, setProduction] = React.useState<ProductionOrder[]>([]);
+  const [locations, setLocations] = React.useState<LabelLocation[]>([]);
+  const sources = React.useMemo<EntitySources>(
+    () => ({ orders, items: dir.items, production, locations }),
+    [orders, dir.items, production, locations],
+  );
   const [sheetId, setSheetId] = React.useState(sheets[0]?.id ?? "");
   const [queue, setQueue] = React.useState<QueueItem[]>([]);
   const [skip, setSkip] = React.useState<number[]>([]);
@@ -552,9 +559,11 @@ export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
 
   React.useEffect(() => {
     let alive = true;
-    loadOrders()
-      .then((nextOrders) => {
-        if (alive) setOrders(nextOrders);
+    loadOrders().then((next) => { if (alive) setOrders(next); }).catch(() => null);
+    loadProduction().then((next) => { if (alive) setProduction(next); }).catch(() => null);
+    fetchInventory()
+      .then((res) => {
+        if (alive) setLocations(res.locations.map((loc) => ({ code: loc.code, name: loc.name, type: loc.type })));
       })
       .catch(() => null);
     return () => { alive = false; };
@@ -736,7 +745,7 @@ export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
         </div>
       </div>
 
-      <AddLabelModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={addToQueue} defaultBarcodeType={defaultBarcodeType} orders={orders} />
+      <AddLabelModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={addToQueue} defaultBarcodeType={defaultBarcodeType} sources={sources} />
       <LabelSheetModelModal
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}

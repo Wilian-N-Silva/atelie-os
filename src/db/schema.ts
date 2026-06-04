@@ -117,6 +117,10 @@ export const auditActionEnum = pgEnum("audit_action", [
   "item.update",
   "order.create",
   "order.update",
+  "recipe.create",
+  "recipe.update",
+  "production.create",
+  "production.update",
   "stock.adjust",
   "seed.run",
 ]);
@@ -403,6 +407,100 @@ export const stockMovements = pgTable(
   (table) => ({
     companyItemIdx: index("stock_movements_company_item_idx").on(table.companyId, table.itemId),
     companyOccurredIdx: index("stock_movements_company_occurred_idx").on(table.companyId, table.occurredAt),
+  }),
+);
+
+export const recipes = pgTable(
+  "recipes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    productItemId: uuid("product_item_id").references(() => items.id, { onDelete: "set null" }),
+    productSku: text("product_sku").notNull(),
+    productName: text("product_name").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    companyProductIdx: index("recipes_company_product_idx").on(table.companyId, table.productSku),
+  }),
+);
+
+export const recipeVersions = pgTable(
+  "recipe_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+    version: text("version").notNull(),
+    status: text("status").notNull().default("rascunho"),
+    yieldQty: numeric("yield_qty", { precision: 12, scale: 3 }).notNull().default("1"),
+    yieldUnit: text("yield_unit").notNull().default("unidade"),
+    cureDays: integer("cure_days").notNull().default(0),
+    tests: jsonb("tests").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    ...timestamps,
+  },
+  (table) => ({
+    recipeVersionIdx: uniqueIndex("recipe_versions_recipe_version_idx").on(table.recipeId, table.version),
+  }),
+);
+
+export const recipeComponents = pgTable(
+  "recipe_components",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipeVersionId: uuid("recipe_version_id")
+      .notNull()
+      .references(() => recipeVersions.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "set null" }),
+    sku: text("sku").notNull(),
+    name: text("name").notNull(),
+    quantity: numeric("quantity", { precision: 12, scale: 4 }).notNull(),
+    unit: text("unit").notNull().default("un"),
+    loss: numeric("loss", { precision: 6, scale: 2 }).notNull().default("0"),
+    position: integer("position").notNull().default(0),
+    ...timestamps,
+  },
+  (table) => ({
+    versionIdx: index("recipe_components_version_idx").on(table.recipeVersionId),
+  }),
+);
+
+export const productionOrders = pgTable(
+  "production_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    number: text("number").notNull(),
+    productItemId: uuid("product_item_id").references(() => items.id, { onDelete: "set null" }),
+    productSku: text("product_sku").notNull(),
+    productName: text("product_name").notNull(),
+    recipeVersionId: uuid("recipe_version_id").references(() => recipeVersions.id, { onDelete: "set null" }),
+    recipeName: text("recipe_name").notNull(),
+    recipeVersion: text("recipe_version").notNull(),
+    planned: numeric("planned", { precision: 12, scale: 3 }).notNull().default("0"),
+    status: text("status").notNull(),
+    plannedDateLabel: text("planned_date_label").notNull().default("a definir"),
+    responsible: text("responsible").notNull().default(""),
+    progress: integer("progress"),
+    lot: text("lot"),
+    cureUntil: text("cure_until"),
+    cureDayLeft: integer("cure_day_left"),
+    source: text("source").notNull().default("manual"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCodeIdx: uniqueIndex("production_orders_company_code_idx").on(table.companyId, table.code),
+    companyStatusIdx: index("production_orders_company_status_idx").on(table.companyId, table.status),
   }),
 );
 

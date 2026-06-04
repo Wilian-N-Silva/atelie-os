@@ -3,30 +3,32 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLogs, items, orderItems, orders } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
-import { ORDER_STATUS, type DemoOrder } from "@/lib/screen-fixtures";
+import { type Order } from "@/lib/domain";
 
 export const runtime = "nodejs";
 
-type OrderPatch = Partial<Pick<DemoOrder, "payment" | "status">>;
+type OrderPatch = Partial<Pick<Order, "payment" | "status">>;
 
 const CHANNELS = ["instagram", "whatsapp", "mercadolivre", "shopee", "feira", "direta"] as const;
 const PAYMENTS = ["pago", "aguardando"] as const;
 const LABEL_KINDS = ["internal", "pdf_attached"] as const;
 
-function isOrderStatus(value: unknown): value is DemoOrder["status"] {
-  return typeof value === "string" && value in ORDER_STATUS;
+// Status keys are company-configurable workflow step keys; accept any non-empty
+// technical key rather than validating against a hardcoded set.
+function isOrderStatus(value: unknown): value is Order["status"] {
+  return typeof value === "string" && /^[a-z0-9_]{1,64}$/.test(value);
 }
 
-function isPayment(value: unknown): value is DemoOrder["payment"] {
-  return PAYMENTS.includes(value as DemoOrder["payment"]);
+function isPayment(value: unknown): value is Order["payment"] {
+  return PAYMENTS.includes(value as Order["payment"]);
 }
 
-function isChannel(value: unknown): value is DemoOrder["channel"] {
-  return CHANNELS.includes(value as DemoOrder["channel"]);
+function isChannel(value: unknown): value is Order["channel"] {
+  return CHANNELS.includes(value as Order["channel"]);
 }
 
-function isLabelKind(value: unknown): value is NonNullable<DemoOrder["labelKind"]> {
-  return LABEL_KINDS.includes(value as NonNullable<DemoOrder["labelKind"]>);
+function isLabelKind(value: unknown): value is NonNullable<Order["labelKind"]> {
+  return LABEL_KINDS.includes(value as NonNullable<Order["labelKind"]>);
 }
 
 function cleanString(value: unknown, max: number) {
@@ -43,9 +45,9 @@ function cleanMoney(value: unknown) {
   return Number.isFinite(number) && number >= 0 ? number : 0;
 }
 
-function cleanOrder(value: unknown): DemoOrder | null {
+function cleanOrder(value: unknown): Order | null {
   if (!value || typeof value !== "object") return null;
-  const input = value as DemoOrder;
+  const input = value as Order;
   const code = cleanString(input.code, 12);
   const num = cleanString(input.num, 32);
   const customerName = cleanString(input.customerName, 120);
@@ -116,13 +118,13 @@ async function itemIdsBySku(companyId: string, skus: string[]) {
   return new Map(rows.map((item) => [item.sku, item.id]));
 }
 
-async function listOrders(companyId: string): Promise<DemoOrder[]> {
+async function listOrders(companyId: string): Promise<Order[]> {
   const rows = await db.query.orders.findMany({
     where: eq(orders.companyId, companyId),
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
-  const result: DemoOrder[] = [];
+  const result: Order[] = [];
   for (const row of rows) {
     const lines = await db.query.orderItems.findMany({
       where: eq(orderItems.orderId, row.id),
@@ -156,7 +158,7 @@ async function listOrders(companyId: string): Promise<DemoOrder[]> {
   return result;
 }
 
-async function createOrder(companyId: string, actorUserId: string, input: DemoOrder) {
+async function createOrder(companyId: string, actorUserId: string, input: Order) {
   const skuToItemId = await itemIdsBySku(companyId, input.items.map((line) => line.sku));
 
   return db.transaction(async (tx) => {

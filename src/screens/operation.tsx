@@ -5,17 +5,17 @@ import { Barcode } from "@/components/barcode";
 import { Icon, cn } from "@/components/ui";
 import {
   CHANNELS,
-  DEMO_ITEMS,
-  DEMO_PRODUCTION,
-  DEMO_RECIPES,
-  ORDER_STATUS,
-  PROD_STATUS,
-  findDemoItem,
-  type DemoItem,
-  type DemoOrder,
-  type DemoProductionOrder,
-} from "@/lib/screen-fixtures";
+  type ItemSummary,
+  type Order,
+  type ProductionOrder,
+  type Recipe,
+} from "@/lib/domain";
 import { loadOrders } from "@/lib/orders-client";
+import { loadProduction } from "@/lib/production-client";
+import { loadRecipes } from "@/lib/recipes-client";
+import { useItemDirectory } from "@/lib/item-directory";
+import { useWorkflows } from "@/lib/workflows";
+import { buildStatusMap, statusInfo } from "@/lib/workflow-status";
 import { normalizeScanValue, scanCandidates } from "@/lib/scan-candidates";
 import type { Go, Route } from "@/lib/types";
 
@@ -53,7 +53,7 @@ type CountsByStage = Record<ScanStage, CountMap>;
 type OperationLine = {
   sku: string;
   qty: number;
-  item: DemoItem;
+  item: ItemSummary;
   name: string;
   detail: string;
   code: string;
@@ -90,7 +90,7 @@ function isMode(value: unknown): value is OperationMode {
   return value === "separacao" || value === "conferencia" || value === "embalagem" || value === "materiais" || value === "producao";
 }
 
-function findOrderByScan(orders: DemoOrder[], raw: string) {
+function findOrderByScan(orders: Order[], raw: string) {
   const values = scanCandidates(raw);
   return orders.find((order) => {
     const num = normalizeScanValue(order.num);
@@ -98,7 +98,7 @@ function findOrderByScan(orders: DemoOrder[], raw: string) {
   });
 }
 
-function findProductionByScan(orders: DemoProductionOrder[], raw: string) {
+function findProductionByScan(orders: ProductionOrder[], raw: string) {
   const values = scanCandidates(raw);
   return orders.find((order) => {
     const num = normalizeScanValue(order.num);
@@ -106,15 +106,17 @@ function findProductionByScan(orders: DemoProductionOrder[], raw: string) {
   });
 }
 
-function recipeForProduction(order: DemoProductionOrder) {
-  return DEMO_RECIPES.find((recipe) => recipe.product === order.product);
+type FindItem = (sku: string) => ItemSummary | undefined;
+
+function recipeForProduction(order: ProductionOrder, recipes: Recipe[]) {
+  return recipes.find((recipe) => recipe.product === order.product);
 }
 
-function productionMaterialLines(order: DemoProductionOrder): OperationLine[] {
-  const recipe = recipeForProduction(order);
+function productionMaterialLines(order: ProductionOrder, recipes: Recipe[], find: FindItem): OperationLine[] {
+  const recipe = recipeForProduction(order, recipes);
   if (!recipe) return [];
   return recipe.components.flatMap((component) => {
-    const item = findDemoItem(component.sku);
+    const item = find(component.sku);
     if (!item) return [];
     const need = Number((component.qty * order.planned * (1 + component.loss / 100)).toFixed(3));
     const short = item.available < need;
@@ -131,31 +133,31 @@ function productionMaterialLines(order: DemoProductionOrder): OperationLine[] {
   });
 }
 
-function modeForOrder(order: DemoOrder): OperationMode {
+function modeForOrder(order: Order): OperationMode {
   if (order.status === "pago" || order.status === "a_separar") return "separacao";
   if (order.status === "separado") return "conferencia";
   return "embalagem";
 }
 
-function modeForProduction(order: DemoProductionOrder): OperationMode {
+function modeForProduction(order: ProductionOrder): OperationMode {
   return order.status === "em_producao" ? "producao" : "materiais";
 }
 
-function canOperateOrder(order: DemoOrder) {
+function canOperateOrder(order: Order) {
   return order.payment === "pago" && order.status !== "enviado" && order.status !== "entregue";
 }
 
-function canOperateProduction(order: DemoProductionOrder) {
+function canOperateProduction(order: ProductionOrder) {
   return order.status === "aguardando_materiais" || order.status === "em_producao";
 }
 
-function orderQueue(orders: DemoOrder[]) {
+function orderQueue(orders: Order[]) {
   return orders.filter(canOperateOrder).filter((order) =>
     order.status === "pago" || order.status === "a_separar" || order.status === "separado" || order.status === "embalado",
   );
 }
 
-function productionQueue(orders: DemoProductionOrder[]) {
+function productionQueue(orders: ProductionOrder[]) {
   return orders.filter(canOperateProduction);
 }
 
@@ -175,10 +177,10 @@ function stageLabel(mode: OperationMode) {
   return "Separacao";
 }
 
-function orderLines(order: DemoOrder | null): OperationLine[] {
+function orderLines(order: Order | null, find: FindItem): OperationLine[] {
   if (!order) return [];
   return order.items.flatMap((line) => {
-    const item = findDemoItem(line.sku);
+    const item = find(line.sku);
     if (!item) return [];
     return [{
       sku: line.sku,
@@ -194,15 +196,21 @@ function orderLines(order: DemoOrder | null): OperationLine[] {
 }
 
 export function OperationScreen({ go, route }: { go: Go; route: Route }) {
-  const [orders, setOrders] = React.useState<DemoOrder[]>([]);
-  const [productionOrders] = React.useState<DemoProductionOrder[]>(() => [...DEMO_PRODUCTION]);
+  const [workflows] = useWorkflows();
+  const dir = useItemDirectory();
+  const find = dir.find;
+  const [recipes, setRecipes] = React.useState<Recipe[]>([]);
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [productionOrders, setProductionOrders] = React.useState<ProductionOrder[]>([]);
+  const orderStatusMap = React.useMemo(() => buildStatusMap(workflows.order), [workflows.order]);
+  const productionStatusMap = React.useMemo(() => buildStatusMap(workflows.production), [workflows.production]);
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(route.order ?? null);
   const [selectedProductionId, setSelectedProductionId] = React.useState<string | null>(route.production ?? null);
   const [mode, setMode] = React.useState<OperationMode>(isMode(route.mode) ? route.mode : route.production ? "materiais" : "separacao");
   const order = React.useMemo(() => orders.find((item) => item.id === selectedOrderId) ?? null, [orders, selectedOrderId]);
   const production = React.useMemo(() => productionOrders.find((item) => item.id === selectedProductionId) ?? null, [productionOrders, selectedProductionId]);
   const targetKind: "order" | "production" | null = production ? "production" : order ? "order" : null;
-  const expected = React.useMemo(() => production ? productionMaterialLines(production) : orderLines(order), [order, production]);
+  const expected = React.useMemo(() => production ? productionMaterialLines(production, recipes, find) : orderLines(order, find), [order, production, recipes, find]);
   const activeChecklist = production ? PRODUCTION_CHECKLIST : ORDER_PACK_CHECKLIST;
   const [countsByStage, setCountsByStage] = React.useState<CountsByStage>({ separacao: {}, conferencia: {}, materiais: {} });
   const [stageDone, setStageDone] = React.useState<StageDone>(() => emptyStageDone());
@@ -217,11 +225,9 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
 
   React.useEffect(() => {
     let alive = true;
-    loadOrders()
-      .then((nextOrders) => {
-        if (alive) setOrders(nextOrders);
-      })
-      .catch(() => null);
+    loadOrders().then((next) => { if (alive) setOrders(next); }).catch(() => null);
+    loadProduction().then((next) => { if (alive) setProductionOrders(next); }).catch(() => null);
+    loadRecipes().then((next) => { if (alive) setRecipes(next); }).catch(() => null);
     return () => { alive = false; };
   }, []);
 
@@ -274,9 +280,9 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
   const currentComplete = totalNeed > 0 && totalDone >= totalNeed;
   const checksDone = checks.slice(0, activeChecklist.length).filter(Boolean).length;
   const checklistComplete = checksDone === activeChecklist.length;
-  const orderStep = order ? ORDER_STATUS[order.status].step : 0;
-  const separationComplete = orderStep >= ORDER_STATUS.separado.step || stageDone.separacao;
-  const conferenceComplete = orderStep >= ORDER_STATUS.embalado.step || stageDone.conferencia;
+  const orderStep = order ? statusInfo(orderStatusMap, order.status).step : 0;
+  const separationComplete = orderStep >= statusInfo(orderStatusMap, "separado").step || stageDone.separacao;
+  const conferenceComplete = orderStep >= statusInfo(orderStatusMap, "embalado").step || stageDone.conferencia;
   const materialsComplete = production ? production.status !== "aguardando_materiais" || stageDone.materiais : false;
   const modePct = mode === "embalagem" || mode === "producao" ? Math.round((checksDone / activeChecklist.length) * 100) : pct;
 
@@ -290,7 +296,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     flashTimer.current = window.setTimeout(() => setScanState("focus"), 700);
   };
 
-  const selectOrder = (next: DemoOrder, source: "scan" | "manual") => {
+  const selectOrder = (next: Order, source: "scan" | "manual") => {
     if (!canOperateOrder(next)) {
       setFeedback({
         kind: "bad",
@@ -310,12 +316,12 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     flash("ok");
   };
 
-  const selectProduction = (next: DemoProductionOrder, source: "scan" | "manual") => {
+  const selectProduction = (next: ProductionOrder, source: "scan" | "manual") => {
     if (!canOperateProduction(next)) {
       setFeedback({
         kind: "bad",
         name: "OP fora da fila operacional",
-        sub: `${next.num} esta em ${PROD_STATUS[next.status].label}`,
+        sub: `${next.num} esta em ${statusInfo(productionStatusMap, next.status).label}`,
         fix: "Volte para Producao e confira o status da OP.",
       });
       pushLog({ kind: "bad", label: `OP bloqueada: ${next.num}` });
@@ -430,7 +436,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
       return;
     }
 
-    const other = DEMO_ITEMS.find((item) => values.has(item.code) || values.has(item.sku.toLowerCase()));
+    const other = dir.items.find((item) => values.has(item.code) || values.has(item.sku.toLowerCase()));
     if (other) {
       const doc = production ? production.num : order?.num;
       setFeedback({ kind: "bad", name: targetKind === "production" ? "Material errado" : "Item errado", sub: `${other.name} nao pertence a ${doc}`, fix: "Separe o item correto da lista." });
@@ -527,7 +533,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
             <div className="op-coltitle"><span>Pedidos</span><span>{ordersToOperate.length}</span></div>
             <div className="op-order-list">
               {ordersToOperate.map((item) => {
-                const status = ORDER_STATUS[item.status];
+                const status = statusInfo(orderStatusMap, item.status);
                 return (
                   <button key={item.id} className="op-order-card" onClick={() => selectOrder(item, "manual")}>
                     <div className="op-order-main">
@@ -544,7 +550,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
             <div className="op-coltitle" style={{ marginTop: 18 }}><span>Producao</span><span>{productionsToOperate.length}</span></div>
             <div className="op-order-list">
               {productionsToOperate.map((item) => {
-                const status = PROD_STATUS[item.status];
+                const status = statusInfo(productionStatusMap, item.status);
                 return (
                   <button key={item.id} className="op-order-card" onClick={() => selectProduction(item, "manual")}>
                     <div className="op-order-main">

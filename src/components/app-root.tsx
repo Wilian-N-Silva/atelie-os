@@ -75,10 +75,7 @@ function Workspace({
     setTheme(localStorage.getItem("atelie-theme") || "light");
     setDensity(localStorage.getItem("atelie-density") || "comfortable");
     try { const r = JSON.parse(localStorage.getItem("atelie-route") || "null"); if (r) setRoute(r); } catch {}
-    try { setNotifState(JSON.parse(localStorage.getItem("atelie-notif") || "{}")); } catch {}
   }, []);
-
-  React.useEffect(() => { localStorage.setItem("atelie-notif", JSON.stringify(notifState)); }, [notifState]);
 
   React.useEffect(() => {
     if (session.companyBranding?.themeTokens) {
@@ -171,6 +168,10 @@ export function AppRoot() {
     setSession(s);
   };
 
+  const patchSession = React.useCallback((patch: Partial<Session>) => {
+    setSession((current) => current ? { ...current, ...patch } : current);
+  }, []);
+
   const finishOnboarding = async ({ companyName, segment, teamSize, logoUrl, invites }: OnboardingDonePayload) => {
     const res = await fetch("/api/app/onboarding", {
       method: "POST",
@@ -198,7 +199,7 @@ export function AppRoot() {
     <Workspace
       session={session}
       onSignOut={signOut}
-      onSessionPatch={(patch) => setSession((current) => current ? { ...current, ...patch } : current)}
+      onSessionPatch={patchSession}
     />
   );
 }

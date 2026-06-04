@@ -20,48 +20,34 @@ import {
 import { Barcode } from "@/components/barcode";
 import {
   BRL,
-  DEMO_PRODUCTION,
-  DEMO_RECIPES,
-  PROD_STATUS,
-  findDemoItem,
-  type DemoProductionOrder,
-  type DemoProductionStatus,
-} from "@/lib/screen-fixtures";
+  type ItemSummary,
+  type ProductionOrder,
+  type Recipe,
+} from "@/lib/domain";
+import { useItemDirectory } from "@/lib/item-directory";
+import { createProduction, loadProduction } from "@/lib/production-client";
+import { loadRecipes } from "@/lib/recipes-client";
 import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
+import { buildStatusMap, statusIcon, statusInfo, type StatusInfo } from "@/lib/workflow-status";
 import type { Go, Route } from "@/lib/types";
 
-const PRODUCTION_STATUS_COLUMNS: DemoProductionStatus[] = [
-  "aguardando_materiais",
-  "em_producao",
-  "em_cura",
-  "aguardando_revisao",
-  "liberada",
-  "finalizada",
-];
-
-function isProductionStatus(value: string): value is DemoProductionStatus {
-  return value in PROD_STATUS;
-}
+type FindItem = (sku: string) => ItemSummary | undefined;
+type StatusMap = Map<string, StatusInfo>;
 
 function productionColumnIcon(step: WorkflowStep) {
-  return isProductionStatus(step.key) ? PROD_STATUS[step.key].icon : "producao";
+  return statusIcon(step.key);
 }
 
-function productionColumnsFromWorkflow(steps: WorkflowStep[]) {
+function productionColumnsFromWorkflow(steps: WorkflowStep[], orders: ProductionOrder[]) {
   const seen = new Set(steps.map((step) => step.key));
-  const missing = PRODUCTION_STATUS_COLUMNS
+  const orphans = Array.from(new Set(orders.map((order) => order.status)))
     .filter((status) => !seen.has(status))
-    .map<WorkflowStep>((status) => ({
-      key: status,
-      label: PROD_STATUS[status].label,
-      color: PROD_STATUS[status].tone as WorkflowStep["color"],
-      automation: "none",
-    }));
-  return [...steps, ...missing];
+    .map<WorkflowStep>((status) => ({ key: status, label: status, color: "neutral", automation: "none" }));
+  return [...steps, ...orphans];
 }
 
-function recipeFor(order: DemoProductionOrder) {
-  return DEMO_RECIPES.find((recipe) => recipe.product === order.product);
+function recipeFor(order: ProductionOrder, recipes: Recipe[]) {
+  return recipes.find((recipe) => recipe.product === order.product);
 }
 
 function formatPlannedDate(value: string) {
@@ -70,11 +56,11 @@ function formatPlannedDate(value: string) {
   return `${match[3]}/${match[2]}`;
 }
 
-function materialRows(order: DemoProductionOrder) {
-  const recipe = recipeFor(order);
+function materialRows(order: ProductionOrder, recipes: Recipe[], find: FindItem) {
+  const recipe = recipeFor(order, recipes);
   if (!recipe) return [];
   return recipe.components.map((component) => {
-    const item = findDemoItem(component.sku);
+    const item = find(component.sku);
     const need = Number((component.qty * order.planned * (1 + component.loss / 100)).toFixed(3));
     return { ...component, need, available: item?.available ?? 0, short: (item?.available ?? 0) < need };
   });
@@ -88,16 +74,16 @@ function materialLocation(sku: string) {
   return "Almoxarifado";
 }
 
-function estimatedCost(order: DemoProductionOrder) {
-  return materialRows(order).reduce((sum, row) => sum + row.need * (findDemoItem(row.sku)?.costAvg ?? 0), 0);
+function estimatedCost(order: ProductionOrder, recipes: Recipe[], find: FindItem) {
+  return materialRows(order, recipes, find).reduce((sum, row) => sum + row.need * (find(row.sku)?.costAvg ?? 0), 0);
 }
 
-function plannedMaterialRows(recipeId: string, quantity: string) {
-  const recipe = DEMO_RECIPES.find((item) => item.id === recipeId);
+function plannedMaterialRows(recipeId: string, quantity: string, recipes: Recipe[], find: FindItem) {
+  const recipe = recipes.find((item) => item.id === recipeId);
   const planned = Math.max(1, Number.parseInt(quantity, 10) || 1);
   if (!recipe) return [];
   return recipe.components.map((component) => {
-    const item = findDemoItem(component.sku);
+    const item = find(component.sku);
     const need = Number((component.qty * planned * (1 + component.loss / 100)).toFixed(3));
     return {
       ...component,
@@ -110,12 +96,12 @@ function plannedMaterialRows(recipeId: string, quantity: string) {
   });
 }
 
-type ProductionPickListJob = { id: string; code: string; title: string; orders: DemoProductionOrder[]; generatedAt: string };
+type ProductionPickListJob = { id: string; code: string; title: string; orders: ProductionOrder[]; generatedAt: string };
 
-function ProductionPickListDocument({ job }: { job: ProductionPickListJob | null }) {
+function ProductionPickListDocument({ job, recipes, find }: { job: ProductionPickListJob | null; recipes: Recipe[]; find: FindItem }) {
   if (!job) return null;
   const totalOps = job.orders.length;
-  const totalLines = job.orders.reduce((sum, order) => sum + materialRows(order).length, 0);
+  const totalLines = job.orders.reduce((sum, order) => sum + materialRows(order, recipes, find).length, 0);
   const totalUnits = job.orders.reduce((sum, order) => sum + order.planned, 0);
 
   return (
@@ -143,8 +129,8 @@ function ProductionPickListDocument({ job }: { job: ProductionPickListJob | null
         </section>
 
         {job.orders.map((order) => {
-          const rows = materialRows(order);
-          const recipe = recipeFor(order);
+          const rows = materialRows(order, recipes, find);
+          const recipe = recipeFor(order, recipes);
           return (
             <article className="pickdoc-order" key={order.id}>
               <div className="pickdoc-order-head">
@@ -173,7 +159,7 @@ function ProductionPickListDocument({ job }: { job: ProductionPickListJob | null
                 </thead>
                 <tbody>
                   {rows.map((row) => {
-                    const item = findDemoItem(row.sku);
+                    const item = find(row.sku);
                     return (
                       <tr key={row.sku}>
                         <td className="pickdoc-check"><span className="pickdoc-box" /></td>
@@ -211,10 +197,10 @@ function ProductionPickListDocument({ job }: { job: ProductionPickListJob | null
   );
 }
 
-function ProductionDrawer({ order, go, onClose, onPrint }: { order: DemoProductionOrder; go: Go; onClose: () => void; onPrint: (orders: DemoProductionOrder[], title: string) => void }) {
-  const status = PROD_STATUS[order.status];
-  const recipe = recipeFor(order);
-  const rows = materialRows(order);
+function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void }) {
+  const status = statusInfo(statusMap, order.status);
+  const recipe = recipeFor(order, recipes);
+  const rows = materialRows(order, recipes, find);
   const anyShort = rows.some((row) => row.short);
 
   return (
@@ -269,7 +255,7 @@ function ProductionDrawer({ order, go, onClose, onPrint }: { order: DemoProducti
 
           <div className="field"><span className="field-k">Responsavel</span><span className="field-v">{order.resp}</span></div>
           <div className="field"><span className="field-k">Data planejada</span><span className="field-v">{formatPlannedDate(order.date)}</span></div>
-          <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimatedCost(order))}</span></div>
+          <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimatedCost(order, recipes, find))}</span></div>
         </div>
 
         <div className="drawer-foot">
@@ -284,50 +270,56 @@ function ProductionDrawer({ order, go, onClose, onPrint }: { order: DemoProducti
   );
 }
 
-function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (order: DemoProductionOrder) => void }) {
-  const idPrefix = React.useId();
-  const nextId = React.useRef(0);
-  const [recipeId, setRecipeId] = React.useState(DEMO_RECIPES[0]?.id ?? "");
+function PlanProductionModal({ open, recipes, find, onClose, onCreate }: { open: boolean; recipes: Recipe[]; find: FindItem; onClose: () => void; onCreate: (input: { recipeVersionId: string; planned: number; plannedDateLabel: string; responsible: string }, anyShort: boolean) => Promise<void> | void }) {
+  const [recipeId, setRecipeId] = React.useState("");
   const [quantity, setQuantity] = React.useState("24");
   const [date, setDate] = React.useState("");
   const [responsible, setResponsible] = React.useState("Camila");
-  const recipe = DEMO_RECIPES.find((item) => item.id === recipeId) ?? DEMO_RECIPES[0];
-  const rows = plannedMaterialRows(recipeId, quantity);
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open && !recipeId && recipes.length) setRecipeId(recipes[0].id);
+  }, [open, recipeId, recipes]);
+
+  const recipe = recipes.find((item) => item.id === recipeId) ?? recipes[0];
+  const rows = plannedMaterialRows(recipeId, quantity, recipes, find);
   const anyShort = rows.some((row) => row.short);
   const estimated = rows.reduce((sum, row) => sum + row.cost, 0);
   const planned = Math.max(1, Number.parseInt(quantity, 10) || 1);
   const responsibleOptions = ["Camila", "Equipe", "Operacao", "Ana", "Bruna"].map((name) => ({ value: name, label: name }));
 
-  const submit = () => {
-    const next = nextId.current++;
-    const id = `${idPrefix}-${next}`;
-    onCreate({
-      id,
-      code: `030100${String(900000 + next).slice(-6)}`,
-      num: `OP-${209 + next}`,
-      product: recipe.product,
-      productName: recipe.productName,
-      recipe: recipe.name,
-      recipeVer: recipe.version,
-      planned,
-      status: "aguardando_materiais",
-      date: date || "a definir",
-      resp: responsible,
-    });
-    toast(anyShort ? "OP planejada com material faltante." : "Ordem de producao planejada nesta sessao.", "info");
-    onClose();
+  const submit = async () => {
+    if (!recipe) {
+      toast("Cadastre uma receita antes de planejar.", "bad");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onCreate({
+        recipeVersionId: recipe.id,
+        planned,
+        plannedDateLabel: date ? formatPlannedDate(date) : "a definir",
+        responsible,
+      }, anyShort);
+      toast(anyShort ? "OP planejada com material faltante." : "Ordem de producao planejada.", "info");
+      onClose();
+    } catch {
+      toast("Nao foi possivel planejar a producao.", "bad");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <Modal open={open} onClose={onClose} icon="producao" title="Planejar producao" subtitle="Crie uma OP local para organizar a bancada" width={820}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="default" icon="plus" onClick={submit}>Planejar</Button></>}>
+    <Modal open={open} onClose={onClose} icon="producao" title="Planejar producao" subtitle="Crie uma OP para organizar a bancada" width={820}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><div className="spacer" style={{ flex: 1 }} /><Button variant="default" icon="plus" onClick={submit} disabled={saving || !recipe}>Planejar</Button></>}>
       <div className="prod-plan-layout">
         <div className="prod-plan-main">
           <section className="order-form-section">
             <div className="block-label">Plano</div>
             <div className="ff-grid">
               <Field label="Receita">
-                <Select value={recipeId} onChange={setRecipeId} options={DEMO_RECIPES.map((item) => ({ value: item.id, label: `${item.name} ${item.version}` }))} />
+                <Select value={recipeId} onChange={setRecipeId} options={recipes.map((item) => ({ value: item.id, label: `${item.name} ${item.version}` }))} />
               </Field>
               <Field label="Quantidade planejada"><Input value={quantity} inputMode="numeric" onChange={(event) => setQuantity(event.target.value)} /></Field>
             </div>
@@ -394,20 +386,30 @@ function PlanProductionModal({ open, onClose, onCreate }: { open: boolean; onClo
 
 export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
   const [workflows] = useWorkflows();
-  const [orders, setOrders] = React.useState<DemoProductionOrder[]>(() => [...DEMO_PRODUCTION]);
+  const dir = useItemDirectory();
+  const [recipes, setRecipes] = React.useState<Recipe[]>([]);
+  const [orders, setOrders] = React.useState<ProductionOrder[]>([]);
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [planOpen, setPlanOpen] = React.useState(false);
   const [printJob, setPrintJob] = React.useState<ProductionPickListJob | null>(null);
   const printCounter = React.useRef(1);
   const openOrder = orders.find((order) => order.id === openId);
   const printableOrders = orders.filter((order) => order.status === "aguardando_materiais");
-  const columns = React.useMemo(() => productionColumnsFromWorkflow(workflows.production), [workflows.production]);
+  const statusMap = React.useMemo(() => buildStatusMap(workflows.production), [workflows.production]);
+  const columns = React.useMemo(() => productionColumnsFromWorkflow(workflows.production, orders), [workflows.production, orders]);
+
+  React.useEffect(() => {
+    let alive = true;
+    loadProduction().then((next) => { if (alive) setOrders(next); }).catch(() => null);
+    loadRecipes().then((next) => { if (alive) setRecipes(next); }).catch(() => null);
+    return () => { alive = false; };
+  }, []);
 
   React.useEffect(() => {
     if (route.open) setOpenId(route.open);
   }, [route.open]);
 
-  const printPickList = React.useCallback((selected: DemoProductionOrder[], title: string) => {
+  const printPickList = React.useCallback((selected: ProductionOrder[], title: string) => {
     const next = printCounter.current++;
     setPrintJob({
       id: `prod-pick-${next}`,
@@ -466,7 +468,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
               </div>
               <div className="kcol-body">
                 {cards.map((order) => {
-                  const rows = materialRows(order);
+                  const rows = materialRows(order, recipes, dir.find);
                   const short = rows.some((row) => row.short);
                   return (
                     <div className="kcard" key={order.id} onClick={() => setOpenId(order.id)}>
@@ -492,9 +494,18 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
         })}
       </div>
 
-      {openOrder && <ProductionDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} />}
-      <PlanProductionModal open={planOpen} onClose={() => setPlanOpen(false)} onCreate={(order) => setOrders((current) => [order, ...current])} />
-      <ProductionPickListDocument job={printJob} />
+      {openOrder && <ProductionDrawer order={openOrder} recipes={recipes} find={dir.find} statusMap={statusMap} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} />}
+      <PlanProductionModal
+        open={planOpen}
+        recipes={recipes}
+        find={dir.find}
+        onClose={() => setPlanOpen(false)}
+        onCreate={async (input) => {
+          const next = await createProduction(input);
+          setOrders(next);
+        }}
+      />
+      <ProductionPickListDocument job={printJob} recipes={recipes} find={dir.find} />
     </div>
   );
 }

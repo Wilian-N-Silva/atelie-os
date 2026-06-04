@@ -22,48 +22,41 @@ import { Barcode } from "@/components/barcode";
 import {
   BRL,
   CHANNELS,
-  ORDER_STATUS,
-  findDemoItem,
-  productOptions,
-  type DemoOrder,
-  type DemoOrderStatus,
-} from "@/lib/screen-fixtures";
+  type ItemSummary,
+  type Order,
+} from "@/lib/domain";
 import { createOrder, loadOrders, updateOrder as saveOrderPatch } from "@/lib/orders-client";
 import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
+import { buildStatusMap, statusInfo, type StatusInfo } from "@/lib/workflow-status";
+import { useItemDirectory, type ItemDirectory } from "@/lib/item-directory";
 import type { Go, Route } from "@/lib/types";
 
-type OrderFilter = "todos" | "a_separar" | "a_embalar" | "envio" | "pagamento" | "enviados";
-type PickListJob = { id: string; code: string; title: string; orders: DemoOrder[]; generatedAt: string };
-type OrderPatch = Partial<Pick<DemoOrder, "payment" | "status">>;
-type LabelKind = NonNullable<DemoOrder["labelKind"]>;
+type FindItem = (sku: string) => ItemSummary | undefined;
+type StatusMap = Map<string, StatusInfo>;
 
-function orderQuantity(order: DemoOrder) {
+type OrderFilter = "todos" | "a_separar" | "a_embalar" | "envio" | "pagamento" | "enviados";
+type PickListJob = { id: string; code: string; title: string; orders: Order[]; generatedAt: string };
+type OrderPatch = Partial<Pick<Order, "payment" | "status">>;
+type LabelKind = NonNullable<Order["labelKind"]>;
+
+function orderQuantity(order: Order) {
   return order.items.reduce((sum, item) => sum + item.qty, 0);
 }
 
-function orderLinePrice(line: DemoOrder["items"][number]) {
-  return line.unitPrice ?? findDemoItem(line.sku)?.price ?? 0;
+function orderLinePrice(line: Order["items"][number], find: FindItem) {
+  return line.unitPrice ?? find(line.sku)?.price ?? 0;
 }
 
-function canPick(order: DemoOrder) {
+function canPick(order: Order) {
   return order.status === "pago" || order.status === "a_separar";
 }
 
-function isOrderStatus(value: string): value is DemoOrderStatus {
-  return value in ORDER_STATUS;
-}
-
-function orderFlowFromWorkflow(steps: WorkflowStep[], currentStatus: DemoOrderStatus) {
-  const configured = steps.filter((step): step is WorkflowStep & { key: DemoOrderStatus } => isOrderStatus(step.key));
-  if (configured.some((step) => step.key === currentStatus)) return configured;
+function orderFlowFromWorkflow(steps: WorkflowStep[], currentStatus: string, statusMap: StatusMap) {
+  if (steps.some((step) => step.key === currentStatus)) return steps;
+  const info = statusInfo(statusMap, currentStatus);
   return [
-    ...configured,
-    {
-      key: currentStatus,
-      label: ORDER_STATUS[currentStatus].label,
-      color: ORDER_STATUS[currentStatus].tone as WorkflowStep["color"],
-      automation: "none" as const,
-    },
+    ...steps,
+    { key: currentStatus, label: info.label, color: info.tone, automation: "none" as const },
   ];
 }
 
@@ -75,16 +68,16 @@ function itemLocation(sku: string) {
   return "Prateleira A1";
 }
 
-function ChannelBadge({ channel }: { channel: DemoOrder["channel"] }) {
+function ChannelBadge({ channel }: { channel: Order["channel"] }) {
   const external = channel === "mercadolivre" || channel === "shopee";
   return <Badge tone={external ? "warn" : "neutral"}>{CHANNELS[channel]}</Badge>;
 }
 
-function defaultLabelKind(channel: DemoOrder["channel"]): LabelKind {
+function defaultLabelKind(channel: Order["channel"]): LabelKind {
   return channel === "mercadolivre" || channel === "shopee" ? "pdf_attached" : "internal";
 }
 
-function orderLabelKind(order: Pick<DemoOrder, "channel" | "labelKind">): LabelKind {
+function orderLabelKind(order: Pick<Order, "channel" | "labelKind">): LabelKind {
   return order.labelKind ?? defaultLabelKind(order.channel);
 }
 
@@ -92,7 +85,7 @@ function LabelBadge({ kind }: { kind: LabelKind }) {
   return kind === "pdf_attached" ? <Badge tone="info">PDF anexada</Badge> : <Badge tone="neutral">Interna</Badge>;
 }
 
-function PickListDocument({ job }: { job: PickListJob | null }) {
+function PickListDocument({ job, find }: { job: PickListJob | null; find: FindItem }) {
   if (!job) return null;
   const totalItems = job.orders.reduce((sum, order) => sum + orderQuantity(order), 0);
   const totalLines = job.orders.reduce((sum, order) => sum + order.items.length, 0);
@@ -122,7 +115,7 @@ function PickListDocument({ job }: { job: PickListJob | null }) {
         </section>
 
         {job.orders.map((order) => {
-          const lines = order.items.map((line) => ({ ...line, item: findDemoItem(line.sku) }));
+          const lines = order.items.map((line) => ({ ...line, item: find(line.sku) }));
           return (
             <article className="pickdoc-order" key={order.id}>
               <div className="pickdoc-order-head">
@@ -192,17 +185,21 @@ function OrderDrawer({
   onPrint,
   onUpdate,
   orderSteps,
+  statusMap,
+  find,
 }: {
-  order: DemoOrder;
+  order: Order;
   go: Go;
   onClose: () => void;
-  onPrint: (orders: DemoOrder[], title: string) => void;
+  onPrint: (orders: Order[], title: string) => void;
   onUpdate: (orderId: string, patch: OrderPatch) => void;
   orderSteps: WorkflowStep[];
+  statusMap: StatusMap;
+  find: FindItem;
 }) {
-  const status = ORDER_STATUS[order.status];
-  const lines = order.items.map((line) => ({ ...line, item: findDemoItem(line.sku) }));
-  const subtotal = lines.reduce((sum, line) => sum + orderLinePrice(line) * line.qty, 0);
+  const status = statusInfo(statusMap, order.status);
+  const lines = order.items.map((line) => ({ ...line, item: find(line.sku) }));
+  const subtotal = lines.reduce((sum, line) => sum + orderLinePrice(line, find) * line.qty, 0);
   const waitingPayment = order.payment !== "pago" || order.status === "aguardando_pagamento";
   const nextAction =
     canPick(order)
@@ -211,7 +208,7 @@ function OrderDrawer({
         ? { label: "Conferir separacao", icon: "listChecks", route: { screen: "operacao", mode: "conferencia", order: order.id } }
         : null;
 
-  const flow = orderFlowFromWorkflow(orderSteps, order.status);
+  const flow = orderFlowFromWorkflow(orderSteps, order.status, statusMap);
 
   return (
     <>
@@ -269,8 +266,8 @@ function OrderDrawer({
                       </div>
                     </div>
                   </td>
-                  <td className="r muted" style={{ whiteSpace: "nowrap" }}>{line.qty} x {BRL(orderLinePrice(line))}</td>
-                  <td className="r" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{BRL(orderLinePrice(line) * line.qty)}</td>
+                  <td className="r muted" style={{ whiteSpace: "nowrap" }}>{line.qty} x {BRL(orderLinePrice(line, find))}</td>
+                  <td className="r" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{BRL(orderLinePrice(line, find) * line.qty)}</td>
                 </tr>
               ))}
             </tbody>
@@ -288,7 +285,7 @@ function OrderDrawer({
           <div className="block-label" style={{ marginTop: 18 }}>Fluxo</div>
           <div className="stepper">
             {flow.map((step, index) => {
-              const meta = ORDER_STATUS[step.key];
+              const meta = statusInfo(statusMap, step.key);
               const done = status.step > meta.step;
               const current = order.status === step.key;
               return (
@@ -338,7 +335,7 @@ function OrderDrawer({
 
 type DraftLine = { id: number; sku: string; qty: string; unitPrice: string };
 type DraftLineView = DraftLine & {
-  item: ReturnType<typeof findDemoItem>;
+  item: ItemSummary | undefined;
   qtyNumber: number;
   unitPriceNumber: number;
   total: number;
@@ -356,8 +353,8 @@ function moneyInput(value: number) {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function makeDraftLine(id: number, sku: string): DraftLine {
-  return { id, sku, qty: "1", unitPrice: moneyInput(findDemoItem(sku)?.price ?? 0) };
+function makeDraftLine(id: number, sku: string, find: FindItem): DraftLine {
+  return { id, sku, qty: "1", unitPrice: moneyInput(find(sku)?.price ?? 0) };
 }
 
 function buildOrderItems(lines: DraftLineView[]) {
@@ -376,25 +373,26 @@ function buildOrderItems(lines: DraftLineView[]) {
   }));
 }
 
-function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: (order: DemoOrder) => void }) {
+function NewOrderView({ onCancel, onCreate, dir, statusMap }: { onCancel: () => void; onCreate: (order: Order) => void; dir: ItemDirectory; statusMap: StatusMap }) {
   const idPrefix = React.useId();
   const nextId = React.useRef(0);
   const nextLineId = React.useRef(1);
-  const products = productOptions();
+  const find = dir.find;
+  const products = dir.products;
   const firstSku = products[0]?.sku ?? "";
   const [customer, setCustomer] = React.useState("Cliente novo");
   const [city, setCity] = React.useState("Sao Paulo - SP");
-  const [channel, setChannel] = React.useState<DemoOrder["channel"]>("whatsapp");
-  const [payment, setPayment] = React.useState<DemoOrder["payment"]>("pago");
+  const [channel, setChannel] = React.useState<Order["channel"]>("whatsapp");
+  const [payment, setPayment] = React.useState<Order["payment"]>("pago");
   const [labelKind, setLabelKind] = React.useState<LabelKind>("internal");
   const [freight, setFreight] = React.useState("24,90");
   const [discount, setDiscount] = React.useState("0,00");
   const [tracking, setTracking] = React.useState("");
-  const [lines, setLines] = React.useState<DraftLine[]>(() => [makeDraftLine(0, firstSku)]);
+  const [lines, setLines] = React.useState<DraftLine[]>(() => [makeDraftLine(0, firstSku, find)]);
   const [note, setNote] = React.useState("");
 
   const draftLineBase = lines.map((line) => {
-    const item = findDemoItem(line.sku);
+    const item = find(line.sku);
     const qtyNumber = Math.max(1, Number.parseInt(line.qty, 10) || 1);
     const unitPriceNumber = parseMoney(line.unitPrice);
     return {
@@ -423,7 +421,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
   };
 
   const addLine = () => {
-    setLines((current) => [...current, makeDraftLine(nextLineId.current++, firstSku)]);
+    setLines((current) => [...current, makeDraftLine(nextLineId.current++, firstSku, find)]);
   };
 
   const removeLine = (lineId: number) => {
@@ -517,7 +515,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
                 <Select
                   value={channel}
                   onChange={(value) => {
-                    const next = value as DemoOrder["channel"];
+                    const next = value as Order["channel"];
                     setChannel(next);
                     setLabelKind(defaultLabelKind(next));
                   }}
@@ -525,7 +523,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
                 />
               </Field>
               <Field label="Pagamento">
-                <Select value={payment} onChange={(value) => setPayment(value as DemoOrder["payment"])} options={[
+                <Select value={payment} onChange={(value) => setPayment(value as Order["payment"])} options={[
                   { value: "pago", label: "Pago" },
                   { value: "aguardando", label: "Aguardando pagamento" },
                 ]} />
@@ -556,7 +554,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
                   <Field label={index === 0 ? "Produto" : ""} style={{ marginBottom: 0 }}>
                     <Select
                       value={line.sku}
-                      onChange={(value) => setLine(line.id, { sku: value, unitPrice: moneyInput(findDemoItem(value)?.price ?? 0) })}
+                      onChange={(value) => setLine(line.id, { sku: value, unitPrice: moneyInput(find(value)?.price ?? 0) })}
                       options={products.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
                     />
                   </Field>
@@ -627,7 +625,7 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
             <div className="field"><span className="field-k">Pagamento</span><span className="field-v">{payment === "pago" ? <Badge tone="ok" dot>Pago</Badge> : <Badge tone="warn" dot>Aguardando</Badge>}</span></div>
             <div className="field"><span className="field-k">Rastreio</span><span className="field-v">{tracking.trim() ? <span className="sku">{tracking.trim()}</span> : <span className="muted">pendente</span>}</span></div>
             <div className="field"><span className="field-k">Etiqueta</span><span className="field-v"><LabelBadge kind={labelKind} /></span></div>
-            <div className="field"><span className="field-k">Status inicial</span><span className="field-v">{payment === "pago" ? ORDER_STATUS.pago.label : ORDER_STATUS.aguardando_pagamento.label}</span></div>
+            <div className="field"><span className="field-k">Status inicial</span><span className="field-v">{payment === "pago" ? statusInfo(statusMap, "pago").label : statusInfo(statusMap, "aguardando_pagamento").label}</span></div>
           </div>
           {stockAlerts.length > 0 && (
             <>
@@ -654,7 +652,9 @@ function NewOrderView({ onCancel, onCreate }: { onCancel: () => void; onCreate: 
 
 export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
   const [workflows] = useWorkflows();
-  const [orders, setOrders] = React.useState<DemoOrder[]>([]);
+  const dir = useItemDirectory();
+  const statusMap = React.useMemo(() => buildStatusMap(workflows.order), [workflows.order]);
+  const [orders, setOrders] = React.useState<Order[]>([]);
   const [filter, setFilter] = React.useState<OrderFilter>((route.filter as OrderFilter) || "todos");
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [query, setQuery] = React.useState("");
@@ -677,7 +677,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
     if (route.open) setOpenId(route.open);
   }, [route.filter, route.open]);
 
-  const groups: Record<OrderFilter, (order: DemoOrder) => boolean> = {
+  const groups: Record<OrderFilter, (order: Order) => boolean> = {
     todos: () => true,
     a_separar: (order) => order.status === "pago" || order.status === "a_separar",
     a_embalar: (order) => order.status === "separado",
@@ -706,7 +706,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
     channel: (order) => CHANNELS[order.channel],
     qty: orderQuantity,
     total: (order) => order.total,
-    status: (order) => ORDER_STATUS[order.status].step,
+    status: (order) => statusInfo(statusMap, order.status).step,
   }, "status", "asc");
   const openOrder = orders.find((order) => order.id === openId);
   const updateOrder = React.useCallback((orderId: string, patch: OrderPatch) => {
@@ -715,7 +715,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
       .then(setOrders)
       .catch(() => toast("Nao foi possivel salvar a alteracao do pedido.", "bad"));
   }, []);
-  const printPickList = React.useCallback((selected: DemoOrder[], title: string) => {
+  const printPickList = React.useCallback((selected: Order[], title: string) => {
     const next = printCounter.current++;
     setPrintJob({
       id: `pick-${next}`,
@@ -746,6 +746,8 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
     return (
       <>
         <NewOrderView
+          dir={dir}
+          statusMap={statusMap}
           onCancel={() => setNewOpen(false)}
           onCreate={(order) => {
             setOrders((current) => [order, ...current]);
@@ -754,7 +756,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
               .catch(() => toast("Nao foi possivel salvar o pedido.", "bad"));
           }}
         />
-        <PickListDocument job={printJob} />
+        <PickListDocument job={printJob} find={dir.find} />
       </>
     );
   }
@@ -801,7 +803,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
           </thead>
           <tbody>
             {sort.sorted.map((order) => {
-              const status = ORDER_STATUS[order.status];
+              const status = statusInfo(statusMap, order.status);
               return (
                 <tr key={order.id} className="om-row-click" onClick={() => setOpenId(order.id)}>
                   <td><div style={{ fontWeight: 600 }}>{order.num}</div><div className="code-pill">{order.code}</div></td>
@@ -820,8 +822,8 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
         {sort.sorted.length === 0 && <Empty icon="pedidos" title="Nenhum pedido nesta visao" hint="Ajuste o filtro ou registre um novo pedido." />}
       </Card>
 
-      {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} orderSteps={workflows.order} />}
-      <PickListDocument job={printJob} />
+      {openOrder && <OrderDrawer order={openOrder} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} orderSteps={workflows.order} statusMap={statusMap} find={dir.find} />}
+      <PickListDocument job={printJob} find={dir.find} />
       <Sep style={{ marginTop: 18 }} />
     </div>
   );

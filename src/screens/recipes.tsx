@@ -6,8 +6,6 @@ import {
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   Empty,
   Field,
   Icon,
@@ -22,8 +20,13 @@ import {
   toast,
   useView,
 } from "@/components/ui";
-import { BRL, DEMO_ITEMS, DEMO_RECIPES, findDemoItem, productOptions, type DemoRecipe } from "@/lib/screen-fixtures";
+import { BRL, type ItemSummary, type Recipe } from "@/lib/domain";
+import { useItemDirectory } from "@/lib/item-directory";
+import { createRecipe, createRecipeVersion } from "@/lib/recipes-client";
+import { loadRecipes } from "@/lib/recipes-client";
 import type { Go, Route } from "@/lib/types";
+
+type FindItem = (sku: string) => ItemSummary | undefined;
 
 type RecipeComponentForm = {
   key: string;
@@ -32,11 +35,9 @@ type RecipeComponentForm = {
   loss: string;
 };
 
-const MATERIAL_OPTIONS = DEMO_ITEMS.filter((item) => item.type === "mp" || item.type === "emb");
-
-function recipeCost(recipe: DemoRecipe) {
+function recipeCost(recipe: Recipe, find: FindItem) {
   return recipe.components.reduce((sum, component) => {
-    const item = findDemoItem(component.sku);
+    const item = find(component.sku);
     return sum + (item?.costAvg ?? 0) * component.qty * (1 + component.loss / 100);
   }, 0);
 }
@@ -57,14 +58,14 @@ function recipeComponentFromSku(sku: string, index: number): RecipeComponentForm
   return { key: `${sku}-${index}-${Date.now()}`, sku, qty: fallback.qty, loss: fallback.loss };
 }
 
-function defaultRecipeComponents() {
+function defaultRecipeComponents(materials: ItemSummary[]): RecipeComponentForm[] {
   const preferred = ["CER-SOJ-01", "ESS-LAV-FR", "VID-NAD-156", "TMP-PIN-052"]
-    .filter((sku) => MATERIAL_OPTIONS.some((item) => item.sku === sku));
-  const skus = preferred.length ? preferred : MATERIAL_OPTIONS.slice(0, 2).map((item) => item.sku);
+    .filter((sku) => materials.some((item) => item.sku === sku));
+  const skus = preferred.length ? preferred : materials.slice(0, 2).map((item) => item.sku);
   return skus.map(recipeComponentFromSku);
 }
 
-function componentsFromRecipe(recipe: DemoRecipe): RecipeComponentForm[] {
+function componentsFromRecipe(recipe: Recipe): RecipeComponentForm[] {
   return recipe.components.map((component, index) => ({
     key: `${component.sku}-${index}-${recipe.id}`,
     sku: component.sku,
@@ -80,21 +81,23 @@ function nextRecipeVersion(version: string) {
 
 function RecipeDrawer({
   recipe,
+  find,
   go,
   onClose,
   onVersion,
 }: {
-  recipe: DemoRecipe;
+  recipe: Recipe;
+  find: FindItem;
   go: Go;
   onClose: () => void;
-  onVersion: (recipe: DemoRecipe) => void;
+  onVersion: (recipe: Recipe) => void;
 }) {
   const components = recipe.components.map((component) => {
-    const item = findDemoItem(component.sku);
+    const item = find(component.sku);
     const cost = (item?.costAvg ?? 0) * component.qty * (1 + component.loss / 100);
     return { ...component, cost, available: item?.available ?? 0 };
   });
-  const total = recipeCost(recipe);
+  const total = recipeCost(recipe, find);
 
   return (
     <>
@@ -161,26 +164,31 @@ function RecipeFormModal({
   open,
   mode,
   baseRecipe,
+  materials,
+  products,
+  find,
   onClose,
   onSave,
 }: {
   open: boolean;
   mode: "create" | "version";
-  baseRecipe?: DemoRecipe | null;
+  baseRecipe?: Recipe | null;
+  materials: ItemSummary[];
+  products: ItemSummary[];
+  find: FindItem;
   onClose: () => void;
-  onSave: (recipe: DemoRecipe) => void;
+  onSave: (recipe: Recipe) => Promise<void> | void;
 }) {
   const idPrefix = React.useId();
-  const nextId = React.useRef(0);
-  const products = React.useMemo(() => productOptions(), []);
   const [name, setName] = React.useState("");
-  const [productSku, setProductSku] = React.useState(products[0]?.sku ?? "");
+  const [productSku, setProductSku] = React.useState("");
   const [yieldQty, setYieldQty] = React.useState("1");
   const [yieldUnit, setYieldUnit] = React.useState("vela 156ml");
   const [cureDays, setCureDays] = React.useState("14");
-  const [components, setComponents] = React.useState<RecipeComponentForm[]>(() => defaultRecipeComponents());
+  const [components, setComponents] = React.useState<RecipeComponentForm[]>([]);
   const [note, setNote] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -203,15 +211,15 @@ function RecipeFormModal({
     setYieldQty("1");
     setYieldUnit(firstProduct?.variant ? `vela ${firstProduct.variant}` : "unidade");
     setCureDays("14");
-    setComponents(defaultRecipeComponents());
+    setComponents(defaultRecipeComponents(materials));
     setNote("");
     setError(null);
-  }, [open, mode, baseRecipe, products]);
+  }, [open, mode, baseRecipe, products, materials]);
 
   const product = products.find((item) => item.sku === productSku) ?? products[0];
 
   const resolvedComponents = components.map((component) => {
-    const item = findDemoItem(component.sku);
+    const item = find(component.sku);
     const qty = parseRecipeNumber(component.qty);
     const loss = parseRecipeNumber(component.loss);
     const cost = (item?.costAvg ?? 0) * qty * (1 + loss / 100);
@@ -234,8 +242,8 @@ function RecipeFormModal({
   };
 
   const addComponent = () => {
-    const nextSku = MATERIAL_OPTIONS.find((item) => !components.some((component) => component.sku === item.sku))?.sku
-      ?? MATERIAL_OPTIONS[0]?.sku
+    const nextSku = materials.find((item) => !components.some((component) => component.sku === item.sku))?.sku
+      ?? materials[0]?.sku
       ?? "";
     if (!nextSku) return;
     setComponents((current) => [...current, recipeComponentFromSku(nextSku, current.length)]);
@@ -245,7 +253,7 @@ function RecipeFormModal({
     setComponents((current) => current.length <= 1 ? current : current.filter((component) => component.key !== key));
   };
 
-  const submit = () => {
+  const submit = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError("Informe o nome da receita.");
@@ -260,28 +268,34 @@ function RecipeFormModal({
       return;
     }
 
-    const next = nextId.current++;
-    onSave({
-      id: `${idPrefix}-${next}`,
-      name: trimmedName,
-      product: product.sku,
-      productName: `${product.name} ${product.variant}`,
-      version: mode === "version" && baseRecipe ? nextRecipeVersion(baseRecipe.version) : "v1",
-      status: "rascunho",
-      yield: Math.max(1, Math.round(parseRecipeNumber(yieldQty))),
-      yieldUnit: yieldUnit.trim() || "unidade",
-      cureDays: Math.max(0, Math.round(parseRecipeNumber(cureDays))),
-      components: resolvedComponents.map((component) => ({
-        sku: component.sku,
-        name: component.name,
-        qty: component.qtyNumber,
-        unit: component.unit,
-        loss: component.lossNumber,
-      })),
-      tests: note.trim() ? [{ date: "hoje", qty: 1, result: "ajustar", note: note.trim() }] : [],
-    });
-    toast(mode === "version" ? "Nova versao criada como rascunho." : "Receita criada como rascunho.", "info");
-    onClose();
+    setSaving(true);
+    try {
+      await onSave({
+        id: idPrefix,
+        name: trimmedName,
+        product: product.sku,
+        productName: `${product.name} ${product.variant}`.trim(),
+        version: mode === "version" && baseRecipe ? nextRecipeVersion(baseRecipe.version) : "v1",
+        status: "rascunho",
+        yield: Math.max(1, Math.round(parseRecipeNumber(yieldQty))),
+        yieldUnit: yieldUnit.trim() || "unidade",
+        cureDays: Math.max(0, Math.round(parseRecipeNumber(cureDays))),
+        components: resolvedComponents.map((component) => ({
+          sku: component.sku,
+          name: component.name,
+          qty: component.qtyNumber,
+          unit: component.unit,
+          loss: component.lossNumber,
+        })),
+        tests: note.trim() ? [{ date: "hoje", qty: 1, result: "ajustar", note: note.trim() }] : [],
+      });
+      toast(mode === "version" ? "Nova versao criada como rascunho." : "Receita criada como rascunho.", "info");
+      onClose();
+    } catch {
+      toast("Nao foi possivel salvar a receita.", "bad");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -297,7 +311,7 @@ function RecipeFormModal({
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <div className="spacer" style={{ flex: 1 }} />
           <span className="muted" style={{ fontSize: 13, marginRight: 8 }}>Custo/un {BRL(total)}</span>
-          <Button variant="default" icon="check" onClick={submit}>{mode === "version" ? "Criar versao" : "Criar receita"}</Button>
+          <Button variant="default" icon="check" onClick={submit} disabled={saving}>{mode === "version" ? "Criar versao" : "Criar receita"}</Button>
         </>
       )}
     >
@@ -348,7 +362,7 @@ function RecipeFormModal({
                       <Select
                         value={component.sku}
                         onChange={(value) => setComponent(component.key, { sku: value })}
-                        options={MATERIAL_OPTIONS.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
+                        options={materials.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
                       />
                       <div className="cell-sub" style={{ marginTop: 4 }}>
                         <span className="sku">{component.sku}</span> - {BRL(component.item?.costAvg ?? 0)}/{component.unit}
@@ -429,7 +443,8 @@ function RecipeFormModal({
 }
 
 export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
-  const [recipes, setRecipes] = React.useState<DemoRecipe[]>(() => [...DEMO_RECIPES]);
+  const dir = useItemDirectory();
+  const [recipes, setRecipes] = React.useState<Recipe[]>([]);
   const [openId, setOpenId] = React.useState<string | null>(route.open ?? null);
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"todas" | "ativa" | "rascunho">("todas");
@@ -437,10 +452,26 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
   const [recipeForm, setRecipeForm] = React.useState<{
     open: boolean;
     mode: "create" | "version";
-    baseRecipe: DemoRecipe | null;
+    baseRecipe: Recipe | null;
   }>({ open: false, mode: "create", baseRecipe: null });
 
+  React.useEffect(() => {
+    let alive = true;
+    loadRecipes().then((next) => { if (alive) setRecipes(next); }).catch(() => null);
+    return () => { alive = false; };
+  }, []);
+
   React.useEffect(() => { if (route.open) setOpenId(route.open); }, [route.open]);
+
+  const saveRecipe = async (recipe: Recipe) => {
+    const prevIds = new Set(recipes.map((item) => item.id));
+    const next = recipeForm.mode === "version" && recipeForm.baseRecipe
+      ? await createRecipeVersion(recipeForm.baseRecipe.id, recipe)
+      : await createRecipe(recipe);
+    setRecipes(next);
+    const created = next.find((item) => !prevIds.has(item.id));
+    if (created) setOpenId(created.id);
+  };
 
   const rows = recipes
     .filter((recipe) => status === "todas" || recipe.status === status)
@@ -481,7 +512,7 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
                   <td><Badge tone={recipe.status === "ativa" ? "ok" : "neutral"} dot>{recipe.status}</Badge></td>
                   <td className="om-td-right">{recipe.components.length}</td>
                   <td className="om-td-right muted">{recipe.cureDays}d</td>
-                  <td className="om-td-right" style={{ fontWeight: 600 }}>{BRL(recipeCost(recipe))}</td>
+                  <td className="om-td-right" style={{ fontWeight: 600 }}>{BRL(recipeCost(recipe, dir.find))}</td>
                   <td className="om-td-right"><Icon name="chevronRight" size={16} className="muted" /></td>
                 </tr>
               ))}
@@ -501,7 +532,7 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
               <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>{recipe.productName}</div>
               <Sep />
               <div className="row between" style={{ marginTop: 12 }}>
-                <div><div className="om-stat-label">Custo/un</div><div style={{ fontWeight: 700, fontSize: 17 }}>{BRL(recipeCost(recipe))}</div></div>
+                <div><div className="om-stat-label">Custo/un</div><div style={{ fontWeight: 700, fontSize: 17 }}>{BRL(recipeCost(recipe, dir.find))}</div></div>
                 <div style={{ textAlign: "right" }}><div className="om-stat-label">Componentes</div><div style={{ fontWeight: 600, fontSize: 14 }}>{recipe.components.length} - cura {recipe.cureDays}d</div></div>
               </div>
             </Card>
@@ -513,6 +544,7 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
       {openRecipe && (
         <RecipeDrawer
           recipe={openRecipe}
+          find={dir.find}
           go={go}
           onClose={() => setOpenId(null)}
           onVersion={(recipe) => setRecipeForm({ open: true, mode: "version", baseRecipe: recipe })}
@@ -522,11 +554,11 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
         open={recipeForm.open}
         mode={recipeForm.mode}
         baseRecipe={recipeForm.baseRecipe}
+        materials={dir.materials}
+        products={dir.products}
+        find={dir.find}
         onClose={() => setRecipeForm((current) => ({ ...current, open: false }))}
-        onSave={(recipe) => {
-          setRecipes((current) => [recipe, ...current]);
-          setOpenId(recipe.id);
-        }}
+        onSave={saveRecipe}
       />
     </div>
   );

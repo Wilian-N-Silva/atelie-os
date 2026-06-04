@@ -65,6 +65,111 @@ export type SeedOrder = {
   note: string | null;
 };
 
+export type SeedRecipeComponent = {
+  sku: string;
+  name: string;
+  qty: number;
+  unit: string;
+  loss: number;
+};
+
+export type SeedRecipeTest = {
+  date: string;
+  qty: number;
+  result: "aprovado" | "ajustar" | "reprovado";
+  note: string;
+};
+
+export type SeedRecipe = {
+  name: string;
+  productSku: string;
+  productName: string;
+  version: string;
+  status: "ativa" | "rascunho";
+  yieldQty: number;
+  yieldUnit: string;
+  cureDays: number;
+  components: SeedRecipeComponent[];
+  tests: SeedRecipeTest[];
+};
+
+export const seedRecipes: SeedRecipe[] = [
+  {
+    name: "Lavanda Francesa",
+    productSku: "VEL-LAV-156",
+    productName: "Vela Lavanda Francesa 156ml",
+    version: "v3",
+    status: "ativa",
+    yieldQty: 1,
+    yieldUnit: "vela 156ml",
+    cureDays: 14,
+    components: [
+      { sku: "CER-SOJ-01", name: "Cera de Soja Ecosoya", qty: 0.142, unit: "kg", loss: 3 },
+      { sku: "ESS-LAV-FR", name: "Essencia Lavanda Francesa", qty: 11, unit: "ml", loss: 2 },
+      { sku: "VID-NAD-156", name: "Vidro Nadir 156ml", qty: 1, unit: "un", loss: 1 },
+      { sku: "TMP-PIN-052", name: "Tampa Pinus 52mm", qty: 1, unit: "un", loss: 0 },
+    ],
+    tests: [{ date: "05/05", qty: 6, result: "aprovado", note: "Queima limpa, topo liso e difusao forte." }],
+  },
+  {
+    name: "Baunilha e Ambar",
+    productSku: "VEL-BAU-156",
+    productName: "Vela Baunilha e Ambar 156ml",
+    version: "v4",
+    status: "ativa",
+    yieldQty: 1,
+    yieldUnit: "vela 156ml",
+    cureDays: 14,
+    components: [
+      { sku: "CER-SOJ-01", name: "Cera de Soja Ecosoya", qty: 0.142, unit: "kg", loss: 3 },
+      { sku: "ESS-BAU-AM", name: "Essencia Baunilha e Ambar", qty: 12, unit: "ml", loss: 2 },
+      { sku: "VID-NAD-156", name: "Vidro Nadir 156ml", qty: 1, unit: "un", loss: 1 },
+    ],
+    tests: [{ date: "02/05", qty: 6, result: "aprovado", note: "Doce equilibrado, ambar persistente." }],
+  },
+  {
+    name: "Cedro e Sandalo",
+    productSku: "VEL-CED-220",
+    productName: "Vela Cedro e Sandalo 220ml",
+    version: "v2",
+    status: "rascunho",
+    yieldQty: 1,
+    yieldUnit: "vela 220ml",
+    cureDays: 14,
+    components: [
+      { sku: "CER-SOJ-01", name: "Cera de Soja Ecosoya", qty: 0.2, unit: "kg", loss: 3 },
+      { sku: "ESS-CED-SA", name: "Essencia Cedro e Sandalo", qty: 12, unit: "ml", loss: 2 },
+    ],
+    tests: [],
+  },
+];
+
+export type SeedProduction = {
+  code: string;
+  number: string;
+  productSku: string;
+  productName: string;
+  recipeName: string;
+  recipeVersion: string;
+  planned: number;
+  status: string;
+  plannedDateLabel: string;
+  responsible: string;
+  progress?: number;
+  lot?: string;
+  cureUntil?: string;
+  cureDayLeft?: number;
+};
+
+export const seedProduction: SeedProduction[] = [
+  { code: "030100000208", number: "OP-208", productSku: "VEL-LAV-156", productName: "Vela Lavanda Francesa 156ml", recipeName: "Lavanda Francesa", recipeVersion: "v3", planned: 40, status: "aguardando_materiais", plannedDateLabel: "31/05", responsible: "Camila" },
+  { code: "030100000207", number: "OP-207", productSku: "VEL-CED-220", productName: "Vela Cedro e Sandalo 220ml", recipeName: "Cedro e Sandalo", recipeVersion: "v2", planned: 24, status: "aguardando_materiais", plannedDateLabel: "31/05", responsible: "Camila" },
+  { code: "030100000206", number: "OP-206", productSku: "VEL-CAP-156", productName: "Vela Capim-Limao 156ml", recipeName: "Capim-Limao", recipeVersion: "v2", planned: 36, status: "em_producao", plannedDateLabel: "30/05", responsible: "Camila", progress: 62 },
+  { code: "030100000205", number: "OP-205", productSku: "VEL-BAU-156", productName: "Vela Baunilha e Ambar 156ml", recipeName: "Baunilha e Ambar", recipeVersion: "v4", planned: 48, status: "em_cura", plannedDateLabel: "24/05", responsible: "Camila", cureUntil: "07/06", cureDayLeft: 7, lot: "020300000613" },
+  { code: "030100000204", number: "OP-204", productSku: "VEL-LAV-156", productName: "Vela Lavanda Francesa 156ml", recipeName: "Lavanda Francesa", recipeVersion: "v3", planned: 40, status: "aguardando_revisao", plannedDateLabel: "17/05", responsible: "Camila", cureUntil: "31/05", cureDayLeft: 0, lot: "020300000598" },
+  { code: "030100000203", number: "OP-203", productSku: "VEL-LAV-156", productName: "Vela Lavanda Francesa 156ml", recipeName: "Lavanda Francesa", recipeVersion: "v3", planned: 40, status: "liberada", plannedDateLabel: "12/05", responsible: "Camila", lot: "020300000571" },
+];
+
 export const seedOrders: SeedOrder[] = [
   {
     code: "040100000931",
