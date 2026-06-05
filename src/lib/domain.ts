@@ -3,6 +3,16 @@ import type { BrandTheme } from "@/lib/theme";
 export const BRL = (value: number) =>
   "R$ " + value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+export function parseBRLInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits ? Number(digits) / 100 : 0;
+}
+
+export function formatBRLInput(value: string | number) {
+  const number = typeof value === "number" ? value : parseBRLInput(value);
+  return BRL(Number.isFinite(number) ? number : 0);
+}
+
 export const num = (value: number, digits = 0) =>
   value.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
@@ -25,6 +35,7 @@ export type ProductionStatus =
   | "finalizada";
 
 export type ItemSummary = {
+  id: string;
   code: string;
   sku: string;
   name: string;

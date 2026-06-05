@@ -29,6 +29,20 @@
       "when": 1780590974411,
       "tag": "0003_naive_strong_guy",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780592200000,
+      "tag": "0004_core_ops_beta",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780680000000,
+      "tag": "0005_secure_integrations_ai",
+      "breakpoints": true
     }
   ]
 }

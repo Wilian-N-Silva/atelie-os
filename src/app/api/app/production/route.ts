@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { auditLogs, productionOrders, recipeVersions, recipes } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import type { ProductionOrder } from "@/lib/domain";
+import { applyProductionWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
 
@@ -177,13 +178,22 @@ export async function PATCH(request: Request) {
   if (patch.cureUntil !== undefined) update.cureUntil = cleanNullableString(patch.cureUntil, 40);
   if (patch.cureDayLeft !== undefined) update.cureDayLeft = cleanOptionalInt(patch.cureDayLeft);
 
-  await db.transaction(async () => {
-    await db
+  await db.transaction(async (tx) => {
+    await tx
       .update(productionOrders)
       .set(update)
       .where(and(eq(productionOrders.companyId, context.company.id), eq(productionOrders.id, productionId)));
 
-    await db.insert(auditLogs).values({
+    await applyProductionWorkflowAutomations({
+      tx,
+      companyId: context.company.id,
+      actorUserId: context.user.id,
+      productionId,
+      previousStatus: existing.status,
+      nextStatus: nextStatus || existing.status,
+    });
+
+    await tx.insert(auditLogs).values({
       companyId: context.company.id,
       actorUserId: context.user.id,
       action: "production.update",

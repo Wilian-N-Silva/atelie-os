@@ -22,6 +22,11 @@ import { LabelsScreen } from "@/screens/labels";
 import { AIContentScreen } from "@/screens/ai-content";
 import { SettingsScreen } from "@/screens/settings";
 import { OperationScreen } from "@/screens/operation";
+import { AuditLogsScreen } from "@/screens/audit-logs";
+import { PurchasesScreen } from "@/screens/purchases";
+import { FinanceScreen } from "@/screens/finance";
+import { ReportsScreen } from "@/screens/reports";
+import { IncidentsScreen } from "@/screens/incidents";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
@@ -48,9 +53,14 @@ const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   itens: ItemsScreen as React.ComponentType<ScreenComponentProps>,
   receitas: RecipesScreen as React.ComponentType<ScreenComponentProps>,
   estoque: InventoryScreen as React.ComponentType<ScreenComponentProps>,
+  compras: PurchasesScreen as React.ComponentType<ScreenComponentProps>,
+  financeiro: FinanceScreen as React.ComponentType<ScreenComponentProps>,
+  relatorios: ReportsScreen as React.ComponentType<ScreenComponentProps>,
+  incidentes: IncidentsScreen as React.ComponentType<ScreenComponentProps>,
   etiquetas: LabelsScreen as React.ComponentType<ScreenComponentProps>,
   ia: AIContentScreen as React.ComponentType<ScreenComponentProps>,
   configuracoes: SettingsScreen as React.ComponentType<ScreenComponentProps>,
+  auditoria: AuditLogsScreen as React.ComponentType<ScreenComponentProps>,
   manual: ManualScreen as React.ComponentType<ScreenComponentProps>,
 };
 

@@ -14,6 +14,7 @@ const TYPE_MAP: Record<ItemType, ItemKind> = {
 
 export function catalogToItemSummary(item: CatalogItem): ItemSummary {
   return {
+    id: item.id,
     code: item.code,
     sku: item.sku,
     name: item.name,

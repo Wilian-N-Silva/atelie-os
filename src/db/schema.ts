@@ -121,6 +121,18 @@ export const auditActionEnum = pgEnum("audit_action", [
   "recipe.update",
   "production.create",
   "production.update",
+  "supplier.create",
+  "supplier.update",
+  "purchase.create",
+  "finance.create",
+  "incident.create",
+  "report.export",
+  "shipping.update",
+  "shipping.connect",
+  "shipping.disconnect",
+  "shipping.quote",
+  "ai.generate",
+  "ai.approve",
   "stock.adjust",
   "seed.run",
 ]);
@@ -206,6 +218,56 @@ export const companyBrandSettings = pgTable("company_brand_settings", {
   ...timestamps,
 });
 
+export const integrationCredentials = pgTable(
+  "integration_credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    environment: text("environment").notNull().default("production"),
+    status: text("status").notNull().default("connected"),
+    accessTokenEncrypted: text("access_token_encrypted"),
+    refreshTokenEncrypted: text("refresh_token_encrypted"),
+    tokenType: text("token_type"),
+    scope: text("scope"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    connectedByUserId: text("connected_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyProviderIdx: uniqueIndex("integration_credentials_company_provider_idx").on(table.companyId, table.provider),
+    companyStatusIdx: index("integration_credentials_company_status_idx").on(table.companyId, table.status),
+  }),
+);
+
+export const aiGenerations = pgTable(
+  "ai_generations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    generatedByUserId: text("generated_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    templateKey: text("template_key").notNull(),
+    productSku: text("product_sku"),
+    productName: text("product_name"),
+    prompt: text("prompt").notNull(),
+    output: text("output").notNull(),
+    provider: text("provider").notNull().default("openai"),
+    model: text("model"),
+    status: text("status").notNull().default("draft"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCreatedIdx: index("ai_generations_company_created_idx").on(table.companyId, table.createdAt),
+    companyTemplateIdx: index("ai_generations_company_template_idx").on(table.companyId, table.templateKey),
+  }),
+);
+
 export const brandThemes = pgTable(
   "brand_themes",
   {
@@ -289,6 +351,74 @@ export const salesChannels = pgTable(
   },
   (table) => ({
     companyKeyIdx: uniqueIndex("sales_channels_company_key_idx").on(table.companyId, table.technicalKey),
+  }),
+);
+
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    document: text("document"),
+    email: text("email"),
+    phone: text("phone"),
+    notes: text("notes"),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => ({
+    companyNameIdx: uniqueIndex("suppliers_company_name_idx").on(table.companyId, table.name),
+  }),
+);
+
+export const purchases = pgTable(
+  "purchases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
+    number: text("number").notNull(),
+    status: text("status").notNull().default("received"),
+    reference: text("reference"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyNumberIdx: uniqueIndex("purchases_company_number_idx").on(table.companyId, table.number),
+    companyReceivedIdx: index("purchases_company_received_idx").on(table.companyId, table.receivedAt),
+  }),
+);
+
+export const financeEntries = pgTable(
+  "finance_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("pending"),
+    description: text("description").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    dueAt: text("due_at"),
+    paidAt: text("paid_at"),
+    sourceType: text("source_type"),
+    sourceId: text("source_id"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCreatedIdx: index("finance_entries_company_created_idx").on(table.companyId, table.createdAt),
+    companySourceIdx: index("finance_entries_company_source_idx").on(table.companyId, table.sourceType, table.sourceId),
   }),
 );
 
@@ -407,6 +537,52 @@ export const stockMovements = pgTable(
   (table) => ({
     companyItemIdx: index("stock_movements_company_item_idx").on(table.companyId, table.itemId),
     companyOccurredIdx: index("stock_movements_company_occurred_idx").on(table.companyId, table.occurredAt),
+  }),
+);
+
+export const purchaseItems = pgTable(
+  "purchase_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    purchaseId: uuid("purchase_id")
+      .notNull()
+      .references(() => purchases.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "restrict" }),
+    quantity: numeric("quantity", { precision: 12, scale: 3 }).notNull(),
+    unitCost: numeric("unit_cost", { precision: 12, scale: 4 }).notNull().default("0"),
+    lot: text("lot"),
+    expiresAt: text("expires_at"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    purchaseIdx: index("purchase_items_purchase_idx").on(table.purchaseId),
+    itemIdx: index("purchase_items_item_idx").on(table.itemId),
+  }),
+);
+
+export const incidents = pgTable(
+  "incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "set null" }),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("open"),
+    quantity: numeric("quantity", { precision: 12, scale: 3 }),
+    reason: text("reason").notNull(),
+    resolution: text("resolution"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCreatedIdx: index("incidents_company_created_idx").on(table.companyId, table.createdAt),
   }),
 );
 

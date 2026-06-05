@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Barcode } from "@/components/barcode";
-import { Icon, cn } from "@/components/ui";
+import { Icon, cn, toast } from "@/components/ui";
 import {
   CHANNELS,
   type ItemSummary,
@@ -10,8 +10,8 @@ import {
   type ProductionOrder,
   type Recipe,
 } from "@/lib/domain";
-import { loadOrders } from "@/lib/orders-client";
-import { loadProduction } from "@/lib/production-client";
+import { loadOrders, updateOrder } from "@/lib/orders-client";
+import { loadProduction, updateProduction } from "@/lib/production-client";
 import { loadRecipes } from "@/lib/recipes-client";
 import { useItemDirectory } from "@/lib/item-directory";
 import { useWorkflows } from "@/lib/workflows";
@@ -220,6 +220,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
   const [input, setInput] = React.useState("");
   const [checks, setChecks] = React.useState<boolean[]>(() => activeChecklist.map(() => false));
   const [finished, setFinished] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const flashTimer = React.useRef<number | null>(null);
 
@@ -475,9 +476,40 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     setFeedback(null);
   };
 
-  const finishStage = () => {
-    setStageDone((current) => ({ ...current, [mode]: true }));
-    setFinished(true);
+  const finishStage = async () => {
+    setSaving(true);
+    try {
+      if (order) {
+        const nextStatus = mode === "separacao" ? "separado" : mode === "conferencia" ? "embalado" : mode === "embalagem" ? "enviado" : null;
+        if (nextStatus) {
+          const next = await updateOrder(order.id, { status: nextStatus });
+          setOrders(next);
+        }
+      }
+      if (production) {
+        const nextPatch = mode === "materiais"
+          ? { status: "em_producao" as const, progress: 10 }
+          : mode === "producao"
+            ? {
+              status: "em_cura" as const,
+              progress: 100,
+              lot: production.lot ?? `LOTE-${production.num.replace(/\D/g, "") || production.id.slice(0, 6)}`,
+              cureUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+              cureDayLeft: 7,
+            }
+            : null;
+        if (nextPatch) {
+          const next = await updateProduction(production.id, nextPatch);
+          setProductionOrders(next);
+        }
+      }
+      setStageDone((current) => ({ ...current, [mode]: true }));
+      setFinished(true);
+    } catch {
+      toast("Nao foi possivel finalizar a etapa.", "bad");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const exit = () => {
@@ -732,8 +764,8 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
                 ? (checklistComplete ? "Checklist completo - producao pode seguir para cura." : `Faltam ${activeChecklist.length - checksDone} itens do checklist.`)
                 : (currentComplete ? `${stageLabel(mode)} completa - finalize a etapa.` : `Faltam ${totalNeed - totalDone} itens para finalizar.`)}
         </div>
-        <button className="op-fbtn op-fbtn--primary" disabled={!canFinalize || !!modeBlocked} onClick={finishStage}>
-          <Icon name={mode === "embalagem" ? "truck" : mode === "producao" ? "producao" : "check"} size={18} /> {mode === "embalagem" ? "Marcar pronto p/ envio" : mode === "producao" ? "Finalizar producao" : "Finalizar etapa"}
+        <button className="op-fbtn op-fbtn--primary" disabled={!canFinalize || !!modeBlocked || saving} onClick={finishStage}>
+          <Icon name={mode === "embalagem" ? "truck" : mode === "producao" ? "producao" : "check"} size={18} /> {mode === "embalagem" ? "Marcar enviado" : mode === "producao" ? "Finalizar producao" : "Finalizar etapa"}
         </button>
       </div>
 

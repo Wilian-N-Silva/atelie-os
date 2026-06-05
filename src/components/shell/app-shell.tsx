@@ -17,12 +17,19 @@ export const NAV = [
     { id: "itens", label: "Itens / SKUs", icon: "itens" },
     { id: "receitas", label: "Receitas", icon: "receitas" },
     { id: "estoque", label: "Estoque", icon: "estoque" },
+    { id: "compras", label: "Compras", icon: "inbox" },
     { id: "etiquetas", label: "Etiquetas", icon: "tag" },
+  ] },
+  { group: "Gestão", items: [
+    { id: "financeiro", label: "Financeiro", icon: "banknote" },
+    { id: "relatorios", label: "Relatórios", icon: "fileText" },
+    { id: "incidentes", label: "Incidentes", icon: "alertCircle" },
   ] },
   { group: "Conteúdo", items: [
     { id: "ia", label: "Conteúdo IA", icon: "ia" },
   ] },
   { group: "Sistema", items: [
+    { id: "auditoria", label: "Auditoria", icon: "fileText" },
     { id: "configuracoes", label: "Configurações", icon: "settings" },
     { id: "manual", label: "Manual & ajuda", icon: "fileText" },
   ] },
@@ -35,8 +42,13 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   itens: { title: "Itens / SKUs", sub: "Catálogo do ateliê" },
   receitas: { title: "Receitas", sub: "Fórmulas e testes" },
   estoque: { title: "Estoque", sub: "Saldos · lotes · movimentos" },
+  compras: { title: "Compras", sub: "Fornecedores e recebimentos" },
+  financeiro: { title: "Financeiro", sub: "Entradas, saídas e pendências" },
+  relatorios: { title: "Relatórios", sub: "Exports CSV operacionais" },
+  incidentes: { title: "Incidentes", sub: "Trocas, devoluções e perdas" },
   etiquetas: { title: "Etiquetas", sub: "Editor de modelos e impressão" },
   ia: { title: "Conteúdo IA", sub: "Textos na voz da marca" },
+  auditoria: { title: "Auditoria", sub: "Ações críticas e rastreabilidade" },
   configuracoes: { title: "Configurações", sub: "White-label · marca, fluxos, etiquetas" },
   manual: { title: "Manual & ajuda", sub: "Guia de uso do sistema" },
 };
@@ -143,7 +155,7 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
               if (grp) els.push(<span key="g" className="crumb crumb--muted">{grp.group}</span>);
               els.push(<span key="p" className="crumb crumb--current">{meta.title}</span>);
               if (route.screen === "configuracoes" && route.tab) {
-                const tabNames: Record<string, string> = { branding: "Aparência da marca", users: "Usuários e acessos", workflows: "Fluxos e Kanban", labels: "Modelos de etiqueta" };
+                const tabNames: Record<string, string> = { branding: "Aparência da marca", users: "Usuários e acessos", workflows: "Fluxos e Kanban", labels: "Modelos de etiqueta", shipping: "Envio" };
                 els.push(<span key="t" className="crumb crumb--current">{tabNames[route.tab] || ""}</span>);
               }
               return els.map((el, i) => <React.Fragment key={i}><Icon name="chevronRight" size={14} className="crumb-sep" />{el}</React.Fragment>);

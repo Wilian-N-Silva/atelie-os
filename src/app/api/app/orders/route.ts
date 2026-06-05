@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { auditLogs, items, orderItems, orders } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import { type Order } from "@/lib/domain";
+import { applyOrderWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
 
@@ -193,6 +194,15 @@ async function createOrder(companyId: string, actorUserId: string, input: Order)
       unitPrice: line.unitPrice == null ? null : line.unitPrice.toString(),
     })));
 
+    await applyOrderWorkflowAutomations({
+      tx,
+      companyId,
+      actorUserId,
+      orderId: order.id,
+      previous: { status: "aguardando_pagamento", paymentStatus: "aguardando" },
+      next: { status: input.status, paymentStatus: input.payment },
+    });
+
     await tx.insert(auditLogs).values({
       companyId,
       actorUserId,
@@ -250,14 +260,28 @@ export async function PATCH(request: Request) {
   if (!existing) return NextResponse.json({ error: "order_not_found" }, { status: 404 });
 
   await db.transaction(async (tx) => {
+    const next = {
+      status: patch.status ?? existing.status,
+      paymentStatus: patch.payment ?? existing.paymentStatus,
+    };
+
     await tx
       .update(orders)
       .set({
-        status: patch.status ?? existing.status,
-        paymentStatus: patch.payment ?? existing.paymentStatus,
+        status: next.status,
+        paymentStatus: next.paymentStatus,
         updatedAt: new Date(),
       })
       .where(and(eq(orders.companyId, context.company.id), eq(orders.id, orderId)));
+
+    await applyOrderWorkflowAutomations({
+      tx,
+      companyId: context.company.id,
+      actorUserId: context.user.id,
+      orderId,
+      previous: existing,
+      next,
+    });
 
     await tx.insert(auditLogs).values({
       companyId: context.company.id,

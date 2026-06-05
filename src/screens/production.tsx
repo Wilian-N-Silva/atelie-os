@@ -25,7 +25,7 @@ import {
   type Recipe,
 } from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
-import { createProduction, loadProduction } from "@/lib/production-client";
+import { createProduction, loadProduction, updateProduction } from "@/lib/production-client";
 import { loadRecipes } from "@/lib/recipes-client";
 import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
 import { buildStatusMap, statusIcon, statusInfo, type StatusInfo } from "@/lib/workflow-status";
@@ -197,11 +197,42 @@ function ProductionPickListDocument({ job, recipes, find }: { job: ProductionPic
   );
 }
 
-function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void }) {
+function productionCurePatch(order: ProductionOrder, recipe: Recipe | undefined) {
+  const cureDays = Math.max(1, recipe?.cureDays ?? order.cureDayLeft ?? 7);
+  const cureUntil = new Date();
+  cureUntil.setDate(cureUntil.getDate() + cureDays);
+  return {
+    status: "em_cura" as const,
+    progress: 100,
+    lot: order.lot ?? `LOTE-${order.num.replace(/\D/g, "") || order.id.slice(0, 6)}`,
+    cureUntil: cureUntil.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    cureDayLeft: cureDays,
+  };
+}
+
+function nextProductionStatus(steps: WorkflowStep[], current: string) {
+  const index = steps.findIndex((step) => step.key === current);
+  return index >= 0 ? steps[index + 1]?.key ?? null : null;
+}
+
+function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint, onUpdate }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void; onUpdate: (productionId: string, patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>) => Promise<void> }) {
   const status = statusInfo(statusMap, order.status);
   const recipe = recipeFor(order, recipes);
   const rows = materialRows(order, recipes, find);
   const anyShort = rows.some((row) => row.short);
+  const [saving, setSaving] = React.useState(false);
+
+  const runUpdate = async (patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>, message: string) => {
+    setSaving(true);
+    try {
+      await onUpdate(order.id, patch);
+      toast(message, "ok");
+    } catch {
+      toast("Nao foi possivel atualizar a OP.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -260,9 +291,9 @@ function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrin
 
         <div className="drawer-foot">
           {order.status === "aguardando_materiais" && <Button variant="default" icon="scan" style={{ flex: 1 }} onClick={() => go("operacao", { mode: "materiais", production: order.id })}>Separar materiais</Button>}
-          {order.status === "em_producao" && <Button variant="default" icon="check" style={{ flex: 1 }}>Finalizar producao</Button>}
-          {order.status === "em_cura" && <Button variant="outline" icon="clock" style={{ flex: 1 }}>Estender cura</Button>}
-          {order.status === "aguardando_revisao" && <Button variant="brand" icon="unlock" style={{ flex: 1 }}>Liberar lote</Button>}
+          {order.status === "em_producao" && <Button variant="default" icon="check" style={{ flex: 1 }} disabled={saving} onClick={() => runUpdate(productionCurePatch(order, recipe), "Producao finalizada e lote enviado para cura.")}>Finalizar producao</Button>}
+          {order.status === "em_cura" && <Button variant="outline" icon="clock" style={{ flex: 1 }} disabled={saving} onClick={() => runUpdate({ cureDayLeft: (order.cureDayLeft ?? 0) + 1 }, "Cura estendida em 1 dia.")}>Estender cura</Button>}
+          {order.status === "aguardando_revisao" && <Button variant="brand" icon="unlock" style={{ flex: 1 }} disabled={saving} onClick={() => runUpdate({ status: "liberada", cureDayLeft: 0 }, "Lote liberado para venda.")}>Liberar lote</Button>}
           <Button variant="outline" icon="printer" onClick={() => onPrint([order], `Pick list ${order.num}`)}>Pick list</Button>
         </div>
       </aside>
@@ -397,6 +428,10 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
   const printableOrders = orders.filter((order) => order.status === "aguardando_materiais");
   const statusMap = React.useMemo(() => buildStatusMap(workflows.production), [workflows.production]);
   const columns = React.useMemo(() => productionColumnsFromWorkflow(workflows.production, orders), [workflows.production, orders]);
+  const updateOrder = React.useCallback(async (productionId: string, patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>) => {
+    const next = await updateProduction(productionId, patch);
+    setOrders(next);
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -470,6 +505,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
                 {cards.map((order) => {
                   const rows = materialRows(order, recipes, dir.find);
                   const short = rows.some((row) => row.short);
+                  const nextStatus = nextProductionStatus(workflows.production, order.status);
                   return (
                     <div className="kcard" key={order.id} onClick={() => setOpenId(order.id)}>
                       <div className="kcard-top">
@@ -484,6 +520,21 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
                       {order.status === "em_cura" && <div className="row between"><Badge tone="cure" dot>Cura</Badge><span className="muted" style={{ fontSize: 12 }}>faltam {order.cureDayLeft}d</span></div>}
                       {order.status === "aguardando_revisao" && <Badge tone="warn" dot>Revisar agora</Badge>}
                       {order.status === "liberada" && <Badge tone="ok" dot>Lote liberado</Badge>}
+                      {nextStatus && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="arrowRight"
+                          style={{ marginTop: 10, width: "100%" }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const patch = nextStatus === "em_cura" ? productionCurePatch(order, recipeFor(order, recipes)) : { status: nextStatus };
+                            updateOrder(order.id, patch).catch(() => toast("Nao foi possivel avancar a OP.", "bad"));
+                          }}
+                        >
+                          Avancar
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
@@ -494,7 +545,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
         })}
       </div>
 
-      {openOrder && <ProductionDrawer order={openOrder} recipes={recipes} find={dir.find} statusMap={statusMap} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} />}
+      {openOrder && <ProductionDrawer order={openOrder} recipes={recipes} find={dir.find} statusMap={statusMap} go={go} onClose={() => setOpenId(null)} onPrint={printPickList} onUpdate={updateOrder} />}
       <PlanProductionModal
         open={planOpen}
         recipes={recipes}

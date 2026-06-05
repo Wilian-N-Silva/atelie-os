@@ -13,7 +13,6 @@ import {
   Textarea,
   toast,
 } from "@/components/ui";
-import { type ItemSummary } from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
 import type { Go, Route } from "@/lib/types";
 
@@ -40,23 +39,7 @@ const AI_HISTORY = [
   { id: "a3", product: "Vela Capim-Limao", type: "Post de reposicao", status: "rascunho", when: "27/05", text: "O Capim-Limao voltou ao atelie: leve, citrico e cheio de manha." },
 ];
 
-function buildContent(templateId: string, product: ItemSummary, brief: string) {
-  const aroma = (product.aroma || "aroma do atelie").split(",")[0].trim().toLowerCase();
-  const name = `${product.name} ${product.variant}`;
-  const collection = product.collection || "Atelie";
-  const extra = brief.trim() ? ` ${brief.trim()}` : "";
-
-  if (templateId === "lancamento") {
-    return `Chegou para morar nos seus fins de tarde. ${name} e um convite a desacelerar com notas de ${aroma}. Da colecao ${collection}, feito para transformar a casa em um refugio de calma.${extra}`;
-  }
-  if (templateId === "pos-venda") {
-    return `Oi! Seu pedido com ${name} ja esta a caminho. Preparamos tudo com cuidado, do aroma a embalagem. Que ele traga um momento de pausa quando chegar por ai.${extra}`;
-  }
-  if (templateId === "cartao") {
-    return `Que este aroma de ${aroma} seja um convite a calmaria. Acenda quando precisar de um respiro. Com carinho, Instante Ambar.${extra}`;
-  }
-  return `Quando a noite chega, ${name} convida a uma pausa. Notas de ${aroma} envolvem o ambiente em calmaria, um respiro de cuidado para fechar o dia com leveza.${extra}`;
-}
+type AiHistoryItem = typeof AI_HISTORY[number] & { provider?: string; model?: string | null };
 
 export function AIContentScreen({ go }: { go: Go; route: Route }) {
   const dir = useItemDirectory();
@@ -66,27 +49,78 @@ export function AIContentScreen({ go }: { go: Go; route: Route }) {
   const [brief, setBrief] = React.useState("");
   const [state, setState] = React.useState<"idle" | "generating" | "done">("idle");
   const [result, setResult] = React.useState("");
+  const [generationId, setGenerationId] = React.useState<string | null>(null);
+  const [history, setHistory] = React.useState<AiHistoryItem[]>(AI_HISTORY);
+  const [aiStatus, setAiStatus] = React.useState<{ configured: boolean; model: string | null }>({ configured: false, model: null });
   const product = products.find((item) => item.sku === productSku) ?? products[0];
 
   React.useEffect(() => {
     if (!productSku && products.length) setProductSku(products[0].sku);
   }, [productSku, products]);
 
-  const generate = () => {
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/ai/generate", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: { history?: AiHistoryItem[]; openaiConfigured?: boolean; model?: string } | null) => {
+        if (!alive || !payload) return;
+        if (payload.history?.length) setHistory(payload.history);
+        setAiStatus({ configured: !!payload.openaiConfigured, model: payload.model ?? null });
+      })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, []);
+
+  const generate = async () => {
     if (!product) {
       toast("Cadastre um produto pronto para gerar conteudo.", "bad");
       return;
     }
     setState("generating");
-    window.setTimeout(() => {
-      setResult(buildContent(templateId, product, brief));
+    setGenerationId(null);
+    try {
+      const res = await fetch("/api/app/ai/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ templateId, productSku: product.sku, brief }),
+      });
+      if (!res.ok) throw new Error("ai_generate_failed");
+      const payload = await res.json() as { result?: string; generation?: { id?: string; provider?: string; model?: string | null } };
+      setResult(payload.result ?? "");
+      setGenerationId(payload.generation?.id ?? null);
       setState("done");
-    }, 450);
+      if (payload.generation?.provider === "local_fallback") {
+        toast("OpenAI nao configurada; usei o fallback local.", "info");
+      }
+    } catch {
+      setState("idle");
+      toast("Nao foi possivel gerar o conteudo.", "bad");
+    }
   };
 
   const copy = async () => {
     await navigator.clipboard?.writeText(result).catch(() => null);
     toast("Texto copiado.", "info");
+  };
+
+  const approve = async () => {
+    if (!generationId || !result.trim()) {
+      toast("Gere um texto antes de aprovar.", "bad");
+      return;
+    }
+    try {
+      const res = await fetch("/api/app/ai/generate", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: generationId, output: result }),
+      });
+      if (!res.ok) throw new Error("ai_approve_failed");
+      toast("Texto salvo como aprovado.", "ok");
+    } catch {
+      toast("Nao foi possivel aprovar o texto.", "bad");
+    }
   };
 
   return (
@@ -96,7 +130,10 @@ export function AIContentScreen({ go }: { go: Go; route: Route }) {
           <h1 className="page-h1">Conteudo IA</h1>
           <p className="page-lede">Textos comerciais na voz da marca, sempre editaveis.</p>
         </div>
-        <Button variant="outline" icon="settings" onClick={() => go("configuracoes", { tab: "branding" })}>Voz da marca</Button>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <Badge tone={aiStatus.configured ? "ok" : "neutral"} dot>{aiStatus.configured ? "OpenAI ativa" : "fallback local"}</Badge>
+          <Button variant="outline" icon="settings" onClick={() => go("configuracoes", { tab: "branding" })}>Voz da marca</Button>
+        </div>
       </div>
 
       <div className="grid ai-grid">
@@ -156,7 +193,7 @@ export function AIContentScreen({ go }: { go: Go; route: Route }) {
                     <Textarea value={result} onChange={(event) => setResult(event.target.value)} style={{ minHeight: 120, fontSize: 14.5, lineHeight: 1.6 }} />
                     <div className="row" style={{ gap: 9, marginTop: 12, flexWrap: "wrap" }}>
                       <Button variant="default" icon="copy" onClick={copy}>Copiar</Button>
-                      <Button variant="outline" icon="check" onClick={() => toast("Texto salvo como aprovado.", "info")}>Salvar aprovado</Button>
+                      <Button variant="outline" icon="check" onClick={approve}>Salvar aprovado</Button>
                       <Button variant="ghost" icon="refresh" onClick={generate}>Variacao</Button>
                     </div>
                   </>
@@ -185,7 +222,7 @@ export function AIContentScreen({ go }: { go: Go; route: Route }) {
           <Card>
             <CardHeader><CardTitle>Historico</CardTitle><Button variant="ghost" size="sm">Ver tudo</Button></CardHeader>
             <CardContent style={{ paddingTop: 4 }}>
-              {AI_HISTORY.map((item) => (
+              {history.map((item) => (
                 <div key={item.id} className="lrow" style={{ alignItems: "flex-start" }}>
                   <div className="lrow-main">
                     <div className="lrow-title">{item.product}</div>

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui";
 import { LabelBarcode } from "@/components/label-barcode";
 import { LabelSheetModelModal } from "@/components/label-sheet-model-modal";
-import { BRAND_PRESETS } from "@/lib/screen-fixtures";
+import { BRAND_PRESETS } from "@/lib/domain";
 import {
   BARCODE_TYPE_OPTIONS,
   type BarcodeType,
@@ -43,7 +43,7 @@ import {
 } from "@/lib/workflows";
 import type { Go, Route, Session } from "@/lib/types";
 
-type SettingsTab = "branding" | "users" | "workflows" | "labels";
+type SettingsTab = "branding" | "users" | "workflows" | "labels" | "shipping";
 type SheetEditForm = {
   name: string;
   brand: string;
@@ -66,7 +66,21 @@ const NAV: { id: SettingsTab; label: string; sub: string; icon: string }[] = [
   { id: "users", label: "Usuarios e acessos", sub: "Equipe, papeis, convites", icon: "user" },
   { id: "workflows", label: "Fluxos e Kanban", sub: "Etapas configuraveis", icon: "workflow" },
   { id: "labels", label: "Modelos de etiqueta", sub: "Folhas e tamanhos", icon: "tag" },
+  { id: "shipping", label: "Envio", sub: "Melhor Envio e fallback manual", icon: "truck" },
 ];
+
+type ShippingSettings = {
+  melhorEnvioEnabled: boolean;
+  hasMelhorEnvioToken: boolean;
+  melhorEnvioConnected: boolean;
+  melhorEnvioStatus: string;
+  melhorEnvioEnvironment: string;
+  melhorEnvioExpiresAt: string | null;
+  melhorEnvioOAuthConfigured: boolean;
+  originZip: string;
+  originCity: string;
+  defaultService: string;
+};
 
 type BrandingResponse = {
   companyName: string;
@@ -740,6 +754,199 @@ function LabelsTab() {
   );
 }
 
+function ShippingTab() {
+  const [settings, setSettings] = React.useState<ShippingSettings>({
+    melhorEnvioEnabled: false,
+    hasMelhorEnvioToken: false,
+    melhorEnvioConnected: false,
+    melhorEnvioStatus: "disconnected",
+    melhorEnvioEnvironment: "production",
+    melhorEnvioExpiresAt: null,
+    melhorEnvioOAuthConfigured: false,
+    originZip: "",
+    originCity: "",
+    defaultService: "manual",
+  });
+  const [destinationZip, setDestinationZip] = React.useState("");
+  const [weightG, setWeightG] = React.useState("500");
+  const [quoteMessage, setQuoteMessage] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [quoting, setQuoting] = React.useState(false);
+
+  const sync = React.useCallback((payload: { shipping?: ShippingSettings } | null) => {
+    if (!payload?.shipping) return;
+    setSettings(payload.shipping);
+  }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/shipping", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload) => { if (alive) sync(payload as { shipping?: ShippingSettings } | null); })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, [sync]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/app/shipping", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          melhorEnvioEnabled: settings.melhorEnvioEnabled,
+          originZip: settings.originZip,
+          originCity: settings.originCity,
+          defaultService: settings.defaultService,
+        }),
+      });
+      if (!res.ok) throw new Error("shipping_save_failed");
+      sync(await res.json() as { shipping?: ShippingSettings });
+      toast("Configuração de envio salva.", "ok");
+    } catch {
+      toast("Não foi possível salvar o envio.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const quote = async () => {
+    setQuoting(true);
+    try {
+      const res = await fetch("/api/app/shipping", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ destinationZip, weightG: Number(weightG) || 0 }),
+      });
+      if (!res.ok) throw new Error("shipping_quote_failed");
+      const payload = await res.json() as { quote?: { message?: string } };
+      setQuoteMessage(payload.quote?.message ?? "Cotação indisponível. Use o preenchimento manual.");
+    } catch {
+      setQuoteMessage("Cotação indisponível. Use frete, etiqueta e rastreio manualmente.");
+    } finally {
+      setQuoting(false);
+    }
+  };
+
+  const connect = () => {
+    if (!settings.melhorEnvioOAuthConfigured) {
+      toast("OAuth do Melhor Envio ainda nao foi configurado no servidor.", "bad");
+      return;
+    }
+    window.location.href = "/api/app/shipping/oauth/start";
+  };
+
+  const disconnect = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/app/shipping", {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("shipping_disconnect_failed");
+      sync(await res.json() as { shipping?: ShippingSettings });
+      toast("Melhor Envio desconectado.", "info");
+    } catch {
+      toast("Nao foi possivel desconectar o Melhor Envio.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const expires = settings.melhorEnvioExpiresAt
+    ? new Date(settings.melhorEnvioExpiresAt).toLocaleDateString("pt-BR")
+    : null;
+
+  return (
+    <div className="grid" style={{ gridTemplateColumns: "1fr", gap: "var(--gap)" }}>
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Melhor Envio</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>A integração é opcional. O pedido continua aceitando frete, etiqueta e rastreio manuais.</div>
+          </div>
+          <Badge tone={settings.melhorEnvioEnabled && settings.hasMelhorEnvioToken ? "ok" : "neutral"} dot>
+            {settings.melhorEnvioEnabled && settings.hasMelhorEnvioToken ? "configurado" : "manual"}
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="ff-grid">
+            <Field label="Ativar integração">
+              <label className="row" style={{ gap: 8, height: 36 }}>
+                <input
+                  type="checkbox"
+                  checked={settings.melhorEnvioEnabled}
+                  onChange={(event) => setSettings((current) => ({ ...current, melhorEnvioEnabled: event.target.checked }))}
+                />
+                <span className="muted" style={{ fontSize: 12.5 }}>Usar Melhor Envio quando a conta estiver conectada</span>
+              </label>
+            </Field>
+            <Field label="Serviço padrão">
+              <Select
+                value={settings.defaultService}
+                onChange={(value) => setSettings((current) => ({ ...current, defaultService: value }))}
+                options={[
+                  { value: "manual", label: "Manual" },
+                  { value: "melhor_envio", label: "Melhor Envio" },
+                ]}
+              />
+            </Field>
+          </div>
+          <div className="ff-grid">
+            <Field label="CEP de origem">
+              <Input value={settings.originZip} onChange={(event) => setSettings((current) => ({ ...current, originZip: event.target.value }))} placeholder="00000-000" />
+            </Field>
+            <Field label="Cidade de origem">
+              <Input value={settings.originCity} onChange={(event) => setSettings((current) => ({ ...current, originCity: event.target.value }))} placeholder="São Paulo - SP" />
+            </Field>
+          </div>
+          <div className="row between" style={{ gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ minWidth: 220, flex: "1 1 260px" }}>
+              <div className="block-label">Conexao segura</div>
+              <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                {settings.melhorEnvioConnected
+                  ? `OAuth conectado em ${settings.melhorEnvioEnvironment}${expires ? `, expira em ${expires}` : ""}.`
+                  : settings.melhorEnvioOAuthConfigured
+                    ? "Conecte com OAuth. O token fica criptografado e nunca aparece no navegador."
+                    : "Configure MELHOR_ENVIO_CLIENT_ID, MELHOR_ENVIO_CLIENT_SECRET e MELHOR_ENVIO_REDIRECT_URI no servidor."}
+              </div>
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {settings.melhorEnvioConnected ? (
+                <Button variant="outline" icon="unlock" disabled={saving} onClick={disconnect}>Desconectar</Button>
+              ) : (
+                <Button variant="outline" icon="lock" disabled={saving || !settings.melhorEnvioOAuthConfigured} onClick={connect}>Conectar Melhor Envio</Button>
+              )}
+              <Button variant="default" icon="check" disabled={saving} onClick={save}>{saving ? "Salvando..." : "Salvar envio"}</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Teste de cotação</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>No beta local, a API retorna se deve usar integração ou fallback manual.</div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="ff-grid">
+            <Field label="CEP destino"><Input value={destinationZip} onChange={(event) => setDestinationZip(event.target.value)} placeholder="00000-000" /></Field>
+            <Field label="Peso embalado (g)"><Input value={weightG} inputMode="numeric" onChange={(event) => setWeightG(event.target.value.replace(/\D/g, ""))} /></Field>
+          </div>
+          <div className="row" style={{ gap: 10, alignItems: "center" }}>
+            <Button variant="outline" icon="truck" disabled={quoting} onClick={quote}>{quoting ? "Consultando..." : "Testar cotação"}</Button>
+            {quoteMessage && <span className="muted" style={{ fontSize: 13 }}>{quoteMessage}</span>}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function SettingsScreen({
   go,
   route,
@@ -778,6 +985,7 @@ export function SettingsScreen({
           {tab === "users" && <UsersTab session={session} />}
           {tab === "workflows" && <WorkflowsTab />}
           {tab === "labels" && <LabelsTab />}
+          {tab === "shipping" && <ShippingTab />}
         </div>
       </div>
     </div>

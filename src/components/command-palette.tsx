@@ -35,8 +35,13 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
     { id: "n-itens", kind: "nav", icon: "itens", title: "Itens / SKUs", sub: "Catalogo", go: { screen: "itens" } },
     { id: "n-receitas", kind: "nav", icon: "receitas", title: "Receitas", sub: "Formulas", go: { screen: "receitas" } },
     { id: "n-estoque", kind: "nav", icon: "estoque", title: "Estoque", sub: "Saldos e movimentos", go: { screen: "estoque" } },
+    { id: "n-compras", kind: "nav", icon: "inbox", title: "Compras", sub: "Fornecedores e recebimentos", go: { screen: "compras" } },
+    { id: "n-financeiro", kind: "nav", icon: "banknote", title: "Financeiro", sub: "Entradas e saidas", go: { screen: "financeiro" } },
+    { id: "n-relatorios", kind: "nav", icon: "fileText", title: "Relatorios", sub: "Exports CSV", go: { screen: "relatorios" } },
+    { id: "n-incidentes", kind: "nav", icon: "alertCircle", title: "Incidentes", sub: "Trocas e devolucoes", go: { screen: "incidentes" } },
     { id: "n-etiq", kind: "nav", icon: "tag", title: "Etiquetas", sub: "Editor e impressao", go: { screen: "etiquetas" } },
     { id: "n-ia", kind: "nav", icon: "ia", title: "Conteudo IA", sub: "Textos da marca", go: { screen: "ia" } },
+    { id: "n-auditoria", kind: "nav", icon: "fileText", title: "Auditoria", sub: "Acoes criticas", go: { screen: "auditoria" } },
     { id: "n-settings", kind: "nav", icon: "settings", title: "Configuracoes", sub: "Marca, fluxos e acessos", go: { screen: "configuracoes" } },
     { id: "n-manual", kind: "nav", icon: "fileText", title: "Manual & ajuda", sub: "Guia de uso", go: { screen: "manual" } },
   ];
