@@ -12,6 +12,7 @@ export const NAV = [
     { id: "hoje", label: "Hoje no ateliê", icon: "hoje" },
     { id: "pedidos", label: "Pedidos", icon: "pedidos" },
     { id: "producao", label: "Produção", icon: "producao" },
+    { id: "qualidade", label: "Qualidade", icon: "listChecks" },
   ] },
   { group: "Catálogo & estoque", items: [
     { id: "itens", label: "Itens / SKUs", icon: "itens" },
@@ -42,6 +43,7 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   hoje: { title: "Hoje no ateliê", sub: "Painel operacional" },
   pedidos: { title: "Pedidos", sub: "Separação · embalagem · envio" },
   producao: { title: "Produção", sub: "Ordens, cura e liberação" },
+  qualidade: { title: "Qualidade", sub: "Revisão de lotes e liberação pós-cura" },
   itens: { title: "Itens / SKUs", sub: "Catálogo do ateliê" },
   receitas: { title: "Receitas", sub: "Fórmulas e testes" },
   precificacao: { title: "Precificação", sub: "Custo, margem e preço sugerido" },

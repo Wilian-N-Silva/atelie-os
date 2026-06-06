@@ -32,6 +32,7 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
     { id: "n-pedidos", kind: "nav", icon: "pedidos", title: "Pedidos", sub: "Separacao e envio", go: { screen: "pedidos" } },
     { id: "n-op", kind: "nav", icon: "scan", title: "Modo Operacao", sub: "Bancada e scanner", go: { screen: "operacao" } },
     { id: "n-prod", kind: "nav", icon: "producao", title: "Producao", sub: "Ordens e cura", go: { screen: "producao" } },
+    { id: "n-qualidade", kind: "nav", icon: "listChecks", title: "Qualidade", sub: "Revisao de lotes pos-cura", go: { screen: "qualidade" } },
     { id: "n-itens", kind: "nav", icon: "itens", title: "Itens / SKUs", sub: "Catalogo", go: { screen: "itens" } },
     { id: "n-receitas", kind: "nav", icon: "receitas", title: "Receitas", sub: "Formulas", go: { screen: "receitas" } },
     { id: "n-precificacao", kind: "nav", icon: "trendUp", title: "Precificacao", sub: "Custo, margem e preco", go: { screen: "precificacao" } },
