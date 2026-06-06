@@ -118,8 +118,8 @@ export async function POST(request: Request) {
   const code = `0301${String(seq).padStart(8, "0")}`;
   const number = `OP-${seq}`;
 
-  await db.transaction(async () => {
-    const [order] = await db
+  await db.transaction(async (tx) => {
+    const [order] = await tx
       .insert(productionOrders)
       .values({
         companyId: context.company.id,
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
       })
       .returning({ id: productionOrders.id });
 
-    await db.insert(auditLogs).values({
+    await tx.insert(auditLogs).values({
       companyId: context.company.id,
       actorUserId: context.user.id,
       action: "production.create",

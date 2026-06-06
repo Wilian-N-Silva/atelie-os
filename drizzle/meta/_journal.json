@@ -43,6 +43,13 @@
       "when": 1780680000000,
       "tag": "0005_secure_integrations_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780696800000,
+      "tag": "0006_customer_store_profile",
+      "breakpoints": true
     }
   ]
 }

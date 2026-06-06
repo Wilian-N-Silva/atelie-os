@@ -126,6 +126,8 @@ const MUTATION_ERROR_LABELS: Record<string, string> = {
   invalid_category: "Categoria nao pertence a esta empresa.",
   invalid_unit: "Unidade nao pertence a esta empresa.",
   invalid_location: "Local padrao nao pertence a esta empresa.",
+  sellable_weight_required: "Informe o peso ou peso embalado para itens vendaveis.",
+  sellable_dimensions_required: "Informe dimensoes ou dimensoes embaladas no formato CxLxA para itens vendaveis.",
   sku_already_exists: "Ja existe um item com este SKU.",
   internal_code_already_exists: "Ja existe um item com este codigo interno.",
   item_not_found: "Item nao encontrado.",
@@ -334,9 +336,26 @@ function parseOptionalInteger(value: string) {
   return parsed == null ? null : Math.round(parsed);
 }
 
+function validDimensionText(value: string) {
+  if (!value.trim()) return false;
+  const parts = value
+    .toLowerCase()
+    .replace(/cm/g, "")
+    .split(/[x×*]/)
+    .map((part) => Number(part.trim().replace(",", ".")))
+    .filter((part) => Number.isFinite(part) && part > 0);
+  return parts.length === 3;
+}
+
 function formToInput(form: ItemFormState): { input: ItemFormInput } | { error: string } {
   const minStock = parseRequiredNumber(form.minStock);
   if (minStock == null) return { error: "Estoque minimo deve ser zero ou maior." };
+  if (form.sellable && !parseOptionalInteger(form.weightG) && !parseOptionalInteger(form.packedWeightG)) {
+    return { error: "sellable_weight_required" };
+  }
+  if (form.sellable && !validDimensionText(form.dimensions) && !validDimensionText(form.packedDimensions)) {
+    return { error: "sellable_dimensions_required" };
+  }
 
   return {
     input: {
@@ -613,19 +632,19 @@ function ItemFormModal({
       </div>
 
       <div className="ff-grid">
-        <Field label="Dimensoes">
+        <Field label="Dimensoes" required={form.sellable && !form.packedDimensions.trim()}>
           <Input value={form.dimensions} onChange={(event) => setField("dimensions", event.target.value)} placeholder="10x10x11" />
         </Field>
-        <Field label="Dimensoes embalado">
+        <Field label="Dimensoes embalado" required={form.sellable && !form.dimensions.trim()}>
           <Input value={form.packedDimensions} onChange={(event) => setField("packedDimensions", event.target.value)} placeholder="13x13x13" />
         </Field>
       </div>
 
       <div className="ff-grid">
-        <Field label="Peso (g)">
+        <Field label="Peso (g)" required={form.sellable && !form.packedWeightG.trim()}>
           <Input inputMode="numeric" value={form.weightG} onChange={(event) => setField("weightG", event.target.value.replace(/\D/g, ""))} />
         </Field>
-        <Field label="Peso embalado (g)">
+        <Field label="Peso embalado (g)" required={form.sellable && !form.weightG.trim()}>
           <Input inputMode="numeric" value={form.packedWeightG} onChange={(event) => setField("packedWeightG", event.target.value.replace(/\D/g, ""))} />
         </Field>
       </div>

@@ -1,10 +1,10 @@
 # Atelie OS - Implementation Handoff
 
-Last updated: 2026-06-02 during the local Estoque module branch.
+Last updated: 2026-06-05 on `feature/remove-localstorage-persistence`.
 
 ## Current Baseline
 
-Atelie OS is a greenfield Next.js backoffice for a small candle atelier, built white-label from day one. The working product language is pt-BR, but this handoff keeps technical notes ASCII-safe.
+Atelie OS is a Next.js backoffice for small artisan operations, built white-label and multi-tenant from day one. The working product language is pt-BR. Technical notes in this file stay ASCII-safe.
 
 Current stack:
 
@@ -15,17 +15,17 @@ Current stack:
 - Drizzle ORM
 - PostgreSQL 17 through Docker Compose for local development
 
-The app has the ported shell, auth flow, onboarding flow, dashboard visual layout, a DB-backed Items / SKUs register, and a local DB-backed Estoque screen in progress. Backend foundation tables, Better Auth tables, company membership, defaults, seed catalog, stock movements, audit logs, and first app API routes exist.
+The active local branch has moved well past the original inventory slice. The app now has DB-backed auth, onboarding, dashboard, items/SKUs, inventory, orders, recipes, production, labels, workflows, audit logs, suppliers, purchases, finance, reports, incidents, shipping settings, and backend AI text generation.
 
 ## Branch Workflow
 
 - `main` is reserved for release promotion.
 - `development` is the integration branch.
 - Feature work should branch from `development`.
-- Current local slice is on `feature/inventory-module`.
-- No PR is open for the current local slice by request.
+- Current local slice is on `feature/remove-localstorage-persistence`.
+- No PR is open for the current local slice unless opened separately by the user.
 
-The previous split commits should stay as-is: `feat: port design prototype` and `feat: add backend foundation`.
+The working tree may contain unrelated design prototype edits under `design/**`. Keep those separate from app commits unless explicitly syncing the prototype.
 
 ## Local Setup
 
@@ -38,127 +38,103 @@ npm run db:seed
 npm run dev
 ```
 
-Seeded company and owner identity use neutral placeholders by default:
+Seeded company and owner identity use `.env` values:
 
-- Company: defaults to `Atelie OS` when `SEED_COMPANY_NAME` is not set
-- Name: defaults to `SEED_OWNER_EMAIL` when `SEED_OWNER_NAME` is not set
-- Email: `admin@example.com`
+- `SEED_COMPANY_NAME`
+- `SEED_OWNER_NAME`
+- `SEED_OWNER_EMAIL`
+- `SEED_OWNER_PASSWORD`
 
-Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not record real seed credentials, company names, or personal names in committed docs, examples, or source defaults.
+Do not record real seed credentials, company names, or personal names in committed docs, examples, or source defaults.
+
+## Environment Notes
+
+Secure integrations are server-side only:
+
+- `INTEGRATION_SECRETS_KEY` encrypts provider credentials. In local development the app can fall back to auth secrets, but production must configure a strong value.
+- `OPENAI_API_KEY` and `OPENAI_TEXT_MODEL` power bundled text generation. Tenants do not provide OpenAI keys.
+- `MELHOR_ENVIO_CLIENT_ID`, `MELHOR_ENVIO_CLIENT_SECRET`, `MELHOR_ENVIO_REDIRECT_URI`, and optional Melhor Envio endpoint envs configure OAuth.
+- `MELHOR_ENVIO_USER_AGENT` should identify the app and technical contact for provider API calls.
 
 ## Important Files
 
-- `src/db/schema.ts` - Better Auth core tables plus company, membership, defaults, catalog, stock movement, workflow, audit, and help scaffolding.
+- `src/db/schema.ts` - Better Auth tables plus tenant, catalog, stock, workflow, audit, core ops, integrations, and AI tables.
 - `src/db/bootstrap.ts` - default company setup and onboarding company creation.
-- `src/db/seed.ts` - idempotent seed owner/company/catalog/stock/audit data.
-- `src/lib/auth.ts` - Better Auth server config.
-- `src/lib/app-route-context.ts` - server helper for authenticated user, active company, and role.
-- `src/app/api/app/session/route.ts` - auth session payload for the client gate.
-- `src/app/api/app/dashboard/route.ts` - DB-backed dashboard stock summary.
-- `src/app/api/app/items/route.ts` - DB-backed catalog item list with derived stock balances.
-- `src/app/api/app/items/[itemId]/route.ts` - item metadata update endpoint.
-- `src/app/api/app/items/[itemId]/movements/route.ts` - recent stock movement history for one item.
-- `src/app/api/app/items/[itemId]/stock-adjustment/route.ts` - audited manual stock adjustment endpoint.
-- `src/app/api/app/inventory/route.ts` - DB-backed inventory overview with optional location filter.
-- `src/lib/stock-balances.ts` - shared stock movement balance interpretation for app APIs.
-- `src/lib/items-server.ts` - server-side item list shaping, form validation, lookup validation, duplicate checks, and audit writes.
-- `src/lib/items.ts` - client contract for the Items / SKUs register.
-- `src/lib/inventory-server.ts` - server-side inventory overview shaping.
-- `src/lib/inventory.ts` - client contract for the Estoque screen.
-- `src/screens/dashboard.tsx` - keeps prototype dashboard layout and consumes backend low-stock data when available.
-- `src/screens/items.tsx` - searchable/sortable Items / SKUs register and detail drawer.
-- `src/screens/inventory.tsx` - searchable/sortable inventory balances and recent movements.
+- `src/db/seed.ts` / `src/db/seed-data.ts` - idempotent seeded tenant data.
+- `src/lib/app-route-context.ts` - authenticated app route context and role helper.
+- `src/lib/permissions.ts` - shared role sets.
+- `src/lib/stock-balances.ts` / `src/lib/stock-balance-math.ts` - stock movement interpretation.
+- `src/lib/workflows.ts` / `src/lib/workflow-status.ts` - configurable workflow contracts and display mapping.
+- `src/lib/workflow-automations-server.ts` - order/production stock automation writes.
+- `src/lib/shipping-integrations-server.ts` - Melhor Envio OAuth credentials, refresh-token handling, and quote client.
+- `src/lib/integration-secrets-server.ts` - AES-256-GCM secret encryption helper.
+- `src/lib/core-ops-client.ts` - client contracts for suppliers, purchases, finance, and incidents.
+- `src/app/api/app/shipping/route.ts` - shipping settings, quote endpoint, and disconnect flow.
+- `src/app/api/app/ai/generate/route.ts` - backend-only AI generation and approval endpoint.
+- `src/screens/settings.tsx` - branding, users, workflows, labels, and shipping settings.
 
-## Foundation Hardening Status
+## Implemented Product Areas
 
-Done in this slice:
+Done locally:
 
-- Created `development` from `feature/backend-foundation`.
-- Created and switched to `feature/foundation-hardening`.
-- Added a shared server app-route context resolver.
-- Moved session, onboarding, and demo invite routes to the shared authenticated-user helper.
-- Added `GET /api/app/dashboard`.
-- Dashboard stock data now comes from `/api/app/dashboard` where safe.
-- Dashboard stock summary is derived from `stock_movements`, not item balance fields.
-- Seed audit rows are deterministic and do not duplicate across repeated seed runs.
-- Seed stock movements are checked by item and deterministic seed source type, so partial seed reruns fill gaps without duplicating existing seed movements.
-
-Verification completed on 2026-06-02:
-
-- `docker compose ps postgres` reported Postgres healthy.
-- `npm run db:migrate` applied successfully.
-- `npm run db:seed` ran repeatedly without adding duplicate seeded stock movement groups.
-- `npm run lint` passed.
-- `npm run build` passed.
-- Unauthenticated `GET /api/app/dashboard` returned `401`.
-- Seeded owner login returned `200` and authenticated `GET /api/app/dashboard` returned `200`.
-- A freshly signed-up authenticated user without company membership received `403` on `GET /api/app/dashboard`.
-
-Local database note:
-
-- `.env` may override the placeholder seed owner name, email, and password for local testing.
-- The local database already had three historical `seed.run` audit rows per seed entity from earlier pre-hardening seed runs. The new idempotency guard kept that count stable on subsequent runs; it did not delete old audit history.
-
-## Items / SKUs Module Status
-
-Done in PR #2 (`feature/items-register`):
-
-- Added `GET /api/app/items`.
-- Extracted stock movement interpretation into `src/lib/stock-balances.ts` and reused it from the dashboard endpoint.
-- Added a DB-backed `Itens / SKUs` screen behind the existing shell route.
-- The screen lists company-scoped catalog items with category, unit, default location, pricing flags, stock health, search, tabs, sorting, and a read-only detail drawer.
-- Added a manual stock adjustment modal in the item detail drawer.
-- Added `POST /api/app/items/[itemId]/stock-adjustment`.
-- Stock adjustments validate active-company item ownership, direction, positive quantity, required reason, and reject negative physical stock.
-- Accepted adjustments write one `stock_movements` row and one `stock.adjust` audit row in a transaction, then refresh the Items / SKUs balances.
-- Added item create/edit form in the Items / SKUs screen.
-- Added `POST /api/app/items` and `PUT /api/app/items/[itemId]`.
-- Item create/edit validates active-company category/unit/default-location lookups, 12-digit internal code, SKU/name, duplicate SKU/code, and writes `item.create` / `item.update` audit rows.
-- Added migration `drizzle/0001_sudden_machine_man.sql` for `item.create` and `item.update` audit enum values.
-- Stock movements remain separate from editable item metadata.
-- Added `GET /api/app/items/[itemId]/movements`.
-- The item drawer shows recent stock movements with type, quantity, reason, source, actor, and date.
-
-Verification completed on 2026-06-02:
-
-- `npm run db:migrate` applied `drizzle/0001_sudden_machine_man.sql` locally.
-- `npm run lint` passed.
-- `npm run build` passed.
-- Unauthenticated `GET /api/app/items` returned `401`.
-- Unauthenticated `POST /api/app/items` returned `401`.
-- Unauthenticated `PUT /api/app/items/[itemId]` returned `401`.
-- Unauthenticated `GET /api/app/items/[itemId]/movements` returned `401`.
-- Unauthenticated `POST /api/app/items/[itemId]/stock-adjustment` returned `401`.
-
-## Estoque Module Status
-
-Done locally on `feature/inventory-module`:
-
-- Added `GET /api/app/inventory`.
-- Added `src/lib/inventory.ts` and `src/lib/inventory-server.ts`.
-- Extended `src/lib/stock-balances.ts` so app APIs can request company-wide balances or balances scoped to one inventory location.
-- Wired the existing `estoque` shell route to `src/screens/inventory.tsx`.
-- The Estoque screen shows aggregate stock cards, active-location filtering, search, tabs, sorting, item/location balances, and recent stock movement history.
-- Inventory rows navigate into the Items / SKUs drawer for item details and stock adjustment.
-- No schema migration was required for this slice.
-
-Verification completed on 2026-06-02:
-
-- `npm run lint` passed.
-- `npm run build` passed.
-- Unauthenticated `GET /api/app/inventory` returned `401`.
+- Auth, onboarding, company membership, and active-company route context.
+- DB-backed dashboard summary.
+- DB-backed Items / SKUs register with create/edit and stock adjustment.
+- DB-backed inventory overview and movement history.
+- DB-backed branding, workflows, label settings, orders, recipes, and production.
+- Runtime business fixture purge; sanctioned sample data now lives in seeds.
+- DB-driven order and production status presentation.
+- Order and production stock automations tied to workflow technical keys.
+- Audit-log screen.
+- Suppliers and purchases.
+- Suggested replenishment API and screen using stock minimums, available balances, open order demand, and open production material demand.
+- Managerial finance.
+- Simple reports.
+- Incidents / returns foundation.
+- Secure Melhor Envio OAuth foundation with encrypted per-tenant tokens.
+- Melhor Envio quote endpoint using the external calculate API, token refresh retry, and manual fallback.
+- Selected Melhor Envio quotes can be applied to orders and persisted with carrier, service, price, deadline, and timestamp.
+- Selected Melhor Envio quotes can be inserted into the Melhor Envio cart from the order drawer, persisting external label id/protocol/status on the order.
+- Saved Melhor Envio labels expose checkout, generate, preview, and print actions from the order drawer.
+- Melhor Envio webhook endpoint with `X-ME-Signature` validation and audit logging for signed label events.
+- Customer base foundation with `customers`, `orders.customer_id`, customer autocomplete during order creation, channel/source metadata, and ViaCEP address lookup.
+- Store/sender/fiscal profile fields in shipping settings, reused by Melhor Envio label sender inputs.
+- Sellable item logistics validation and order quote defaults from item package weight/dimensions.
+- Backend OpenAI text generation with persisted generation history and approval audit.
 
 ## Product Invariants
 
-- Keep single-company UI for now, but preserve `company_id` on every app query.
+- Preserve `company_id` on every app query.
 - Stock balances are derived from `stock_movements`; do not write editable balance fields.
 - Workflows are configurable; logic must use stable `technical_key` / automation metadata, not display labels.
 - Internal codes are numeric 12-digit scanner-friendly codes, separate from human SKUs.
 - Scanner flows must always have a manual fallback.
-- Melhor Envio is optional; manual freight/labels must remain possible.
+- Melhor Envio is optional; manual freight/labels/tracking must remain possible.
+- Provider tokens, OpenAI keys, OAuth client secrets, and refresh tokens must never be exposed to the browser.
 - AI is text-only and must not auto-publish.
-- Critical actions require audit rows; do not expose tokens or sensitive auth internals to the frontend.
+- Critical writes require audit rows.
+
+## Latest Verification
+
+Completed on 2026-06-05 after the Melhor Envio quote persistence slice:
+
+- `npm.cmd run lint` passed.
+- `npm.cmd run test` passed: 33 tests, 0 failed.
+- `npm.cmd run build` passed.
+- Functional ngrok test passed against `https://ablutionary-unvesiculated-marylynn.ngrok-free.dev`: applying a Jadlog `.Com` quote persisted freight `15.96` and recalculated order total to `158.96`.
+- Functional ngrok cart insertion reached Melhor Envio but returned provider 403 `This action is unauthorized.` even after reconnect. Follow-up docs/community check indicates `/me/cart` also needs `cart-read` and `cart-write`; these scopes were added to `.env`, `.env.example`, code fallback, and integration docs. Restart dev server, ensure the Melhor Envio app permits those cart scopes, then reconnect OAuth.
+- Functional ngrok customer/order test passed: ViaCEP returned HTTP 200, new order persisted `customerId`, customer was saved, and complete data produced `customerIncomplete=false`.
+
+Manual browser QA is still required before merge. See `docs/outstanding-work.md`.
 
 ## Next Recommended Slice
 
-Continue the current `feature/inventory-module` branch until the Estoque module is ready as a module-sized PR. The next practical step inside this module is adding direct manual movement workflows for purchase entry, transfer, loss, block, and release, reusing item/location validation and audit logging.
+Finish the shipping path in this order:
+
+1. Sandbox QA with two tenants and two Melhor Envio accounts.
+2. Restart dev server, enable/confirm `cart-read` and `cart-write` in Melhor Envio, reconnect OAuth, and rerun cart insertion.
+3. Validate label checkout/payment, async generation, preview, and print.
+4. Browser QA customer autocomplete, ViaCEP fill, sender profile, and sellable logistics validation.
+5. Persist Melhor Envio label IDs on internal orders so webhook events can update tracking/status history.
+
+After shipping, prioritize QC/lots/checklists, replenishment-to-purchase drafts, returns/exchanges hardening, and marketplace imports.

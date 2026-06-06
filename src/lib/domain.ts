@@ -46,18 +46,49 @@ export type ItemSummary = {
   min: number;
   costAvg: number;
   price: number;
+  weightG?: number | null;
+  packedWeightG?: number | null;
+  dimensions?: string | null;
+  packedDimensions?: string | null;
   collection?: string;
   aroma?: string;
+};
+
+export type CustomerAddress = {
+  address: string;
+  number: string;
+  complement: string | null;
+  district: string;
+  city: string;
+  stateAbbr: string;
+  postalCode: string;
+};
+
+export type Customer = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  document: string | null;
+  address: CustomerAddress | null;
+  source: string;
+  status: string;
 };
 
 export type Order = {
   id: string;
   code: string;
   num: string;
+  customerId?: string | null;
   channel: keyof typeof CHANNELS;
   labelKind?: "internal" | "pdf_attached";
   customerName: string;
   city: string;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  customerDocument?: string | null;
+  customerAddress?: CustomerAddress | null;
+  customerIncomplete?: boolean;
   // Default keys are listed for autocomplete; the company-configured workflow may define others.
   status: OrderStatus | (string & {});
   payment: "pago" | "aguardando";
@@ -68,6 +99,32 @@ export type Order = {
   items: { sku: string; qty: number; unitPrice?: number }[];
   tracking: string | null;
   note: string | null;
+  shippingQuote?: {
+    provider: "melhor_envio" | string;
+    serviceId: string;
+    serviceName: string;
+    company: string | null;
+    price: number;
+    deliveryTime: number | null;
+    selectedAt: string;
+  } | null;
+  shippingLabel?: {
+    provider: "melhor_envio" | string;
+    externalId: string;
+    protocol: string | null;
+    status: string | null;
+    serviceId: string;
+    serviceName: string;
+    company: string | null;
+    price: number | null;
+    tracking: string | null;
+    trackingUrl: string | null;
+    cartInsertedAt: string;
+    checkoutAt?: string | null;
+    generatedAt?: string | null;
+    previewUrl?: string | null;
+    printUrl?: string | null;
+  } | null;
 };
 
 export type Recipe = {

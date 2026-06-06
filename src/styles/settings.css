@@ -160,7 +160,7 @@
   .addlab { grid-template-columns: 1fr; }
   .addlab-side { position: static; }
   .addlab-control-grid, .lab-tpl-grid, .lab-field-grid { grid-template-columns: 1fr; }
-  .settings-label-barcode, .sheet-detail-layout { grid-template-columns: 1fr; }
+  .settings-label-barcode, .sheet-detail-layout, .shipping-address-grid, .shipping-address-picker { grid-template-columns: 1fr; }
   .sheet-detail-form .ff-grid, .sheet-detail-form .ff-grid-3 { grid-template-columns: 1fr; }
 }
 @media print {

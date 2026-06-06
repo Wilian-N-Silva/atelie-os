@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, items, orderItems, orders } from "@/db/schema";
+import { auditLogs, customers, items, orderItems, orders } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
-import { type Order } from "@/lib/domain";
+import { type CustomerAddress, type Order } from "@/lib/domain";
 import { applyOrderWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
 
-type OrderPatch = Partial<Pick<Order, "payment" | "status">>;
+type OrderPatch = Partial<Pick<Order, "payment" | "status" | "freight" | "total" | "shippingQuote">>;
 
 const CHANNELS = ["instagram", "whatsapp", "mercadolivre", "shopee", "feira", "direta"] as const;
 const PAYMENTS = ["pago", "aguardando"] as const;
@@ -41,9 +41,74 @@ function cleanNullableString(value: unknown, max: number) {
   return cleaned || null;
 }
 
+function cleanPostalCode(value: unknown) {
+  return cleanString(value, 16).replace(/\D/g, "").slice(0, 8);
+}
+
 function cleanMoney(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+
+function cleanShippingQuote(value: unknown): Order["shippingQuote"] | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!value || typeof value !== "object") return undefined;
+  const input = value as NonNullable<Order["shippingQuote"]>;
+  const serviceId = cleanString(input.serviceId, 40);
+  const serviceName = cleanString(input.serviceName, 120);
+  const provider = cleanString(input.provider, 40) || "melhor_envio";
+  const price = cleanMoney(input.price);
+  if (!serviceId || !serviceName || price <= 0) return undefined;
+  return {
+    provider,
+    serviceId,
+    serviceName,
+    company: cleanNullableString(input.company, 80),
+    price,
+    deliveryTime: input.deliveryTime == null ? null : Math.max(0, Math.round(Number(input.deliveryTime) || 0)),
+    selectedAt: cleanString(input.selectedAt, 40) || new Date().toISOString(),
+  };
+}
+
+function cleanCustomerAddress(value: unknown): CustomerAddress | null {
+  if (!value || typeof value !== "object") return null;
+  const input = value as CustomerAddress;
+  const address = cleanString(input.address, 160);
+  const number = cleanString(input.number, 20);
+  const district = cleanString(input.district, 80);
+  const city = cleanString(input.city, 80);
+  const stateAbbr = cleanString(input.stateAbbr, 2).toUpperCase();
+  const postalCode = cleanPostalCode(input.postalCode);
+  if (!address && !number && !district && !city && !stateAbbr && !postalCode) return null;
+  return {
+    address,
+    number,
+    complement: cleanNullableString(input.complement, 80),
+    district,
+    city,
+    stateAbbr,
+    postalCode,
+  };
+}
+
+function customerIncomplete(input: {
+  channel: Order["channel"];
+  customerAddress?: CustomerAddress | null;
+  customerDocument?: string | null;
+}) {
+  const external = input.channel === "mercadolivre" || input.channel === "shopee";
+  if (external) return false;
+  const address = input.customerAddress;
+  return !(
+    address?.address
+      && address.number
+      && address.district
+      && address.city
+      && /^[A-Z]{2}$/.test(address.stateAbbr)
+      && address.postalCode.length === 8
+      && input.customerDocument
+  );
 }
 
 function cleanOrder(value: unknown): Order | null {
@@ -74,10 +139,15 @@ function cleanOrder(value: unknown): Order | null {
     id: cleanString(input.id, 80) || code,
     code,
     num,
+    customerId: cleanNullableString(input.customerId, 80),
     channel: input.channel,
     labelKind: input.labelKind,
     customerName,
     city,
+    customerEmail: cleanNullableString(input.customerEmail, 120),
+    customerPhone: cleanNullableString(input.customerPhone, 30),
+    customerDocument: cleanNullableString(input.customerDocument, 24),
+    customerAddress: cleanCustomerAddress(input.customerAddress),
     status: input.status,
     payment: input.payment,
     createdAt,
@@ -102,12 +172,57 @@ function cleanPatch(value: unknown): OrderPatch | null {
     if (!isOrderStatus(input.status)) return null;
     patch.status = input.status;
   }
+  if (input.freight !== undefined) patch.freight = cleanMoney(input.freight);
+  if (input.total !== undefined) patch.total = cleanMoney(input.total);
+  if (input.shippingQuote !== undefined) {
+    const quote = cleanShippingQuote(input.shippingQuote);
+    if (quote === undefined) return null;
+    patch.shippingQuote = quote;
+  }
   return patch;
 }
 
 function metadataString(metadata: Record<string, unknown>, key: string) {
   const value = metadata[key];
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataShippingQuote(metadata: Record<string, unknown>): Order["shippingQuote"] {
+  const quote = metadata.shippingQuote;
+  if (!quote || typeof quote !== "object") return null;
+  return cleanShippingQuote(quote) ?? null;
+}
+
+function metadataCustomerAddress(metadata: Record<string, unknown>): CustomerAddress | null {
+  return cleanCustomerAddress(metadata.customerAddress);
+}
+
+function metadataShippingLabel(metadata: Record<string, unknown>): Order["shippingLabel"] {
+  const label = metadata.shippingLabel;
+  if (!label || typeof label !== "object") return null;
+  const input = label as NonNullable<Order["shippingLabel"]>;
+  const externalId = cleanString(input.externalId, 120);
+  const serviceId = cleanString(input.serviceId, 40);
+  const serviceName = cleanString(input.serviceName, 120);
+  if (!externalId || !serviceId || !serviceName) return null;
+  const price = input.price == null ? null : cleanMoney(input.price);
+  return {
+    provider: cleanString(input.provider, 40) || "melhor_envio",
+    externalId,
+    protocol: cleanNullableString(input.protocol, 120),
+    status: cleanNullableString(input.status, 80),
+    serviceId,
+    serviceName,
+    company: cleanNullableString(input.company, 80),
+    price,
+    tracking: cleanNullableString(input.tracking, 120),
+    trackingUrl: cleanNullableString(input.trackingUrl, 500),
+    cartInsertedAt: cleanString(input.cartInsertedAt, 40) || new Date().toISOString(),
+    checkoutAt: cleanNullableString(input.checkoutAt, 40),
+    generatedAt: cleanNullableString(input.generatedAt, 40),
+    previewUrl: cleanNullableString(input.previewUrl, 500),
+    printUrl: cleanNullableString(input.printUrl, 500),
+  };
 }
 
 async function itemIdsBySku(companyId: string, skus: string[]) {
@@ -117,6 +232,28 @@ async function itemIdsBySku(companyId: string, skus: string[]) {
     columns: { id: true, sku: true },
   });
   return new Map(rows.map((item) => [item.sku, item.id]));
+}
+
+async function orderSubtotal(companyId: string, orderId: string, fallback: number) {
+  const lines = await db
+    .select({
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      currentPrice: items.currentPrice,
+      suggestedPrice: items.suggestedPrice,
+    })
+    .from(orderItems)
+    .leftJoin(items, and(eq(orderItems.itemId, items.id), eq(items.companyId, companyId)))
+    .where(eq(orderItems.orderId, orderId));
+
+  const subtotal = lines.reduce((sum, line) => {
+    const quantity = Number(line.quantity);
+    const unitPrice = Number(line.unitPrice ?? line.currentPrice ?? line.suggestedPrice);
+    if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) return sum;
+    return sum + quantity * unitPrice;
+  }, 0);
+
+  return subtotal > 0 ? Math.round(subtotal * 100) / 100 : fallback;
 }
 
 async function listOrders(companyId: string): Promise<Order[]> {
@@ -136,10 +273,16 @@ async function listOrders(companyId: string): Promise<Order[]> {
       id: row.id,
       code: row.code,
       num: row.number,
+      customerId: row.customerId,
       channel: isChannel(row.channelKey) ? row.channelKey : "direta",
       labelKind: isLabelKind(row.labelKind) ? row.labelKind : "internal",
       customerName: row.customerName,
       city: row.city,
+      customerEmail: metadataString(row.metadata, "customerEmail"),
+      customerPhone: metadataString(row.metadata, "customerPhone"),
+      customerDocument: metadataString(row.metadata, "customerDocument"),
+      customerAddress: metadataCustomerAddress(row.metadata),
+      customerIncomplete: row.metadata.customerIncomplete === true,
       status: isOrderStatus(row.status) ? row.status : "aguardando_pagamento",
       payment: isPayment(row.paymentStatus) ? row.paymentStatus : "aguardando",
       createdAt: metadataString(row.metadata, "createdAtLabel") ?? "agora",
@@ -153,6 +296,8 @@ async function listOrders(companyId: string): Promise<Order[]> {
       })),
       tracking: row.tracking,
       note: row.note,
+      shippingQuote: metadataShippingQuote(row.metadata),
+      shippingLabel: metadataShippingLabel(row.metadata),
     });
   }
 
@@ -163,10 +308,74 @@ async function createOrder(companyId: string, actorUserId: string, input: Order)
   const skuToItemId = await itemIdsBySku(companyId, input.items.map((line) => line.sku));
 
   return db.transaction(async (tx) => {
+    let customerId = input.customerId ?? null;
+    if (customerId) {
+      const existingCustomer = await tx.query.customers.findFirst({
+        where: and(eq(customers.companyId, companyId), eq(customers.id, customerId)),
+        columns: { id: true },
+      });
+      if (!existingCustomer) customerId = null;
+      if (existingCustomer) {
+        const existingCustomerId = existingCustomer.id;
+        await tx.update(customers).set({
+          name: input.customerName,
+          email: input.customerEmail ?? null,
+          phone: input.customerPhone ?? null,
+          document: input.customerDocument ?? null,
+          address: input.customerAddress?.address ?? null,
+          number: input.customerAddress?.number ?? null,
+          complement: input.customerAddress?.complement ?? null,
+          district: input.customerAddress?.district ?? null,
+          city: input.customerAddress?.city ?? input.city,
+          stateAbbr: input.customerAddress?.stateAbbr ?? null,
+          postalCode: input.customerAddress?.postalCode ?? null,
+          updatedAt: new Date(),
+        }).where(and(eq(customers.companyId, companyId), eq(customers.id, existingCustomerId)));
+
+        await tx.insert(auditLogs).values({
+          companyId,
+          actorUserId,
+          action: "customer.upsert",
+          entityType: "customer",
+          entityId: existingCustomerId,
+          metadata: { source: "order.create", name: input.customerName, channel: input.channel },
+        });
+      }
+    }
+    if (!customerId && input.customerName) {
+      const [customer] = await tx.insert(customers).values({
+        companyId,
+        name: input.customerName,
+        email: input.customerEmail ?? null,
+        phone: input.customerPhone ?? null,
+        document: input.customerDocument ?? null,
+        address: input.customerAddress?.address ?? null,
+        number: input.customerAddress?.number ?? null,
+        complement: input.customerAddress?.complement ?? null,
+        district: input.customerAddress?.district ?? null,
+        city: input.customerAddress?.city ?? input.city,
+        stateAbbr: input.customerAddress?.stateAbbr ?? null,
+        postalCode: input.customerAddress?.postalCode ?? null,
+        source: `order_${input.channel}`,
+        metadata: { firstOrderChannel: input.channel },
+      }).returning({ id: customers.id });
+      customerId = customer.id;
+
+      await tx.insert(auditLogs).values({
+        companyId,
+        actorUserId,
+        action: "customer.upsert",
+        entityType: "customer",
+        entityId: customer.id,
+        metadata: { source: "order.create", name: input.customerName, channel: input.channel },
+      });
+    }
+
     const [order] = await tx
       .insert(orders)
       .values({
         companyId,
+        customerId,
         code: input.code,
         number: input.num,
         channelKey: input.channel,
@@ -182,7 +391,14 @@ async function createOrder(companyId: string, actorUserId: string, input: Order)
         note: input.note,
         source: "manual",
         createdByUserId: actorUserId,
-        metadata: { createdAtLabel: input.createdAt },
+        metadata: {
+          createdAtLabel: input.createdAt,
+          customerEmail: input.customerEmail ?? null,
+          customerPhone: input.customerPhone ?? null,
+          customerDocument: input.customerDocument ?? null,
+          customerAddress: input.customerAddress ?? null,
+          customerIncomplete: customerIncomplete(input),
+        },
       })
       .returning({ id: orders.id });
 
@@ -255,23 +471,44 @@ export async function PATCH(request: Request) {
 
   const existing = await db.query.orders.findFirst({
     where: and(eq(orders.companyId, context.company.id), eq(orders.id, orderId)),
-    columns: { id: true, status: true, paymentStatus: true },
+    columns: { id: true, status: true, paymentStatus: true, freight: true, discount: true, total: true, metadata: true },
   });
   if (!existing) return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+  const previousFreight = Number(existing.freight);
+  const previousTotal = Number(existing.total);
+  const discount = Number(existing.discount);
+  const fallbackSubtotal = Math.max(0, previousTotal - previousFreight + discount);
+  const subtotal = patch.freight !== undefined
+    ? await orderSubtotal(context.company.id, orderId, fallbackSubtotal)
+    : fallbackSubtotal;
 
   await db.transaction(async (tx) => {
     const next = {
       status: patch.status ?? existing.status,
       paymentStatus: patch.payment ?? existing.paymentStatus,
     };
+    const updates: Partial<typeof orders.$inferInsert> = {
+      status: next.status,
+      paymentStatus: next.paymentStatus,
+      updatedAt: new Date(),
+    };
+    if (patch.freight !== undefined) {
+      updates.freight = patch.freight.toString();
+      updates.total = Math.max(0, subtotal + patch.freight - discount).toFixed(2);
+    } else if (patch.total !== undefined) {
+      updates.total = patch.total.toString();
+    }
+
+    if (patch.shippingQuote !== undefined) {
+      updates.metadata = {
+        ...existing.metadata,
+        shippingQuote: patch.shippingQuote,
+      };
+    }
 
     await tx
       .update(orders)
-      .set({
-        status: next.status,
-        paymentStatus: next.paymentStatus,
-        updatedAt: new Date(),
-      })
+      .set(updates)
       .where(and(eq(orders.companyId, context.company.id), eq(orders.id, orderId)));
 
     await applyOrderWorkflowAutomations({

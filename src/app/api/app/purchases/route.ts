@@ -142,6 +142,11 @@ export async function POST(request: Request) {
 
   const number = await nextPurchaseNumber(context.company.id);
   const total = lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0);
+  const locationByItemId = new Map<string, string | null>();
+  for (const line of lines) {
+    locationByItemId.set(line.itemId, await fallbackLocationId(context.company.id, line.itemId));
+  }
+
   await db.transaction(async (tx) => {
     const [purchase] = await tx.insert(purchases).values({
       companyId: context.company.id,
@@ -168,7 +173,7 @@ export async function POST(request: Request) {
         itemId: line.itemId,
         movementType: "purchase_entry",
         quantity: line.quantity.toString(),
-        toLocationId: await fallbackLocationId(context.company.id, line.itemId),
+        toLocationId: locationByItemId.get(line.itemId) ?? null,
         reason: `Entrada por compra ${number}`,
         sourceType: "purchase.receipt",
         sourceId: `${purchase.id}:${line.itemId}`,

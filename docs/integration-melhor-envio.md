@@ -29,7 +29,7 @@ MELHOR_ENVIO_CLIENT_SECRET=""
 MELHOR_ENVIO_REDIRECT_URI="http://localhost:3000/api/app/shipping/oauth/callback"
 
 # Escopos solicitados quando o tenant conecta a conta.
-MELHOR_ENVIO_SCOPES="shipping-calculate shipping-checkout shipping-generate shipping-preview shipping-print shipping-tracking"
+MELHOR_ENVIO_SCOPES="shipping-calculate shipping-checkout shipping-generate shipping-preview shipping-print shipping-tracking cart-read cart-write"
 
 # Chave usada para criptografar tokens no banco.
 INTEGRATION_SECRETS_KEY="replace-with-a-long-random-secret"
@@ -52,6 +52,12 @@ MELHOR_ENVIO_TOKEN_URL=""
 
 Deixe esses três vazios no uso normal.
 
+Webhook de sandbox usado durante o desenvolvimento local com ngrok:
+
+```text
+https://ablutionary-unvesiculated-marylynn.ngrok-free.dev/api/app/shipping/webhook/melhor-envio
+```
+
 ## Configuração no Melhor Envio
 
 1. Crie um aplicativo OAuth no painel do Melhor Envio.
@@ -61,6 +67,9 @@ Deixe esses três vazios no uso normal.
 3. Copie `client_id` e `client_secret` para o ambiente do servidor.
 4. Defina `MELHOR_ENVIO_ENV` como `sandbox` durante testes.
 5. Gere uma `INTEGRATION_SECRETS_KEY` forte e estável.
+6. Opcionalmente, cadastre o webhook de etiquetas:
+   - Local/ngrok: `https://ablutionary-unvesiculated-marylynn.ngrok-free.dev/api/app/shipping/webhook/melhor-envio`
+   - Produção: `https://app.seudominio.com.br/api/app/shipping/webhook/melhor-envio`
 
 Para gerar uma chave:
 
@@ -117,6 +126,7 @@ Regras implementadas:
 - O callback valida tenant, usuário e provider antes de salvar credenciais.
 - Apenas roles de configuração (`owner`, `admin`) conectam, salvam ou desconectam.
 - Auditoria registra conexão, desconexão, atualização e cotação sem gravar segredo.
+- Webhooks validam o cabeçalho `X-ME-Signature` usando HMAC-SHA256 com `MELHOR_ENVIO_CLIENT_SECRET`.
 
 Eventos de auditoria:
 
@@ -163,18 +173,68 @@ Inicia OAuth do tenant atual.
 
 Recebe `code` e `state`, troca por tokens e salva a credencial criptografada no tenant correto.
 
+### `POST /api/app/shipping/webhook/melhor-envio`
+
+Recebe eventos de etiqueta enviados pelo Melhor Envio.
+
+Comportamento atual:
+
+- valida `X-ME-Signature`;
+- aceita eventos `order.*` e payloads genericos de teste/validacao do painel;
+- registra auditoria como `shipping.update`;
+- salva metadados compactos: evento, id da etiqueta, protocolo, status, rastreio, URL de rastreio e timestamps principais;
+- ainda não atualiza pedidos automaticamente porque o fluxo de compra/geração de etiqueta ainda não persiste o mapeamento etiqueta do Melhor Envio para pedido interno.
+
+### `PATCH /api/app/orders`
+
+Ao aplicar uma cotacao no drawer de pedidos, o pedido recebe:
+
+- `freight` recalculado com o preco selecionado;
+- `total` recalculado no servidor a partir dos itens do pedido, frete e desconto;
+- `metadata.shippingQuote` com provider, service id, transportadora, servico, preco, prazo e timestamp da selecao.
+
+O frontend tambem exibe a cotacao selecionada no bloco de envio do pedido.
+
+### `POST /api/app/shipping/labels`
+
+Insere uma etiqueta no carrinho do Melhor Envio a partir de uma cotacao ja aplicada ao pedido.
+
+Entrada esperada:
+
+- `orderId`;
+- dados completos de remetente;
+- dados completos de destinatario;
+- peso e dimensoes do volume;
+- opcoes de seguro, AR, mao propria, declaracao de conteudo ou NF-e.
+
+Comportamento atual:
+
+- usa o service id da cotacao salva no pedido;
+- monta os produtos a partir das linhas do pedido;
+- chama `POST /api/v2/me/cart`;
+- grava `metadata.shippingLabel` com id externo, protocolo, status, servico, preco, rastreio e timestamp;
+- registra auditoria como `shipping.update`;
+- nao faz checkout/pagamento automaticamente.
+
+### `PATCH /api/app/shipping/labels`
+
+Executa acoes sobre uma etiqueta Melhor Envio ja salva no pedido:
+
+- `checkout`: chama `POST /api/v2/me/shipment/checkout`;
+- `generate`: chama `POST /api/v2/me/shipment/generate`;
+- `preview`: chama `POST /api/v2/me/shipment/preview`;
+- `print`: chama `POST /api/v2/me/shipment/print`.
+
+As acoes usam o id externo salvo em `metadata.shippingLabel.externalId`, registram auditoria como `shipping.update` e atualizam `checkoutAt`, `generatedAt`, `previewUrl` ou `printUrl` quando o provider retorna sucesso.
+
 ## Estado Atual do Produto
 
-A conexão OAuth segura está preparada.
+A conexão OAuth segura está preparada, a cotação externa real está implementada com renovação de token e fallback manual, a cotacao selecionada ja pode ser persistida no pedido, a etiqueta ja pode ser inserida no carrinho do Melhor Envio, as acoes de checkout/geracao/preview/impressao ja estao ligadas, e o webhook de etiquetas já valida assinatura e registra auditoria.
 
-A cotação externa real ainda fica bloqueada no beta local. O endpoint de teste confirma se existe credencial conectada e mantém fallback manual para frete, etiqueta e rastreio.
+Antes de liberar o fluxo completo de etiquetas, implementar:
 
-Antes de liberar cotação real, implementar:
-
-- chamada ao endpoint de cotação do Melhor Envio;
-- renovação automática com `refresh_token`;
-- tratamento de erro por serviço indisponível;
-- logs sem payload sensível;
+- validar compra/checkout, geracao, preview e impressao no sandbox depois que `/me/cart` estiver autorizado;
+- mapeamento etiqueta Melhor Envio para pedido interno para o webhook atualizar rastreio/status automaticamente;
 - testes de sandbox com múltiplos tenants.
 
 ## Troubleshooting

@@ -25,6 +25,10 @@ export function catalogToItemSummary(item: CatalogItem): ItemSummary {
     min: item.min,
     costAvg: item.averageCost ?? item.estimatedCost ?? 0,
     price: item.currentPrice ?? 0,
+    weightG: item.weightG,
+    packedWeightG: item.packedWeightG,
+    dimensions: item.dimensions,
+    packedDimensions: item.packedDimensions,
     collection: item.metadata.collection ?? undefined,
     aroma: item.metadata.aroma ?? undefined,
   };

@@ -30,6 +30,7 @@ import {
   useLabelSheets,
 } from "@/lib/label-sheets";
 import { Theme, type BrandTheme } from "@/lib/theme";
+import { lookupPostalCode } from "@/lib/postal-code-client";
 import {
   AUTO_LABELS,
   AUTOMATIONS,
@@ -80,7 +81,156 @@ type ShippingSettings = {
   originZip: string;
   originCity: string;
   defaultService: string;
+  storeDocumentType: "cpf" | "cnpj";
+  storeDocument: string;
+  storeName: string;
+  senderName: string;
+  senderPhone: string;
+  senderEmail: string;
+  senderDocumentType: "cpf" | "cnpj";
+  senderDocument: string;
+  senderCompanyDocument: string;
+  senderStateRegister: string;
+  senderAddress: string;
+  senderNumber: string;
+  senderComplement: string;
+  senderDistrict: string;
+  senderStateAbbr: string;
+  fiscalRegime: string;
+  fiscalInvoiceDefault: string;
+  defaultShippingAddressId: string;
+  shippingAddresses: ShippingAddressSettings[];
 };
+
+type ShippingAddressSettings = {
+  id: string;
+  label: string;
+  name: string;
+  phone: string;
+  email: string;
+  documentType: "cpf" | "cnpj";
+  document: string;
+  companyDocument: string;
+  stateRegister: string;
+  address: string;
+  number: string;
+  complement: string;
+  district: string;
+  city: string;
+  stateAbbr: string;
+  postalCode: string;
+};
+
+type ShippingQuoteService = {
+  id: string;
+  name: string;
+  company: string | null;
+  price: number;
+  deliveryTime: number | null;
+};
+
+function onlyDigits(value: string, max = 32) {
+  return value.replace(/\D/g, "").slice(0, max);
+}
+
+function maskCep(value: string) {
+  const digits = onlyDigits(value, 8);
+  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+}
+
+function maskPhone(value: string) {
+  const digits = onlyDigits(value, 11);
+  if (digits.length <= 10) {
+    return digits.replace(/^(\d{0,2})(\d{0,4})(\d{0,4}).*/, (_match, ddd, first, last) => [ddd && `(${ddd}`, ddd?.length === 2 && ") ", first, last && `-${last}`].filter(Boolean).join(""));
+  }
+  return digits.replace(/^(\d{0,2})(\d{0,5})(\d{0,4}).*/, (_match, ddd, first, last) => [ddd && `(${ddd}`, ddd?.length === 2 && ") ", first, last && `-${last}`].filter(Boolean).join(""));
+}
+
+function maskCpf(value: string) {
+  return onlyDigits(value, 11)
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+function maskCnpj(value: string) {
+  return onlyDigits(value, 14)
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+}
+
+function maskDocument(value: string, type: "cpf" | "cnpj") {
+  return type === "cnpj" ? maskCnpj(value) : maskCpf(value);
+}
+
+function isValidCpf(value: string) {
+  const cpf = onlyDigits(value, 11);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  const calc = (length: number) => {
+    let sum = 0;
+    for (let index = 0; index < length; index += 1) sum += Number(cpf[index]) * (length + 1 - index);
+    const digit = (sum * 10) % 11;
+    return digit === 10 ? 0 : digit;
+  };
+  return calc(9) === Number(cpf[9]) && calc(10) === Number(cpf[10]);
+}
+
+function isValidCnpj(value: string) {
+  const cnpj = onlyDigits(value, 14);
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const calc = (weights: number[]) => {
+    const sum = weights.reduce((total, weight, index) => total + Number(cnpj[index]) * weight, 0);
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+  return calc([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(cnpj[12])
+    && calc([6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(cnpj[13]);
+}
+
+function shippingAddressDocument(address: ShippingAddressSettings) {
+  return address.documentType === "cnpj" ? address.companyDocument : address.document;
+}
+
+function shippingAddressComplete(address: ShippingAddressSettings) {
+  const document = shippingAddressDocument(address);
+  const documentOk = address.documentType === "cnpj" ? isValidCnpj(document) : isValidCpf(document);
+  return Boolean(
+    address.label.trim()
+      && address.name.trim()
+      && onlyDigits(address.phone, 16).length >= 10
+      && address.email.includes("@")
+      && documentOk
+      && address.address.trim()
+      && address.number.trim()
+      && address.district.trim()
+      && address.city.trim()
+      && /^[A-Z]{2}$/.test(address.stateAbbr.trim())
+      && onlyDigits(address.postalCode, 8).length === 8,
+  );
+}
+
+function emptyShippingAddress(label = "Loja"): ShippingAddressSettings {
+  return {
+    id: `addr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    label,
+    name: "",
+    phone: "",
+    email: "",
+    documentType: "cnpj",
+    document: "",
+    companyDocument: "",
+    stateRegister: "",
+    address: "",
+    number: "",
+    complement: "",
+    district: "",
+    city: "",
+    stateAbbr: "",
+    postalCode: "",
+  };
+}
 
 type BrandingResponse = {
   companyName: string;
@@ -766,16 +916,100 @@ function ShippingTab() {
     originZip: "",
     originCity: "",
     defaultService: "manual",
+    storeDocumentType: "cnpj",
+    storeDocument: "",
+    storeName: "",
+    senderName: "",
+    senderPhone: "",
+    senderEmail: "",
+    senderDocumentType: "cpf",
+    senderDocument: "",
+    senderCompanyDocument: "",
+    senderStateRegister: "",
+    senderAddress: "",
+    senderNumber: "",
+    senderComplement: "",
+    senderDistrict: "",
+    senderStateAbbr: "",
+    fiscalRegime: "",
+    fiscalInvoiceDefault: "",
+    defaultShippingAddressId: "",
+    shippingAddresses: [emptyShippingAddress()],
   });
   const [destinationZip, setDestinationZip] = React.useState("");
   const [weightG, setWeightG] = React.useState("500");
+  const [lengthCm, setLengthCm] = React.useState("16");
+  const [widthCm, setWidthCm] = React.useState("11");
+  const [heightCm, setHeightCm] = React.useState("4");
   const [quoteMessage, setQuoteMessage] = React.useState<string | null>(null);
+  const [quoteServices, setQuoteServices] = React.useState<ShippingQuoteService[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [quoting, setQuoting] = React.useState(false);
+  const [editingAddressId, setEditingAddressId] = React.useState<string | null>(null);
+  const autoLookedUpAddressCep = React.useRef("");
+  const defaultAddress = settings.shippingAddresses.find((address) => address.id === settings.defaultShippingAddressId) ?? settings.shippingAddresses[0];
+  const editingAddress = settings.shippingAddresses.find((address) => address.id === editingAddressId) ?? null;
+  const addressErrors = settings.shippingAddresses.filter((address) => !shippingAddressComplete(address)).length;
+
+  const setSetting = <K extends keyof ShippingSettings>(key: K, value: ShippingSettings[K]) => {
+    setSettings((current) => ({ ...current, [key]: value }));
+  };
+
+  const setAddress = (id: string, patch: Partial<ShippingAddressSettings>) => {
+    setSettings((current) => ({
+      ...current,
+      shippingAddresses: current.shippingAddresses.map((address) => address.id === id ? { ...address, ...patch } : address),
+    }));
+  };
+
+  const addAddress = () => {
+    const next = emptyShippingAddress(`Expedicao ${settings.shippingAddresses.length + 1}`);
+    setSettings((current) => ({
+      ...current,
+      shippingAddresses: [...current.shippingAddresses, next],
+      defaultShippingAddressId: current.defaultShippingAddressId || next.id,
+    }));
+    setEditingAddressId(next.id);
+  };
+
+  const removeAddress = (id: string) => {
+    setSettings((current) => {
+      const next = current.shippingAddresses.filter((address) => address.id !== id);
+      const fallback = next[0] ?? emptyShippingAddress();
+      return {
+        ...current,
+        shippingAddresses: next.length ? next : [fallback],
+        defaultShippingAddressId: current.defaultShippingAddressId === id ? fallback.id : current.defaultShippingAddressId,
+      };
+    });
+  };
+
+  const lookupAddressCep = async (id: string) => {
+    const address = settings.shippingAddresses.find((item) => item.id === id);
+    if (!address) return;
+    try {
+      const found = await lookupPostalCode(address.postalCode);
+      setAddress(id, {
+        postalCode: found.postalCode,
+        address: found.address || address.address,
+        district: found.district || address.district,
+        city: found.city || address.city,
+        stateAbbr: found.stateAbbr || address.stateAbbr,
+        complement: address.complement || found.complement,
+      });
+    } catch {
+      toast("Nao foi possivel buscar o CEP.", "bad");
+    }
+  };
 
   const sync = React.useCallback((payload: { shipping?: ShippingSettings } | null) => {
     if (!payload?.shipping) return;
-    setSettings(payload.shipping);
+    const addresses = payload.shipping.shippingAddresses?.length ? payload.shipping.shippingAddresses : [emptyShippingAddress()];
+    setSettings({
+      ...payload.shipping,
+      shippingAddresses: addresses,
+      defaultShippingAddressId: payload.shipping.defaultShippingAddressId || addresses[0]?.id || "",
+    });
   }, []);
 
   React.useEffect(() => {
@@ -787,7 +1021,21 @@ function ShippingTab() {
     return () => { alive = false; };
   }, [sync]);
 
+  React.useEffect(() => {
+    if (!editingAddress) return;
+    const cep = onlyDigits(editingAddress.postalCode, 8);
+    const key = `${editingAddress.id}:${cep}`;
+    if (cep.length !== 8 || autoLookedUpAddressCep.current === key) return;
+    autoLookedUpAddressCep.current = key;
+    void lookupAddressCep(editingAddress.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingAddress?.id, editingAddress?.postalCode]);
+
   const save = async () => {
+    if (settings.melhorEnvioEnabled && (!defaultAddress || !shippingAddressComplete(defaultAddress))) {
+      toast("Complete o endereco de expedicao padrao antes de ativar o Melhor Envio.", "bad");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/app/shipping", {
@@ -799,6 +1047,32 @@ function ShippingTab() {
           originZip: settings.originZip,
           originCity: settings.originCity,
           defaultService: settings.defaultService,
+          storeDocumentType: settings.storeDocumentType,
+          storeDocument: onlyDigits(settings.storeDocument, settings.storeDocumentType === "cnpj" ? 14 : 11),
+          storeName: settings.storeName,
+          senderName: defaultAddress?.name ?? settings.senderName,
+          senderPhone: defaultAddress?.phone ?? settings.senderPhone,
+          senderEmail: settings.senderEmail,
+          senderDocumentType: defaultAddress?.documentType ?? settings.senderDocumentType,
+          senderDocument: settings.senderDocument,
+          senderCompanyDocument: settings.senderCompanyDocument,
+          senderStateRegister: settings.senderStateRegister,
+          senderAddress: settings.senderAddress,
+          senderNumber: settings.senderNumber,
+          senderComplement: settings.senderComplement,
+          senderDistrict: settings.senderDistrict,
+          senderStateAbbr: settings.senderStateAbbr,
+          fiscalRegime: settings.fiscalRegime,
+          fiscalInvoiceDefault: settings.fiscalInvoiceDefault,
+          defaultShippingAddressId: settings.defaultShippingAddressId,
+          shippingAddresses: settings.shippingAddresses.map((address) => ({
+            ...address,
+            phone: onlyDigits(address.phone, 16),
+            document: address.documentType === "cpf" ? onlyDigits(address.document, 11) : "",
+            companyDocument: address.documentType === "cnpj" ? onlyDigits(address.companyDocument, 14) : "",
+            postalCode: onlyDigits(address.postalCode, 8),
+            stateAbbr: address.stateAbbr.toUpperCase(),
+          })),
         }),
       });
       if (!res.ok) throw new Error("shipping_save_failed");
@@ -813,16 +1087,24 @@ function ShippingTab() {
 
   const quote = async () => {
     setQuoting(true);
+    setQuoteServices([]);
     try {
       const res = await fetch("/api/app/shipping", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ destinationZip, weightG: Number(weightG) || 0 }),
+        body: JSON.stringify({
+          destinationZip,
+          weightG: Number(weightG) || 0,
+          lengthCm: Number(lengthCm) || 0,
+          widthCm: Number(widthCm) || 0,
+          heightCm: Number(heightCm) || 0,
+        }),
       });
       if (!res.ok) throw new Error("shipping_quote_failed");
-      const payload = await res.json() as { quote?: { message?: string } };
+      const payload = await res.json() as { quote?: { message?: string; services?: ShippingQuoteService[] } };
       setQuoteMessage(payload.quote?.message ?? "Cotação indisponível. Use o preenchimento manual.");
+      setQuoteServices(payload.quote?.services ?? []);
     } catch {
       setQuoteMessage("Cotação indisponível. Use frete, etiqueta e rastreio manualmente.");
     } finally {
@@ -894,14 +1176,6 @@ function ShippingTab() {
               />
             </Field>
           </div>
-          <div className="ff-grid">
-            <Field label="CEP de origem">
-              <Input value={settings.originZip} onChange={(event) => setSettings((current) => ({ ...current, originZip: event.target.value }))} placeholder="00000-000" />
-            </Field>
-            <Field label="Cidade de origem">
-              <Input value={settings.originCity} onChange={(event) => setSettings((current) => ({ ...current, originCity: event.target.value }))} placeholder="São Paulo - SP" />
-            </Field>
-          </div>
           <div className="row between" style={{ gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
             <div style={{ minWidth: 220, flex: "1 1 260px" }}>
               <div className="block-label">Conexao segura</div>
@@ -928,8 +1202,100 @@ function ShippingTab() {
       <Card>
         <CardHeader>
           <div>
+            <CardTitle>Dados da loja</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>Cadastro fiscal e identificação do tenant.</div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="ff-grid">
+            <Field label="Nome da loja" required>
+              <Input value={settings.storeName} onChange={(event) => setSetting("storeName", event.target.value)} />
+            </Field>
+            <Field label="Documento da loja" required>
+              <div className="row" style={{ gap: 8 }}>
+                <Select
+                  value={settings.storeDocumentType}
+                  onChange={(value) => setSettings((current) => ({
+                    ...current,
+                    storeDocumentType: value as "cpf" | "cnpj",
+                    storeDocument: "",
+                  }))}
+                  options={[
+                    { value: "cnpj", label: "CNPJ" },
+                    { value: "cpf", label: "CPF" },
+                  ]}
+                  style={{ width: 104 }}
+                />
+                <Input
+                  value={maskDocument(settings.storeDocument, settings.storeDocumentType)}
+                  onChange={(event) => setSetting("storeDocument", onlyDigits(event.target.value, settings.storeDocumentType === "cnpj" ? 14 : 11))}
+                  placeholder={settings.storeDocumentType === "cnpj" ? "00.000.000/0000-00" : "000.000.000-00"}
+                />
+              </div>
+            </Field>
+          </div>
+          <div className="ff-grid-3">
+            <Field label="Inscrição estadual">
+              <Input value={settings.senderStateRegister} onChange={(event) => setSetting("senderStateRegister", event.target.value)} />
+            </Field>
+            <Field label="Regime fiscal">
+              <Input value={settings.fiscalRegime} onChange={(event) => setSetting("fiscalRegime", event.target.value)} placeholder="Simples Nacional, MEI..." />
+            </Field>
+            <Field label="NF padrão">
+              <Input value={settings.fiscalInvoiceDefault} onChange={(event) => setSetting("fiscalInvoiceDefault", event.target.value)} placeholder="Declaracao ou NF-e" />
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Endereços de expedição</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>
+              {addressErrors ? `${addressErrors} endereco(s) com dados pendentes.` : "Enderecos prontos para cotacao e etiqueta."}
+            </div>
+          </div>
+          <Button variant="outline" size="sm" icon="plus" onClick={addAddress}>Adicionar endereço</Button>
+        </CardHeader>
+        <CardContent>
+          <div className="shipping-address-grid">
+            {settings.shippingAddresses.map((address) => {
+              const complete = shippingAddressComplete(address);
+              return (
+                <button
+                  key={address.id}
+                  type="button"
+                  className={cn("shipping-address-card", settings.defaultShippingAddressId === address.id && "shipping-address-card--on")}
+                  onClick={() => setEditingAddressId(address.id)}
+                >
+                  <div className="row between" style={{ gap: 10 }}>
+                    <strong>{address.label || "Endereco"}</strong>
+                    <Badge tone={complete ? "ok" : "warn"}>{complete ? "completo" : "pendente"}</Badge>
+                  </div>
+                  <div className="shipping-address-card-body">
+                    <span>{address.name || "Remetente pendente"}</span>
+                    <span>{address.city ? `${address.city}${address.stateAbbr ? ` - ${address.stateAbbr}` : ""}` : "Cidade pendente"}</span>
+                    <span>{address.postalCode ? maskCep(address.postalCode) : "CEP pendente"}</span>
+                  </div>
+                  <div className="row between" style={{ gap: 8, marginTop: 10 }}>
+                    <Badge tone={settings.defaultShippingAddressId === address.id ? "info" : "outline"}>
+                      {settings.defaultShippingAddressId === address.id ? "padrao" : "alternativo"}
+                    </Badge>
+                    <span className="muted" style={{ fontSize: 12 }}>Editar</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
             <CardTitle>Teste de cotação</CardTitle>
-            <div className="section-hint" style={{ marginTop: 2 }}>No beta local, a API retorna se deve usar integração ou fallback manual.</div>
+            <div className="section-hint" style={{ marginTop: 2 }}>Consulta o Melhor Envio quando a conta OAuth estiver conectada; caso contrário, mantém o fallback manual.</div>
           </div>
         </CardHeader>
         <CardContent>
@@ -937,12 +1303,138 @@ function ShippingTab() {
             <Field label="CEP destino"><Input value={destinationZip} onChange={(event) => setDestinationZip(event.target.value)} placeholder="00000-000" /></Field>
             <Field label="Peso embalado (g)"><Input value={weightG} inputMode="numeric" onChange={(event) => setWeightG(event.target.value.replace(/\D/g, ""))} /></Field>
           </div>
+          <div className="ff-grid-3">
+            <Field label="Comprimento (cm)"><Input value={lengthCm} inputMode="decimal" onChange={(event) => setLengthCm(event.target.value.replace(/[^\d,.]/g, ""))} /></Field>
+            <Field label="Largura (cm)"><Input value={widthCm} inputMode="decimal" onChange={(event) => setWidthCm(event.target.value.replace(/[^\d,.]/g, ""))} /></Field>
+            <Field label="Altura (cm)"><Input value={heightCm} inputMode="decimal" onChange={(event) => setHeightCm(event.target.value.replace(/[^\d,.]/g, ""))} /></Field>
+          </div>
           <div className="row" style={{ gap: 10, alignItems: "center" }}>
             <Button variant="outline" icon="truck" disabled={quoting} onClick={quote}>{quoting ? "Consultando..." : "Testar cotação"}</Button>
             {quoteMessage && <span className="muted" style={{ fontSize: 13 }}>{quoteMessage}</span>}
           </div>
+          {quoteServices.length > 0 && (
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {quoteServices.slice(0, 4).map((service) => (
+                <div key={`${service.id}-${service.name}`} className="row between" style={{ gap: 10, padding: "9px 0", borderTop: "1px solid hsl(var(--border))" }}>
+                  <div>
+                    <div className="cell-title">{service.company ? `${service.company} - ${service.name}` : service.name}</div>
+                    <div className="cell-sub">{service.deliveryTime === null ? "Prazo indisponível" : `Até ${service.deliveryTime} dia(s)`}</div>
+                  </div>
+                  <strong>{service.price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      <Modal
+        open={!!editingAddress}
+        onClose={() => setEditingAddressId(null)}
+        title={editingAddress ? `Endereço: ${editingAddress.label || "expedição"}` : "Endereço de expedição"}
+        subtitle="Os dados completos do remetente serão usados automaticamente nos pedidos."
+        icon="mapPin"
+        width={860}
+        footer={editingAddress && (
+          <>
+            {settings.shippingAddresses.length > 1 && (
+              <Button variant="ghost" icon="trash" onClick={() => {
+                removeAddress(editingAddress.id);
+                setEditingAddressId(null);
+              }}>
+                Remover
+              </Button>
+            )}
+            <div className="spacer" />
+            <Button variant="outline" onClick={() => setEditingAddressId(null)}>Fechar</Button>
+            <Button variant="default" icon="check" onClick={() => {
+              setSetting("defaultShippingAddressId", editingAddress.id);
+              setEditingAddressId(null);
+            }}>
+              Usar como padrão
+            </Button>
+          </>
+        )}
+      >
+        {editingAddress && (
+          <div className="shipping-address-form">
+            <div className="ff-grid">
+              <Field label="CEP" required>
+                <div className="row" style={{ gap: 8 }}>
+                  <Input value={maskCep(editingAddress.postalCode)} onChange={(event) => setAddress(editingAddress.id, { postalCode: onlyDigits(event.target.value, 8) })} placeholder="00000-000" />
+                  <Button variant="outline" size="sm" icon="search" onClick={() => lookupAddressCep(editingAddress.id)}>Buscar</Button>
+                </div>
+              </Field>
+              <Field label="Nome do card" required>
+                <Input value={editingAddress.label} onChange={(event) => setAddress(editingAddress.id, { label: event.target.value })} placeholder="Loja, estoque, fabrica..." />
+              </Field>
+            </div>
+            <div className="ff-grid">
+              <Field label="Endereço" required>
+                <Input value={editingAddress.address} onChange={(event) => setAddress(editingAddress.id, { address: event.target.value })} />
+              </Field>
+              <Field label="Número" required>
+                <Input value={editingAddress.number} onChange={(event) => setAddress(editingAddress.id, { number: event.target.value })} />
+              </Field>
+            </div>
+            <div className="ff-grid-3">
+              <Field label="Bairro" required>
+                <Input value={editingAddress.district} onChange={(event) => setAddress(editingAddress.id, { district: event.target.value })} />
+              </Field>
+              <Field label="Cidade" required>
+                <Input value={editingAddress.city} onChange={(event) => setAddress(editingAddress.id, { city: event.target.value })} />
+              </Field>
+              <Field label="UF" required>
+                <Input value={editingAddress.stateAbbr} maxLength={2} onChange={(event) => setAddress(editingAddress.id, { stateAbbr: event.target.value.toUpperCase() })} />
+              </Field>
+            </div>
+            <Field label="Complemento">
+              <Input value={editingAddress.complement} onChange={(event) => setAddress(editingAddress.id, { complement: event.target.value })} />
+            </Field>
+            <div className="ff-grid">
+              <Field label="Remetente" required>
+                <Input value={editingAddress.name} onChange={(event) => setAddress(editingAddress.id, { name: event.target.value })} />
+              </Field>
+              <Field label="CPF/CNPJ do remetente" required>
+                <div className="row" style={{ gap: 8 }}>
+                  <Select
+                    value={editingAddress.documentType}
+                    onChange={(value) => setAddress(editingAddress.id, {
+                      documentType: value as "cpf" | "cnpj",
+                      document: "",
+                      companyDocument: "",
+                    })}
+                    options={[
+                      { value: "cpf", label: "CPF" },
+                      { value: "cnpj", label: "CNPJ" },
+                    ]}
+                    style={{ width: 92 }}
+                  />
+                  <Input
+                    value={maskDocument(shippingAddressDocument(editingAddress), editingAddress.documentType)}
+                    onChange={(event) => {
+                      const digits = onlyDigits(event.target.value, editingAddress.documentType === "cnpj" ? 14 : 11);
+                      setAddress(editingAddress.id, editingAddress.documentType === "cnpj" ? { companyDocument: digits } : { document: digits });
+                    }}
+                    placeholder={editingAddress.documentType === "cnpj" ? "00.000.000/0000-00" : "000.000.000-00"}
+                  />
+                </div>
+              </Field>
+            </div>
+            <div className="ff-grid-3">
+              <Field label="Telefone" required>
+                <Input value={maskPhone(editingAddress.phone)} onChange={(event) => setAddress(editingAddress.id, { phone: onlyDigits(event.target.value, 11) })} placeholder="(00) 00000-0000" />
+              </Field>
+              <Field label="E-mail" required>
+                <Input value={editingAddress.email} onChange={(event) => setAddress(editingAddress.id, { email: event.target.value })} />
+              </Field>
+              <Field label="Inscrição estadual">
+                <Input value={editingAddress.stateRegister} onChange={(event) => setAddress(editingAddress.id, { stateRegister: event.target.value })} />
+              </Field>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

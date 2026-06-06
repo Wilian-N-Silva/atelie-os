@@ -143,6 +143,18 @@
 .ff-error { font-size: 11.5px; color: hsl(var(--bad)); margin-top: 5px; }
 .ff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .ff-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 14px; }
+.shipping-address-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 12px 0 16px; }
+.shipping-address-card { border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); color: hsl(var(--foreground)); padding: 14px; min-width: 0; text-align: left; cursor: pointer; }
+.shipping-address-card--on { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+.shipping-address-card-body { display: grid; gap: 3px; margin-top: 10px; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+.shipping-address-card-body span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shipping-address-form { display: grid; gap: 2px; }
+.shipping-address-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0 12px; }
+.shipping-address-option { min-width: 0; text-align: left; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground)); border-radius: 8px; padding: 9px 10px; display: grid; gap: 2px; cursor: pointer; }
+.shipping-address-option:hover { background: hsl(var(--accent)); }
+.shipping-address-option--on { border-color: hsl(var(--primary)); box-shadow: inset 3px 0 0 hsl(var(--primary)); }
+.shipping-address-option-title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shipping-address-option span:not(.shipping-address-option-title), .shipping-address-option small { color: hsl(var(--muted-foreground)); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .inc-ac { position: relative; }
 .inc-ac-popover {

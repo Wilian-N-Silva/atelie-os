@@ -98,6 +98,7 @@ export async function POST(request: Request) {
     });
     if (!item) return NextResponse.json({ error: "item_not_found" }, { status: 404 });
   }
+  const returnLocationId = itemId && quantity ? await defaultLocationId(context.company.id, itemId) : null;
 
   await db.transaction(async (tx) => {
     const [incident] = await tx.insert(incidents).values({
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
         itemId,
         movementType: "return",
         quantity: quantity.toString(),
-        toLocationId: await defaultLocationId(context.company.id, itemId),
+        toLocationId: returnLocationId,
         reason: `Retorno por incidente: ${reason}`,
         sourceType: "incident.return",
         sourceId: incident.id,

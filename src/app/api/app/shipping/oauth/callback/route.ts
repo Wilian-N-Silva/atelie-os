@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs } from "@/db/schema";
+import { auditLogs, companySettings } from "@/db/schema";
 import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
 import { verifyOAuthState } from "@/lib/oauth-state-server";
 import { SETTINGS_WRITE_ROLES } from "@/lib/permissions";
@@ -21,8 +22,16 @@ type TokenResponse = {
   scope?: string;
 };
 
+type ShippingSettings = {
+  melhorEnvioEnabled?: boolean;
+  originZip?: string;
+  originCity?: string;
+  defaultService?: string;
+};
+
 function appRedirect(request: Request, status: "connected" | "error") {
-  const url = new URL("/", request.url);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || request.url;
+  const url = new URL("/", appUrl);
   url.searchParams.set("shipping", status);
   return NextResponse.redirect(url);
 }
@@ -85,6 +94,26 @@ export async function GET(request: Request) {
     expiresAt,
     metadata: { connectedVia: "oauth" },
   });
+
+  const settingsRow = await db.query.companySettings.findFirst({
+    where: eq(companySettings.companyId, context.company.id),
+  });
+  if (settingsRow) {
+    const currentShipping = settingsRow.settings.shipping && typeof settingsRow.settings.shipping === "object"
+      ? settingsRow.settings.shipping as ShippingSettings
+      : {};
+    await db.update(companySettings).set({
+      settings: {
+        ...settingsRow.settings,
+        shipping: {
+          ...currentShipping,
+          melhorEnvioEnabled: true,
+          defaultService: currentShipping.defaultService || "melhor_envio",
+        },
+      },
+      updatedAt: new Date(),
+    }).where(eq(companySettings.companyId, context.company.id));
+  }
 
   await db.insert(auditLogs).values({
     companyId: context.company.id,

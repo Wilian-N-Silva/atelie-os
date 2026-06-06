@@ -1,7 +1,7 @@
 import * as React from "react";
-import { LABEL_SHEETS, type DemoLabelSheet } from "@/lib/screen-fixtures";
+import { LABEL_SHEETS, type LabelSheetBase } from "@/lib/domain";
 
-export type LabelSheet = DemoLabelSheet & {
+export type LabelSheet = LabelSheetBase & {
   brand?: string;
   pageW: number;
   pageH: number;
@@ -44,7 +44,7 @@ function defaultGutter(total: number, margin: number, count: number, size: numbe
   return Math.max(0, +(total - margin * 2 - count * size).toFixed(2)) / (count - 1);
 }
 
-export function normalizeLabelSheet(sheet: DemoLabelSheet & Partial<LabelSheet>): LabelSheet {
+export function normalizeLabelSheet(sheet: LabelSheetBase & Partial<LabelSheet>): LabelSheet {
   const pageW = sheet.pageW ?? 210;
   const pageH = sheet.pageH ?? (sheet.roll ? sheet.labelH : 297);
   const mTop = sheet.mTop ?? 9;

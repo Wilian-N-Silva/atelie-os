@@ -60,6 +60,17 @@ function cleanNullableInteger(value: unknown) {
   return num == null ? null : Math.round(num);
 }
 
+function parseDimensions(value: string | null) {
+  if (!value) return null;
+  const parts = value
+    .toLowerCase()
+    .replace(/cm/g, "")
+    .split(/[x×*]/)
+    .map((part) => Number(part.trim().replace(",", ".")))
+    .filter((part) => Number.isFinite(part) && part > 0);
+  return parts.length === 3 ? parts : null;
+}
+
 function cleanNullableId(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -122,36 +133,39 @@ export function parseItemInput(payload: unknown): { input: ItemFormInput } | { e
   if (!ITEM_STATUSES.includes(status as ItemStatus)) return { error: "invalid_status" };
   if (!baseUnitId) return { error: "unit_required" };
 
-  return {
-    input: {
-      internalCode,
-      sku,
-      name,
-      variant: cleanOptionalString(data.variant, 80),
-      type: type as ItemType,
-      categoryId: cleanNullableId(data.categoryId),
-      baseUnitId,
-      defaultLocationId: cleanNullableId(data.defaultLocationId),
-      minStock: cleanNonNegativeNumber(data.minStock, 0),
-      tracksLot: Boolean(data.tracksLot),
-      fragile: Boolean(data.fragile),
-      sellable: Boolean(data.sellable),
-      status: status as ItemStatus,
-      estimatedCost: cleanNullableNumber(data.estimatedCost),
-      averageCost: cleanNullableNumber(data.averageCost),
-      suggestedPrice: cleanNullableNumber(data.suggestedPrice),
-      currentPrice: cleanNullableNumber(data.currentPrice),
-      weightG: cleanNullableInteger(data.weightG),
-      packedWeightG: cleanNullableInteger(data.packedWeightG),
-      dimensions: cleanOptionalString(data.dimensions, 80),
-      packedDimensions: cleanOptionalString(data.packedDimensions, 80),
-      metadata: {
-        aroma: cleanOptionalString(metadata.aroma, 240),
-        collection: cleanOptionalString(metadata.collection, 80),
-        cureDays: cleanNullableInteger(metadata.cureDays),
-      },
+  const input: ItemFormInput = {
+    internalCode,
+    sku,
+    name,
+    variant: cleanOptionalString(data.variant, 80),
+    type: type as ItemType,
+    categoryId: cleanNullableId(data.categoryId),
+    baseUnitId,
+    defaultLocationId: cleanNullableId(data.defaultLocationId),
+    minStock: cleanNonNegativeNumber(data.minStock, 0),
+    tracksLot: Boolean(data.tracksLot),
+    fragile: Boolean(data.fragile),
+    sellable: Boolean(data.sellable),
+    status: status as ItemStatus,
+    estimatedCost: cleanNullableNumber(data.estimatedCost),
+    averageCost: cleanNullableNumber(data.averageCost),
+    suggestedPrice: cleanNullableNumber(data.suggestedPrice),
+    currentPrice: cleanNullableNumber(data.currentPrice),
+    weightG: cleanNullableInteger(data.weightG),
+    packedWeightG: cleanNullableInteger(data.packedWeightG),
+    dimensions: cleanOptionalString(data.dimensions, 80),
+    packedDimensions: cleanOptionalString(data.packedDimensions, 80),
+    metadata: {
+      aroma: cleanOptionalString(metadata.aroma, 240),
+      collection: cleanOptionalString(metadata.collection, 80),
+      cureDays: cleanNullableInteger(metadata.cureDays),
     },
   };
+
+  if (input.sellable && !(input.packedWeightG ?? input.weightG)) return { error: "sellable_weight_required" };
+  if (input.sellable && !parseDimensions(input.packedDimensions ?? input.dimensions)) return { error: "sellable_dimensions_required" };
+
+  return { input };
 }
 
 export async function getItemLookups(companyId: string): Promise<ItemLookups> {

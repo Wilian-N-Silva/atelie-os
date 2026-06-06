@@ -117,6 +117,7 @@ export const auditActionEnum = pgEnum("audit_action", [
   "item.update",
   "order.create",
   "order.update",
+  "customer.upsert",
   "recipe.create",
   "recipe.update",
   "production.create",
@@ -354,6 +355,36 @@ export const salesChannels = pgTable(
   }),
 );
 
+export const customers = pgTable(
+  "customers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    document: text("document"),
+    address: text("address"),
+    number: text("number"),
+    complement: text("complement"),
+    district: text("district"),
+    city: text("city"),
+    stateAbbr: text("state_abbr"),
+    postalCode: text("postal_code"),
+    source: text("source").notNull().default("manual"),
+    status: text("status").notNull().default("active"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyNameIdx: index("customers_company_name_idx").on(table.companyId, table.name),
+    companyDocumentIdx: index("customers_company_document_idx").on(table.companyId, table.document),
+    companyEmailIdx: index("customers_company_email_idx").on(table.companyId, table.email),
+  }),
+);
+
 export const suppliers = pgTable(
   "suppliers",
   {
@@ -429,6 +460,7 @@ export const orders = pgTable(
     companyId: uuid("company_id")
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
     code: text("code").notNull(),
     number: text("number").notNull(),
     channelKey: text("channel_key").notNull(),
@@ -449,6 +481,7 @@ export const orders = pgTable(
   },
   (table) => ({
     companyCodeIdx: uniqueIndex("orders_company_code_idx").on(table.companyId, table.code),
+    companyCustomerIdx: index("orders_company_customer_idx").on(table.companyId, table.customerId),
     companyStatusIdx: index("orders_company_status_idx").on(table.companyId, table.status),
     companyCreatedIdx: index("orders_company_created_idx").on(table.companyId, table.createdAt),
   }),

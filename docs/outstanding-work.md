@@ -1,106 +1,141 @@
-# Outstanding Work — consolidated
+# Outstanding Work - consolidated
 
-Compiled 2026-06-04 from all `docs/next-steps-*` files, `implementation-localstorage-removal-plan.md`, and verified code state. This is the single list of what is **not done yet**. Items marked ✅ in the source docs are omitted; only open work is listed.
+Updated 2026-06-05 after the secure integrations / core ops slice and the first live Melhor Envio quote implementation.
 
-Consolidated from the former `next-steps-*` handoff notes and `implementation-localstorage-removal-plan.md` (all now removed — Phases 1–6 of that plan are done; Phases 7–8 are captured below as sections C and D).
+This file lists what is still not done. Items already implemented in the local branch are kept out of the backlog even if older session notes mentioned them as future work.
 
 ---
 
-## A. Verification debt (do before merging current branch)
+## A. Verification debt before merge
 
-The localStorage-removal + recipes/production migration (commit `4fb3b02`) passed tsc/lint/build/seed but was **never exercised in the running app**.
-
-- [ ] Manual click-through: Receitas (create + new version), Produção (plan OP, kanban), Pedidos (stepper/status/new order), Operação (scan order + OP), Etiquetas (item/lote/op/**local** options now from DB).
-- [ ] Manual QA — Etiquetas: create sheet model; edit existing model dimensions; change default barcode type and confirm preview; add labels with different barcode types; skip used positions; remove queued label clears stale feedback; browser print renders only label pages.
-- [ ] Manual QA — Workflows: load each production preset → columns update; rename steps → records stay mapped by technical key; toggle flags/automations; move/archive steps; Pedido drawer stepper reflects configured order flow.
+- [ ] Manual click-through: Receitas (create + new version), Producao (plan OP, kanban, drawer actions), Pedidos (stepper/status/new order), Operacao (scan order + OP), Etiquetas (item/lote/op/local options), Compras, Financeiro, Relatorios, Incidentes, Auditoria, IA, Configuracoes > Envio.
+- [ ] Manual QA - Etiquetas: create sheet model; edit existing model dimensions; change default barcode type and confirm preview; add labels with different barcode types; skip used positions; remove queued label clears stale feedback; browser print renders only label pages.
+- [ ] Manual QA - Workflows: load each production preset; rename steps; confirm records stay mapped by technical key; toggle flags/automations; move/archive steps; confirm Pedido drawer stepper reflects configured order flow.
 - [ ] Physical barcode validation: Code 128 / Code 39 / EAN-13 / QR on the real printer + scanner. If unreliable, replace the visual renderer with a standards-compliant encoder for print.
-- [ ] Regression QA: new order with overstock warning + custom price; payment confirmation; order pick-list barcode handoff into Operação; production pick-list handoff; recipe version creation; inventory dialogs.
-- [ ] Run `npm run test` (existing unit suites — not run this session).
-- [ ] Confirm migrated data (recipes, production, orders, branding, workflows, label settings) survives reload, sign-out/sign-in, and a second browser session.
-- [ ] Confirm critical writes produce audit rows (`recipe.*`, `production.*`, `order.*`, `branding.update`, `workflow.update`, `stock.*`) and that company-settings/workflow/label writes are role-restricted to owner/admin.
+- [ ] Regression QA: new order with overstock warning + custom price; payment confirmation; order pick-list barcode handoff into Operacao; production pick-list handoff; recipe version creation; inventory dialogs.
+- [ ] Confirm migrated data survives reload, sign-out/sign-in, and a second browser session.
+- [ ] Confirm critical writes produce audit rows and role restrictions hold for settings/workflow/label/admin-only writes.
+
+Latest automated verification:
+
+- [x] `npm.cmd run lint` passed on 2026-06-05.
+- [x] `npm.cmd run test` passed on 2026-06-05: 33 tests passed.
+- [x] `npm.cmd run build` passed on 2026-06-05.
 
 ---
 
-## B. Status transitions & stock automations (functional gaps found in code)
+## B. Implemented locally and needs product QA
 
-These are real holes in the recipes/production slice just shipped:
+These are no longer future feature ideas; they exist in the current local code and need QA/hardening:
 
-- [ ] **Persist production status transitions.** `updateProduction` (PATCH `/api/app/production`) exists but has **no caller**. The Produção drawer buttons ("Finalizar produção", "Estender cura", "Liberar lote") and the Operação finalize flow are no-ops — advancing an OP does not survive reload. Wire these buttons + the kanban to call `updateProduction`.
-- [ ] **Production stock automations.** Workflow automation types (`reserve_stock`, `consume_materials`, `create_output_lot`, `block_stock_availability`, `release_stock_availability`, `mark_shipped`, …) are defined and `stock-balance-math.ts` already interprets `production_consumption`/`production_output`, but **nothing records those movements**. Per PRD/CLAUDE invariants: finishing a production order must consume materials, create the produced lot, and record losses/consumed lots/cost/user/date; order payment should reserve stock; shipment should write `order_shipment`. None of this is wired yet.
-- [ ] Confirm order status transitions in Operação (separation → conference → packaging → shipped) persist via `updateOrder` end-to-end, not just local state.
-
----
-
-## C. Plan Phase 7 — remaining product modules (net-new, not started)
-
-Plan Phase 7. Each must start backend-backed and tenant-scoped; no `localStorage`.
-
-- [ ] **Audit-log screen** (read-only; data already exists in `audit_logs`) — recommended first, lowest effort.
-- [ ] Purchases & suppliers.
-- [ ] Managerial finance.
-- [ ] Simple reports + CSV export.
-- [ ] Incidents, exchanges, and returns (note: a shipped order cannot be cancelled directly — needs incident/return flow).
-- [ ] Quality control, lots, and checklists.
-- [ ] Suggested replenishment.
-- [ ] Shipping / Melhor Envio integration (optional integration; manual freight/label/tracking must keep working without it).
-- [ ] External channels & marketplace imports.
-
----
-
-## D. Plan Phase 8 — AI text content (not started; intentionally last)
-
-From plan Phase 8. The AI screen (`src/screens/ai-content.tsx`) is currently a **client-side placeholder** (local `AI_TEMPLATES`/`BRAND_VOICE`/`AI_HISTORY`, fake `setTimeout` generation).
-
-- [ ] Backend-only AI generation API (no provider calls from the frontend).
-- [ ] Persistence for brand voice, templates, generations, draft text, approved text, and history.
-- [ ] Use real tenant data (items/recipes/orders/production/branding/workflows) as generation context.
-- [ ] Text-only; no auto-publish; output editable before approval.
-- [ ] Permissions + audit logs for AI generation, approval, and saved content.
+- [x] DB-backed recipes and production.
+- [x] DB-driven order and production status display.
+- [x] Runtime business fixture purge; demo data now lives in seeds.
+- [x] Order and production workflow stock automations.
+- [x] Audit-log screen.
+- [x] Suppliers and purchases.
+- [x] Managerial finance.
+- [x] Simple reports.
+- [x] Incidents / returns foundation.
+- [x] Shipping settings and secure Melhor Envio OAuth credential storage.
+- [x] Backend OpenAI text generation with server-only key and persisted generation history.
+- [x] Melhor Envio quote route now calls the external calculate endpoint when OAuth is connected, with refresh-token retry and manual fallback.
+- [x] Melhor Envio webhook endpoint validates `X-ME-Signature` and records signed label events in audit logs.
+- [x] Selected Melhor Envio quotes can be applied to orders, persisting carrier, service, price, deadline, and selection timestamp.
+- [x] Selected quotes can be inserted into the Melhor Envio cart from the order drawer, persisting external label id/protocol/status on the order.
+- [x] Label checkout, generation, preview, and print actions are wired from saved Melhor Envio label ids.
+- [x] Customer base foundation: order creation can search/create/update customers, link orders to `customer_id`, and keep channel/source metadata for future marketplace imports.
+- [x] ViaCEP lookup proxy for filling customer and shipping addresses.
+- [x] Store/sender/fiscal profile fields in shipping settings, reused by label sender inputs.
+- [x] Sellable item logistics validation for weight and dimensions, with order quote defaults derived from item package data.
+- [x] Suggested replenishment screen and API, based on stock minimums, available balance, open order demand, and open production material demand.
 
 ---
 
-## E. Inventory module follow-ups
+## C. Shipping / Melhor Envio remaining work
 
-Manual inventory movements are implemented; these are the open enhancements:
+- [ ] Sandbox QA with at least two tenants and two Melhor Envio accounts.
+- [ ] Validate quote payloads against real store package profiles and carrier constraints.
+- [ ] Restart dev server and reconnect sandbox OAuth after adding `cart-read cart-write`; Melhor Envio was returning 403 for `/me/cart` without those cart scopes.
+- [ ] Validate checkout/payment, async generation, preview, and print against a sandbox label after `/me/cart` is authorized.
+- [ ] Map generated Melhor Envio labels to internal orders so webhook events can update tracking/status history automatically.
+- [ ] Add explicit reconnect UX for expired refresh tokens.
+- [ ] Add integration-level error telemetry without exposing tokens or provider payload secrets.
+- [ ] Browser QA customer autocomplete, ViaCEP fill, incomplete-customer warning, and sender profile prefill in label form.
+- [ ] Define marketplace import customer identity/dedupe strategy: external buyer id, document, email, phone, and channel precedence.
 
+Notes:
+
+- Manual freight, labels, and tracking must remain available even when Melhor Envio is disconnected or unavailable.
+- Official docs confirm the calculate endpoint is `POST /api/v2/me/shipment/calculate` and requires `Accept`, `Content-Type`, `Authorization`, and `User-Agent` headers.
+
+---
+
+## D. Core beta hardening
+
+- [ ] Role policy review for purchases, finance, incidents, recipes, and production.
 - [ ] Decide whether inventory permissions need a finer matrix beyond owner/admin write.
-- [ ] Inventory movement detail / audit view (who made a manual adjustment and why).
-- [ ] Recent-movements filtering by item, type, location, actor, date range.
-- [ ] Empty-state handling in the movement modal (missing blocked location, no active locations, no catalog items).
-- [ ] Decide whether `purchase_entry` should capture supplier, invoice/reference, unit cost, lot metadata.
-- [ ] Decide whether losses require a reason category (breakage, expiration, count correction, production waste).
-- [ ] DB-level constraints for positive quantities and valid source/destination expectations.
-- [ ] Dedicated stock-ledger export for reconciliation/accounting.
+- [ ] Add DB-level constraints for positive quantities and valid source/destination expectations where practical.
+- [ ] Add inventory movement detail / audit view for manual adjustments and automated stock movements.
+- [ ] Add recent-movements filtering by item, type, location, actor, and date range.
+- [ ] Add empty-state handling in movement modals for missing blocked location, no active locations, and no catalog items.
+- [ ] Decide whether losses require reason categories: breakage, expiration, count correction, production waste.
 
 ---
 
-## F. Demo / fixture cleanup leftovers
+## E. New feature backlog
 
-Runtime fixtures are gone (commit `4fb3b02`). One open decision remains:
+- [ ] Quality control, lots, and checklists:
+  - QC checklist per production order.
+  - Required loss/approval reasons.
+  - Lot traceability from consumed material lots to produced output lots.
+  - Block/release stock tied to QC status.
+- [ ] Suggested replenishment hardening:
+  - Supplier lead time and preferred supplier per item.
+  - Sales velocity projection.
+  - Turn selected suggestions into a purchase draft.
+  - Production-plan suggestions for finished goods.
+- [ ] Returns and exchanges:
+  - Incident-driven return flow.
+  - Restock, loss, refund, or replacement decision.
+  - Prevent direct cancellation of shipped orders.
+- [ ] External channels and marketplace imports:
+  - Import orders.
+  - Map external SKUs to catalog items.
+  - Sync fulfillment status back to channels.
+- [ ] Reports and exports:
+  - Production summary export.
+  - Date-range filters for existing CSV exports.
+  - Saved report presets.
+  - Sales / production / purchase trend summaries.
+- [ ] AI content hardening:
+  - Proper brand-voice settings model.
+  - Tenant data context controls.
+  - Saved prompt/template management.
+  - Approval workflow beyond generated-history persistence.
 
-- [ ] **Named fake people in committed seeds.** `src/db/seed-data.ts` still ships named customers (Marina Alves, Beatriz Lemos, …) and a production assignee ("Camila"). These are demo data living in DB seeds (the sanctioned place per current direction), but the cleanup doc asks to remove named fake people from committed source. Decide: keep as seed-only sample data, or neutralize names. Company/owner identity is already sourced from `SEED_*` env vars.
+---
+
+## F. Demo / seed data decision
+
+- [ ] Decide whether to keep named fake people in committed seed data or neutralize them. Runtime fixtures are gone, and seed-only sample data is sanctioned, but older cleanup notes asked to remove named fake people from committed source.
 
 ---
 
 ## G. Documentation hygiene
 
-- [ ] **`HANDOFF.md` is stale** — "Last updated 2026-06-02", still says the active slice is `feature/inventory-module` and predates orders/recipes/production/branding/workflow persistence. Refresh to reflect current state (Phases 1–6 done, statuses DB-driven, demo data purged) and current branch `feature/remove-localstorage-persistence`.
-- [ ] Foundation-hardening doc asked to keep `HANDOFF.md`/`CLAUDE.md` in sync with the real stack — re-verify after HANDOFF refresh.
-
----
-
-## H. Open decisions / optional refinements
-
-- [ ] Seed `design/**` prototype edits are uncommitted and unrelated; keep separate from active-app commits unless explicitly syncing the prototype.
-- [ ] Working tree carries LF/CRLF line-ending noise on many `.ts/.tsx` files (repo is `core.autocrlf=true`; no real content diff). Optionally `git add --renormalize .` to clean.
-- [ ] Status field types were widened to `OrderStatus | (string & {})` etc.; the `*Status` unions now document only the default keys. Fine as-is; revisit if a stricter contract is wanted.
-- [ ] Recipe/production create/edit are currently open to any active company member (not role-gated), consistent with operational use; company-settings/workflow/label writes remain owner/admin. Decide if recipes/production need a role gate.
+- [ ] Refresh `HANDOFF.md`; it still predates the localStorage-removal, recipes/production, core ops, secure integrations, and AI backend work.
+- [ ] Re-check `CLAUDE.md` against the real stack after the handoff refresh.
+- [ ] Keep `docs/integration-melhor-envio.md` updated as quote, label, and tracking flows move from beta foundation to live integration.
 
 ---
 
 ## Suggested sequencing
 
-1. **A + B** — verify the shipped slice in-app and close the production status-persistence / stock-automation gaps (these make the recipes/production module actually usable, not just persistent).
-2. **G** — refresh `HANDOFF.md`.
-3. **C: audit-log screen** — cheap Phase-7 starter on existing data.
-4. Then the heavier Phase-7 modules and Phase-8 AI, each on its own branch.
+1. Manual QA for the current branch.
+2. Melhor Envio sandbox validation with two tenants.
+3. Validate label checkout/generation/print flow in sandbox.
+4. Browser QA customer/store profile flows.
+5. QC/lots/checklists.
+6. Returns/exchanges hardening.
+7. Marketplace imports.
