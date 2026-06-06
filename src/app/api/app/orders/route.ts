@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { auditLogs, customers, items, orderItems, orders } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import { type CustomerAddress, type Order } from "@/lib/domain";
+import { generateOrderTrackToken } from "@/lib/order-track-token";
 import { applyOrderWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
@@ -295,6 +296,7 @@ async function listOrders(companyId: string): Promise<Order[]> {
         unitPrice: line.unitPrice == null ? undefined : Number(line.unitPrice),
       })),
       tracking: row.tracking,
+      trackToken: row.trackToken,
       note: row.note,
       shippingQuote: metadataShippingQuote(row.metadata),
       shippingLabel: metadataShippingLabel(row.metadata),
@@ -388,6 +390,7 @@ async function createOrder(companyId: string, actorUserId: string, input: Order)
         discount: input.discount.toString(),
         total: input.total.toString(),
         tracking: input.tracking,
+        trackToken: generateOrderTrackToken(),
         note: input.note,
         source: "manual",
         createdByUserId: actorUserId,

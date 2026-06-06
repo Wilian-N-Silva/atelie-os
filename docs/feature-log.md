@@ -34,3 +34,10 @@ One line per feature. Migrations are noted as `0NNN`.
 - Recipe approval flow + quality protocol: `recipe_tests` with a 12-digit scannable code and the 5 criteria (aroma frio/quente, queima, acabamento, consistencia), each status + note; derived result; approval gated on >=1 passed test; barcode-only printable label; fillable in Modo Operacao by scan plus a manual modal; `0007`.
 - Production kanban "Avancar" shortcut removed so OPs cannot skip operation steps.
 - Dev DB pool `max` 1 -> 10 (a single connection deadlocked transactional routes and login); `recipe-tests` route uses the `tx` client inside transactions.
+
+## 2026-06-06 — Public order tracking API (foundation)
+- Public, CORS-enabled, read-only endpoint `GET /api/public/track` for the (separate) company website to consume from another origin. Lookup by opaque `track_token` (shareable link) or by order number + email/CEP (email/CEP is the auth factor). `0008` adds unique `orders.track_token`, backfilled and generated on order creation.
+- Sanitized payload (no PII/costs/tokens): order number, payment status, customer-friendly fulfillment stage + timeline (recebido -> em preparacao -> embalado -> enviado -> em transito -> entregue), and carrier/tracking code/url/ETA. Generic 404 so existence cannot be probed.
+- Source-agnostic by design: reads the order's own `status` / `paymentStatus` / `tracking` fields, so manual entry, Melhor Envio, or future marketplace ingestion all feed the same customer view.
+- Melhor Envio webhook now persists posted/delivered milestones onto the order to enrich the timeline.
+- `src/lib/public-tracking.ts` holds the pure stage mapping + timeline builder (reusable by the external site).

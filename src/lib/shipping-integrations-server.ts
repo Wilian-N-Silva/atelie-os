@@ -641,6 +641,8 @@ export type MelhorEnvioShipmentUpdate = {
   protocol?: string | null;
   tracking?: string | null;
   trackingUrl?: string | null;
+  postedAt?: string | null;
+  deliveredAt?: string | null;
 };
 
 /**
@@ -675,6 +677,8 @@ export async function applyMelhorEnvioShipmentUpdate(
     ...(update.protocol ? { protocol: update.protocol } : {}),
     ...(update.tracking ? { tracking: update.tracking } : {}),
     ...(update.trackingUrl ? { trackingUrl: update.trackingUrl } : {}),
+    ...(update.postedAt ? { postedAt: update.postedAt } : {}),
+    ...(update.deliveredAt ? { deliveredAt: update.deliveredAt } : {}),
   };
 
   await db.update(orders).set({

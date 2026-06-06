@@ -27,6 +27,7 @@ Server-only secrets: `INTEGRATION_SECRETS_KEY` (encrypts provider tokens), `OPEN
 - `docs/feature-log.md` - delivered features, concise (one line each).
 - `docs/outstanding-work.md` - pending work, PRD coverage gaps (section H), integration roadmap (section I).
 - `docs/integration-melhor-envio.md` - shipping integration notes.
+- `docs/integration-public-tracking.md` - public order tracking API for the separate site.
 - `docs/git-workflow.md` - branching rules.
 - `CLAUDE.md` - architecture invariants and current backend notes (authoritative for both).
 

@@ -475,6 +475,7 @@ export const orders = pgTable(
     discount: numeric("discount", { precision: 12, scale: 2 }).notNull().default("0"),
     total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
     tracking: text("tracking"),
+    trackToken: text("track_token"),
     note: text("note"),
     source: text("source").notNull().default("manual"),
     createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
@@ -486,6 +487,7 @@ export const orders = pgTable(
     companyCustomerIdx: index("orders_company_customer_idx").on(table.companyId, table.customerId),
     companyStatusIdx: index("orders_company_status_idx").on(table.companyId, table.status),
     companyCreatedIdx: index("orders_company_created_idx").on(table.companyId, table.createdAt),
+    trackTokenIdx: uniqueIndex("orders_track_token_idx").on(table.trackToken),
   }),
 );
 

@@ -146,9 +146,13 @@ Requested direction beyond the PRD's CSV-only marketplace prep (PRD 3.4 keeps fu
   - Nuvemshop (Tiendanube)
   - Order ingestion + catalog/stock sync via each platform's API/webhooks.
 - [ ] **Open platform option (own storefront + ERP):**
-  - Expose an authenticated public API and webhooks so the user can build their own site/storefront and plug it into the ERP (create/import orders, read catalog/stock/availability, push fulfillment/tracking).
+  - The site/storefront is a SEPARATE application from this ERP; it integrates over HTTP, not in-process.
+  - Expose an authenticated public API and webhooks so the user can build their own site and plug it into the ERP (create/import orders, read catalog/stock/availability, push fulfillment/tracking).
   - Token-scoped per company, audited, rate-limited; same secret-handling rules as above.
   - Lets the user choose between "use a marketplace/e-commerce connector" or "build my own site and integrate with the ERP" without changing the core.
+- [x] **Public order tracking API (delivered foundation):** CORS-enabled `GET /api/public/track` (token link or order# + email/CEP) returns a sanitized payment + fulfillment + carrier view for the separate site. It is source-agnostic, so the items below must feed the order's `status` / `paymentStatus` / `tracking` fields rather than a separate tracking store.
+- [ ] **Marketplace/channel data ingestion must drive tracking:** when integrations land, order creation/sync must populate payment status, order status, and carrier tracking on the internal order so the public tracking API reflects them automatically.
+- [ ] **Public tracking follow-ups:** rate-limiting/abuse protection; company scoping for the order#+email/CEP lookup once a public company identifier (slug) exists for multi-tenant; optional richer status history table if per-event timestamps beyond shipping milestones are needed.
 
 Decision to make: pick the first integration to implement after the MVP gaps in section H are closed (likely Mercado Livre or Nuvemshop for the BR market), or prioritize the open API so the custom storefront path is unblocked first.
 

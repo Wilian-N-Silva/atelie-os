@@ -61,6 +61,8 @@ export async function POST(request: Request) {
         protocol: metadata.protocol,
         tracking: metadata.tracking,
         trackingUrl: metadata.trackingUrl,
+        postedAt: metadata.timestamps.postedAt,
+        deliveredAt: metadata.timestamps.deliveredAt,
       })
     : null;
 

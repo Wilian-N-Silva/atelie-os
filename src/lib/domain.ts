@@ -98,6 +98,7 @@ export type Order = {
   total: number;
   items: { sku: string; qty: number; unitPrice?: number }[];
   tracking: string | null;
+  trackToken?: string | null;
   note: string | null;
   shippingQuote?: {
     provider: "melhor_envio" | string;
