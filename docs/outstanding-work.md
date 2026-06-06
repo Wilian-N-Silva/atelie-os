@@ -1,8 +1,10 @@
 # Outstanding Work - consolidated
 
-Updated 2026-06-05 after the secure integrations / core ops slice and the first live Melhor Envio quote implementation.
+Updated 2026-06-06 after the recipe approval / test-protocol slice and a full review of `docs/prd-v2.1-atelie-os-instante-ambar.md` against the implemented modules.
 
 This file lists what is still not done. Items already implemented in the local branch are kept out of the backlog even if older session notes mentioned them as future work.
+
+Sections H (PRD coverage gaps) and I (channel/e-commerce integration roadmap) were added in the 2026-06-06 review to map what is left to finalize the MVP and the post-MVP integration direction.
 
 ---
 
@@ -26,32 +28,7 @@ Latest automated verification:
 
 ## B. Implemented locally and needs product QA
 
-These are no longer future feature ideas; they exist in the current local code and need QA/hardening:
-
-- [x] DB-backed recipes and production.
-- [x] DB-driven order and production status display.
-- [x] Runtime business fixture purge; demo data now lives in seeds.
-- [x] Order and production workflow stock automations.
-- [x] Audit-log screen.
-- [x] Suppliers and purchases.
-- [x] Managerial finance.
-- [x] Simple reports.
-- [x] Incidents / returns foundation.
-- [x] Shipping settings and secure Melhor Envio OAuth credential storage.
-- [x] Backend OpenAI text generation with server-only key and persisted generation history.
-- [x] Melhor Envio quote route now calls the external calculate endpoint when OAuth is connected, with refresh-token retry and manual fallback.
-- [x] Melhor Envio webhook endpoint validates `X-ME-Signature` and records signed label events in audit logs.
-- [x] Selected Melhor Envio quotes can be applied to orders, persisting carrier, service, price, deadline, and selection timestamp.
-- [x] Selected quotes can be inserted into the Melhor Envio cart from the order drawer, persisting external label id/protocol/status on the order.
-- [x] Label checkout, generation, preview, and print actions are wired from saved Melhor Envio label ids.
-- [x] Customer base foundation: order creation can search/create/update customers, link orders to `customer_id`, and keep channel/source metadata for future marketplace imports.
-- [x] ViaCEP lookup proxy for filling customer and shipping addresses.
-- [x] Store/sender/fiscal profile fields in shipping settings, reused by label sender inputs.
-- [x] Sellable item logistics validation for weight and dimensions, with order quote defaults derived from item package data.
-- [x] Suggested replenishment screen and API, based on stock minimums, available balance, open order demand, and open production material demand.
-- [x] Recipe approval flow with quality protocol: per-version test batches (`recipe_tests`) carrying a 12-digit scannable code, the 5 protocol criteria (aroma frio/quente, queima, acabamento, consistencia) each with status + note, manual approval gated on at least one passed test, and a printable test label.
-- [x] Test protocol fillable in Modo Operacao: scanning (or selecting) a recipe-test label opens the criteria form; manual fill also available from the recipe drawer.
-- [x] Removed the production kanban "Avancar" shortcut so OPs cannot skip the essential operation steps.
+Delivered features are tracked in `feature-log.md` (one line per feature). Everything there exists in the current branch and still needs the product QA listed in section A.
 
 ---
 
@@ -137,12 +114,52 @@ Notes:
 
 ---
 
+## H. PRD coverage gaps (to finalize the MVP)
+
+Modules from the PRD (`prd-v2.1`) that are still missing or only partial, with the section and the MVP acceptance item (§12) they unblock. These are what stand between the current build and a "complete MVP".
+
+- [ ] **Pricing and margin** (PRD 7.19 / screen 8.17 / accept. 11-12) — not built. Needs: per-product suggested price from active recipe cost + packaging + loss + channel fee + desired margin; channel fee rules; save practiced price; low-margin alert; price-change history. No `pricing` screen or API exists today.
+- [ ] **Stock count / contagem** (PRD 7.22 / screen 8.20 / accept. 9) — not built. Direct adjustments exist, but not the count flow: expected vs counted -> divergence -> confirm adjustment with justification -> movement + audit. No automatic balance change.
+- [ ] **Lot quality control + post-cure release** (PRD 7.21 / screen 8.18 / accept. 18-19) — partial. Production carries `em_cura` status, and recipe tests now exist, but there is no dedicated lot QC screen: lot quality checklist, lot quality states, release/block/partial-loss decision with user+date. Recipe tests (formula validation) are a separate concept from per-lot QC.
+- [ ] **Returns / exchanges full flow** (PRD 7.20 / screen 8.19 / accept. 25-26) — foundation only (incidents). Needs: incident-driven return with stock-impact decision (available / blocked-for-review / loss / discard), refund record in finance, and the rule that shipped orders cannot be cancelled directly.
+- [ ] **Data export / backup (CSV portability)** (PRD 7.25 / accept. 38) — not built. Reports export specific report CSVs, but there is no entity export (items, stock, lots, movements, suppliers, customers, purchases, recipes, production, orders, finance, AI content, audit) with permission checks, pt-BR headers, no credentials, and an audit row per export.
+- [ ] **Notifications / alert engine** (PRD 7.26) — in-memory empty list only. Needs real alert generation (low/zero stock, cura finished today, lot awaiting review, paid-not-separated, stalled order, open incident, bill due, ME disconnected/error, import pending, unmapped external SKU, low margin, label pending) with states and an action link.
+- [ ] **Marketplace CSV preparation** (PRD 7.14) — not built (only a `channel` field on orders). MVP-level scope is intentionally CSV-based: register external channel, import CSV, store raw payload, external-SKU -> internal-item mapping, import-pending screen (unknown SKU, insufficient stock, duplicates, invalid data), attach external label PDF, manual tracking. Full API integrations are section I.
+- [ ] **Packaging models + standalone freight calculator** (PRD 7.13) — verify/partial. Needs packaging-model CRUD (dimensions, weight, cost, capacity) and a standalone freight calculator with "copy message for WhatsApp".
+- [ ] **Lot traceability** (PRD 7.7 / accept. 32) — partial. Trace which consumed material lots produced which output lot, and store produced-lot real cost.
+- [ ] **In-app help completeness** (PRD 7.28 / accept. 40) — partial (a manual module exists). Verify contextual "Como usar esta tela?" per module, first-steps checklist, glossary, and keyword search.
+
+---
+
+## I. Channel and e-commerce integration roadmap (post-MVP)
+
+Requested direction beyond the PRD's CSV-only marketplace prep (PRD 3.4 keeps full APIs out of the MVP). Build all of these on the existing secure pattern: per-tenant encrypted tokens in `integration_credentials`, scoped per provider, never exposed to the frontend, masked in logs, omitted from exports, with connect/disconnect/sync audit events (same model already used for Melhor Envio). Each integration must preserve manual fallback and the marketplace customer dedupe strategy in section C (external buyer id, document, email, phone, channel precedence).
+
+- [ ] **Marketplace integrations (real APIs):**
+  - Mercado Livre
+  - Shopee
+  - Amazon
+  - TikTok Shop
+  - Per provider: OAuth/token connect, order ingestion (-> internal orders with channel/source + raw payload), external-SKU mapping reuse, optional stock sync, and fulfillment/tracking status sync back. Out of scope still: ad publishing, price push, chat/claims, fiscal/NF-e.
+- [ ] **E-commerce platform integrations:**
+  - WooCommerce
+  - Nuvemshop (Tiendanube)
+  - Order ingestion + catalog/stock sync via each platform's API/webhooks.
+- [ ] **Open platform option (own storefront + ERP):**
+  - Expose an authenticated public API and webhooks so the user can build their own site/storefront and plug it into the ERP (create/import orders, read catalog/stock/availability, push fulfillment/tracking).
+  - Token-scoped per company, audited, rate-limited; same secret-handling rules as above.
+  - Lets the user choose between "use a marketplace/e-commerce connector" or "build my own site and integrate with the ERP" without changing the core.
+
+Decision to make: pick the first integration to implement after the MVP gaps in section H are closed (likely Mercado Livre or Nuvemshop for the BR market), or prioritize the open API so the custom storefront path is unblocked first.
+
+---
+
 ## Suggested sequencing
 
 1. Manual QA for the current branch.
 2. Melhor Envio sandbox validation with two tenants.
 3. Validate label checkout/generation/print flow in sandbox.
 4. Browser QA customer/store profile flows.
-5. QC/lots/checklists.
-6. Returns/exchanges hardening.
-7. Marketplace imports.
+5. Close section H MVP gaps: pricing & margin, stock count, lot QC + post-cure release, data export, returns flow, notifications engine.
+6. Marketplace CSV preparation (PRD 7.14).
+7. Channel/e-commerce real integrations and/or the open API (section I).

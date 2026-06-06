@@ -25,6 +25,7 @@ Read `HANDOFF.md` before continuing implementation work.
 - `docs/manual-base-atelie-os-instante-ambar.md` - operator/user flow context.
 - `docs/git-workflow.md` - branching rules.
 - `docs/outstanding-work.md` - consolidated list of remaining/open work.
+- `docs/feature-log.md` - concise log of delivered features (replaces the old per-session logs).
 
 The PRD notes that table and field names are suggestions. Preserve the concepts even when implementation names differ.
 
