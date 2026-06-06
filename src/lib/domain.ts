@@ -141,6 +141,60 @@ export type Recipe = {
   tests: { date: string; qty: number; result: "aprovado" | "ajustar" | "reprovado"; note: string }[];
 };
 
+export type RecipeTestResult = "pendente" | "aprovado" | "ajustar" | "reprovado";
+
+/** Fixed quality protocol (docs/protocolo.md). Keyed by stable technical key, not the label. */
+export const RECIPE_TEST_CRITERIA = [
+  { key: "aroma_frio", label: "Aroma frio", howTo: "Cheiro percebido ao abrir o pote/caixa.", approveWhen: "Perceptível sem precisar aproximar demais." },
+  { key: "aroma_quente", label: "Aroma quente", howTo: "Vela acesa por 1h30 em quarto ou sala.", approveWhen: "Aroma presente no cômodo, sem ficar enjoativo." },
+  { key: "queima", label: "Queima", howTo: "Observar piscina de cera, túnel, chama, fumaça e pavio.", approveWhen: "Queima uniforme e segura." },
+  { key: "acabamento", label: "Acabamento", howTo: "Pote limpo, pavio centralizado, superfície e etiqueta.", approveWhen: "Simples, mas cuidadoso." },
+  { key: "consistencia", label: "Consistência", howTo: "Repetir a fórmula em outro lote pequeno.", approveWhen: "Mesmo aroma e comportamento." },
+] as const;
+
+export type RecipeTestCriterionKey = (typeof RECIPE_TEST_CRITERIA)[number]["key"];
+
+export type RecipeTestCriterion = {
+  key: RecipeTestCriterionKey | (string & {});
+  label: string;
+  result: RecipeTestResult;
+  note: string;
+};
+
+export type RecipeTest = {
+  id: string;
+  recipeVersionId: string;
+  recipeName: string;
+  recipeVersion: string;
+  productName: string;
+  code: string;
+  seq: number;
+  batchQty: number;
+  status: RecipeTestResult;
+  criteria: RecipeTestCriterion[];
+  note: string;
+  testedAt: string | null;
+  createdAt: string;
+};
+
+/** Overall result derived from the per-criterion results: aprovado only when all pass. */
+export function deriveRecipeTestResult(criteria: RecipeTestCriterion[]): RecipeTestResult {
+  if (!criteria.length) return "pendente";
+  if (criteria.some((criterion) => criterion.result === "reprovado")) return "reprovado";
+  if (criteria.every((criterion) => criterion.result === "aprovado")) return "aprovado";
+  return "ajustar";
+}
+
+/** Fresh criteria list (all pending) for a new test, in protocol order. */
+export function emptyRecipeTestCriteria(): RecipeTestCriterion[] {
+  return RECIPE_TEST_CRITERIA.map((criterion) => ({
+    key: criterion.key,
+    label: criterion.label,
+    result: "pendente" as RecipeTestResult,
+    note: "",
+  }));
+}
+
 export type ProductionOrder = {
   id: string;
   code: string;

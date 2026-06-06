@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Barcode } from "@/components/barcode";
 import {
   Badge,
   Button,
@@ -17,14 +18,39 @@ import {
   Tabs,
   Textarea,
   ViewToggle,
+  cn,
   toast,
   useView,
 } from "@/components/ui";
-import { BRL, type ItemSummary, type Recipe } from "@/lib/domain";
+import {
+  BRL,
+  RECIPE_TEST_CRITERIA,
+  type ItemSummary,
+  type Recipe,
+  type RecipeTest,
+  type RecipeTestCriterion,
+  type RecipeTestResult,
+  deriveRecipeTestResult,
+  emptyRecipeTestCriteria,
+} from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
-import { createRecipe, createRecipeVersion } from "@/lib/recipes-client";
-import { loadRecipes } from "@/lib/recipes-client";
+import { createRecipe, createRecipeVersion, loadRecipes, setRecipeStatus } from "@/lib/recipes-client";
+import { createRecipeTest, loadRecipeTests, submitRecipeTest } from "@/lib/recipe-tests-client";
 import type { Go, Route } from "@/lib/types";
+
+const TEST_RESULT_TONE: Record<RecipeTestResult, "ok" | "bad" | "warn" | "neutral"> = {
+  aprovado: "ok",
+  reprovado: "bad",
+  ajustar: "warn",
+  pendente: "neutral",
+};
+
+const TEST_RESULT_LABEL: Record<RecipeTestResult, string> = {
+  aprovado: "Aprovado",
+  reprovado: "Reprovado",
+  ajustar: "Ajustar",
+  pendente: "Pendente",
+};
 
 type FindItem = (sku: string) => ItemSummary | undefined;
 
@@ -79,18 +105,147 @@ function nextRecipeVersion(version: string) {
   return `v${Number.isFinite(numeric) && numeric > 0 ? numeric + 1 : 2}`;
 }
 
+function testCriteriaSummary(test: RecipeTest) {
+  const approved = test.criteria.filter((criterion) => criterion.result === "aprovado").length;
+  return `${approved}/${test.criteria.length || RECIPE_TEST_CRITERIA.length} critérios aprovados`;
+}
+
+function RecipeTestLabelDocument({ test }: { test: RecipeTest | null }) {
+  if (!test) return null;
+  return (
+    <div className="print-doc recipe-test-print-doc" style={{ display: "none" }}>
+      <div className="recipe-test-label">
+        <Barcode code={test.code} size="md" />
+      </div>
+    </div>
+  );
+}
+
+function RecipeTestModal({
+  open,
+  test,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  test: RecipeTest | null;
+  onClose: () => void;
+  onSubmit: (criteria: RecipeTestCriterion[], note: string) => Promise<void> | void;
+}) {
+  const [criteria, setCriteria] = React.useState<RecipeTestCriterion[]>(() => emptyRecipeTestCriteria());
+  const [note, setNote] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open || !test) return;
+    setCriteria(test.criteria.length ? test.criteria.map((criterion) => ({ ...criterion })) : emptyRecipeTestCriteria());
+    setNote(test.note ?? "");
+    setSaving(false);
+  }, [open, test]);
+
+  const setResult = (key: string, result: RecipeTestResult) => {
+    setCriteria((current) => current.map((criterion) => criterion.key === key ? { ...criterion, result } : criterion));
+  };
+  const setCritNote = (key: string, value: string) => {
+    setCriteria((current) => current.map((criterion) => criterion.key === key ? { ...criterion, note: value } : criterion));
+  };
+
+  const derived = deriveRecipeTestResult(criteria);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await onSubmit(criteria, note.trim());
+      onClose();
+    } catch {
+      toast("Não foi possível salvar o teste.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      icon="beaker"
+      title={test ? `Teste ${test.seq} - ${test.recipeName} ${test.recipeVersion}` : "Teste de receita"}
+      subtitle="Protocolo de qualidade - registre cada critério"
+      width={760}
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <div className="spacer" style={{ flex: 1 }} />
+          <Badge tone={TEST_RESULT_TONE[derived]} dot>{TEST_RESULT_LABEL[derived]}</Badge>
+          <Button variant="default" icon="check" onClick={submit} disabled={saving}>Salvar teste</Button>
+        </>
+      )}
+    >
+      <div className="rt-form">
+        {RECIPE_TEST_CRITERIA.map((meta) => {
+          const criterion = criteria.find((item) => item.key === meta.key);
+          const result = criterion?.result ?? "pendente";
+          return (
+            <div key={meta.key} className="rt-crit">
+              <div className="rt-crit-head">
+                <div>
+                  <div className="rt-crit-name">{meta.label}</div>
+                  <div className="rt-crit-how">{meta.howTo}</div>
+                  <div className="rt-crit-approve"><Icon name="check" size={13} /> {meta.approveWhen}</div>
+                </div>
+                <div className="rt-crit-results">
+                  {(["aprovado", "ajustar", "reprovado"] as RecipeTestResult[]).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn("rt-result-btn", `rt-result-btn--${value}`, result === value && "rt-result-btn--on")}
+                      onClick={() => setResult(meta.key, value)}
+                    >
+                      {TEST_RESULT_LABEL[value]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Input
+                value={criterion?.note ?? ""}
+                onChange={(event) => setCritNote(meta.key, event.target.value)}
+                placeholder="Observação da medição (opcional)"
+              />
+            </div>
+          );
+        })}
+        <Field label="Observação geral do teste" style={{ marginTop: 4 }}>
+          <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ajustes, lote, contexto..." />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
 function RecipeDrawer({
   recipe,
+  tests,
   find,
   go,
   onClose,
   onVersion,
+  onNewTest,
+  onFillTest,
+  onPrintTest,
+  onApprove,
+  onUnapprove,
 }: {
   recipe: Recipe;
+  tests: RecipeTest[];
   find: FindItem;
   go: Go;
   onClose: () => void;
   onVersion: (recipe: Recipe) => void;
+  onNewTest: (recipe: Recipe) => void;
+  onFillTest: (test: RecipeTest) => void;
+  onPrintTest: (test: RecipeTest) => void;
+  onApprove: (recipe: Recipe) => void;
+  onUnapprove: (recipe: Recipe) => void;
 }) {
   const components = recipe.components.map((component) => {
     const item = find(component.sku);
@@ -98,6 +253,7 @@ function RecipeDrawer({
     return { ...component, cost, available: item?.available ?? 0 };
   });
   const total = recipeCost(recipe, find);
+  const approvedTest = tests.some((test) => test.status === "aprovado");
 
   return (
     <>
@@ -138,22 +294,47 @@ function RecipeDrawer({
             </tbody>
           </table>
 
-          <div className="block-label" style={{ marginTop: 20 }}>Testes de receita</div>
-          {recipe.tests.length === 0 && <Empty icon="beaker" title="Sem testes ainda" hint="Registre aroma, queima e acabamento a cada teste." />}
-          {recipe.tests.map((test) => (
-            <div key={`${test.date}-${test.note}`} style={{ border: "1px solid hsl(var(--border))", borderRadius: 10, padding: 13, marginBottom: 10 }}>
+          <div className="row between" style={{ marginTop: 20, marginBottom: 8 }}>
+            <div className="block-label" style={{ margin: 0 }}>Testes de receita ({tests.length})</div>
+            <Button variant="outline" size="sm" icon="plus" onClick={() => onNewTest(recipe)}>Novo teste</Button>
+          </div>
+          {!approvedTest && (
+            <div className="rt-hint"><Icon name="alertCircle" size={15} /> Aprove pelo menos um teste no protocolo para liberar a ativação desta versão.</div>
+          )}
+          {tests.length === 0 && <Empty icon="beaker" title="Sem testes ainda" hint="Crie um teste, imprima a etiqueta e preencha o protocolo no Modo Operação." />}
+          {tests.map((test) => (
+            <div key={test.id} className="rt-card">
               <div className="row between" style={{ marginBottom: 8 }}>
-                <Badge tone={test.result === "aprovado" ? "ok" : test.result === "reprovado" ? "bad" : "warn"} dot>{test.result}</Badge>
-                <span className="muted" style={{ fontSize: 12.5 }}>{test.date} - {test.qty} un</span>
+                <div className="row" style={{ gap: 8 }}>
+                  <Badge tone={TEST_RESULT_TONE[test.status]} dot>{TEST_RESULT_LABEL[test.status]}</Badge>
+                  <span className="cell-title">Teste {test.seq}</span>
+                </div>
+                <span className="muted" style={{ fontSize: 12.5 }}>{test.testedAt ? new Date(test.testedAt).toLocaleDateString("pt-BR") : "aguardando"} - {test.batchQty} un</span>
               </div>
-              <div style={{ fontSize: 12.5, color: "hsl(var(--muted-foreground))", lineHeight: 1.5 }}>{test.note}</div>
+              <div className="row between" style={{ gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="cell-sub">{testCriteriaSummary(test)}</div>
+                  <div className="cell-sub sku">{test.code}</div>
+                  {test.note && <div className="cell-sub" style={{ marginTop: 4 }}>{test.note}</div>}
+                </div>
+                <Barcode code={test.code} size="sm" />
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <Button variant="default" size="sm" icon="listChecks" onClick={() => onFillTest(test)}>Preencher</Button>
+                <Button variant="outline" size="sm" icon="printer" onClick={() => onPrintTest(test)}>Etiqueta</Button>
+                <Button variant="ghost" size="sm" icon="scan" onClick={() => go("operacao", { test: test.id })}>Abrir na operação</Button>
+              </div>
             </div>
           ))}
         </div>
 
         <div className="drawer-foot">
-          <Button variant="default" icon="producao" style={{ flex: 1 }} onClick={() => go("producao")}>Produzir com esta receita</Button>
-          <Button variant="outline" icon="copy" onClick={() => onVersion(recipe)}>Nova versao</Button>
+          {recipe.status === "ativa" ? (
+            <Button variant="outline" icon="undo" style={{ flex: 1 }} onClick={() => onUnapprove(recipe)}>Voltar para rascunho</Button>
+          ) : (
+            <Button variant="default" icon="check" style={{ flex: 1 }} disabled={!approvedTest} onClick={() => onApprove(recipe)}>Aprovar versão</Button>
+          )}
+          <Button variant="outline" icon="copy" onClick={() => onVersion(recipe)}>Nova versão</Button>
         </div>
       </aside>
     </>
@@ -454,14 +635,31 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
     mode: "create" | "version";
     baseRecipe: Recipe | null;
   }>({ open: false, mode: "create", baseRecipe: null });
+  const [tests, setTests] = React.useState<RecipeTest[]>([]);
+  const [fillTest, setFillTest] = React.useState<RecipeTest | null>(null);
+  const [printTest, setPrintTest] = React.useState<RecipeTest | null>(null);
 
   React.useEffect(() => {
     let alive = true;
     loadRecipes().then((next) => { if (alive) setRecipes(next); }).catch(() => null);
+    loadRecipeTests().then((next) => { if (alive) setTests(next); }).catch(() => null);
     return () => { alive = false; };
   }, []);
 
   React.useEffect(() => { if (route.open) setOpenId(route.open); }, [route.open]);
+
+  React.useEffect(() => {
+    if (!printTest) return;
+    document.body.dataset.printMode = "recipe-test";
+    const clear = () => { delete document.body.dataset.printMode; setPrintTest(null); };
+    window.addEventListener("afterprint", clear, { once: true });
+    const timer = window.setTimeout(() => window.print(), 80);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", clear);
+      delete document.body.dataset.printMode;
+    };
+  }, [printTest]);
 
   const saveRecipe = async (recipe: Recipe) => {
     const prevIds = new Set(recipes.map((item) => item.id));
@@ -472,6 +670,40 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
     const created = next.find((item) => !prevIds.has(item.id));
     if (created) setOpenId(created.id);
   };
+
+  const newTest = async (recipe: Recipe) => {
+    try {
+      setTests(await createRecipeTest(recipe.id));
+      toast("Teste criado. Imprima a etiqueta e preencha o protocolo.", "info");
+    } catch {
+      toast("Não foi possível criar o teste.", "bad");
+    }
+  };
+
+  const fillTestSubmit = async (criteria: RecipeTestCriterion[], note: string) => {
+    if (!fillTest) return;
+    setTests(await submitRecipeTest(fillTest.id, criteria, note));
+  };
+
+  const approveRecipe = async (recipe: Recipe) => {
+    try {
+      setRecipes(await setRecipeStatus(recipe.id, "ativa"));
+      toast("Versão aprovada e ativada.", "ok");
+    } catch {
+      toast("Não foi possível aprovar a versão.", "bad");
+    }
+  };
+
+  const unapproveRecipe = async (recipe: Recipe) => {
+    try {
+      setRecipes(await setRecipeStatus(recipe.id, "rascunho"));
+      toast("Versão voltou para rascunho.", "info");
+    } catch {
+      toast("Não foi possível alterar a versão.", "bad");
+    }
+  };
+
+  const testsForOpen = tests.filter((test) => test.recipeVersionId === openId);
 
   const rows = recipes
     .filter((recipe) => status === "todas" || recipe.status === status)
@@ -544,12 +776,24 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
       {openRecipe && (
         <RecipeDrawer
           recipe={openRecipe}
+          tests={testsForOpen}
           find={dir.find}
           go={go}
           onClose={() => setOpenId(null)}
           onVersion={(recipe) => setRecipeForm({ open: true, mode: "version", baseRecipe: recipe })}
+          onNewTest={newTest}
+          onFillTest={setFillTest}
+          onPrintTest={setPrintTest}
+          onApprove={approveRecipe}
+          onUnapprove={unapproveRecipe}
         />
       )}
+      <RecipeTestModal
+        open={Boolean(fillTest)}
+        test={fillTest}
+        onClose={() => setFillTest(null)}
+        onSubmit={fillTestSubmit}
+      />
       <RecipeFormModal
         open={recipeForm.open}
         mode={recipeForm.mode}
@@ -560,6 +804,7 @@ export function RecipesScreen({ go, route }: { go: Go; route: Route }) {
         onClose={() => setRecipeForm((current) => ({ ...current, open: false }))}
         onSave={saveRecipe}
       />
+      <RecipeTestLabelDocument test={printTest} />
     </div>
   );
 }

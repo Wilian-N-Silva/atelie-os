@@ -40,3 +40,13 @@ export async function createRecipeVersion(baseVersionId: string, recipe: RecipeI
   });
   return parseRecipesResponse(res);
 }
+
+export async function setRecipeStatus(versionId: string, status: "ativa" | "rascunho") {
+  const res = await fetch("/api/app/recipes", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ versionId, status }),
+  });
+  return parseRecipesResponse(res);
+}

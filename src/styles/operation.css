@@ -104,3 +104,25 @@
   .op-start-side { border-left: none; border-top: 1px solid var(--op-line); }
   .op-start-title { font-size: 28px; }
 }
+
+/* Recipe test runner (quality protocol filled in operation mode) */
+.op-test-crit { border: 1px solid var(--op-line); border-radius: 12px; padding: 14px; margin-bottom: 12px; background: var(--op-card); }
+.op-test-crit-info { margin-bottom: 10px; }
+.op-test-crit-name { font-size: 15.5px; font-weight: 650; }
+.op-test-crit-how { font-size: 13px; color: var(--op-mut); margin-top: 2px; }
+.op-test-crit-approve { font-size: 12.5px; color: var(--op-ok); margin-top: 4px; display: inline-flex; align-items: center; gap: 5px; }
+.op-test-results { display: flex; gap: 8px; flex-wrap: wrap; }
+.op-test-btn {
+  flex: 1; min-width: 96px; height: 42px; border-radius: 9px; border: 1px solid var(--op-line);
+  background: #101218; color: var(--op-mut); font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.op-test-btn:hover { background: #1d2028; }
+.op-test-btn--on.op-test-btn--aprovado { border-color: var(--op-ok); background: rgba(74,222,128,.16); color: #bbf7d0; }
+.op-test-btn--on.op-test-btn--ajustar { border-color: var(--op-warn); background: rgba(251,191,36,.16); color: #fde68a; }
+.op-test-btn--on.op-test-btn--reprovado { border-color: var(--op-bad); background: rgba(248,113,113,.16); color: #fecaca; }
+.op-test-note {
+  width: 100%; margin-top: 10px; height: 40px; border-radius: 8px; border: 1px solid var(--op-line);
+  background: #101218; color: #e9eaee; padding: 0 12px; font-size: 13.5px; font-family: inherit;
+}
+.op-test-note--block { height: 70px; padding: 10px 12px; resize: vertical; }
+.op-test-note:focus { outline: none; border-color: var(--op-amber); }

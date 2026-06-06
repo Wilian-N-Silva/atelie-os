@@ -13,11 +13,148 @@ import {
 import { loadOrders, updateOrder } from "@/lib/orders-client";
 import { loadProduction, updateProduction } from "@/lib/production-client";
 import { loadRecipes } from "@/lib/recipes-client";
+import { loadRecipeTests, submitRecipeTest } from "@/lib/recipe-tests-client";
+import {
+  RECIPE_TEST_CRITERIA,
+  type RecipeTest,
+  type RecipeTestCriterion,
+  type RecipeTestResult,
+  deriveRecipeTestResult,
+  emptyRecipeTestCriteria,
+} from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
 import { useWorkflows } from "@/lib/workflows";
 import { buildStatusMap, statusInfo } from "@/lib/workflow-status";
 import { normalizeScanValue, scanCandidates } from "@/lib/scan-candidates";
 import type { Go, Route } from "@/lib/types";
+
+const TEST_RESULT_LABEL: Record<RecipeTestResult, string> = {
+  aprovado: "Aprovado",
+  reprovado: "Reprovado",
+  ajustar: "Ajustar",
+  pendente: "Pendente",
+};
+
+function findRecipeTestByScan(tests: RecipeTest[], raw: string) {
+  const values = scanCandidates(raw);
+  return tests.find((test) => values.has(test.code) || values.has(test.id.toLowerCase()));
+}
+
+function RecipeTestRunner({ test, onExit, onSubmitted }: {
+  test: RecipeTest;
+  onExit: () => void;
+  onSubmitted: (tests: RecipeTest[]) => void;
+}) {
+  const [criteria, setCriteria] = React.useState<RecipeTestCriterion[]>(
+    () => test.criteria.length ? test.criteria.map((criterion) => ({ ...criterion })) : emptyRecipeTestCriteria(),
+  );
+  const [note, setNote] = React.useState(test.note ?? "");
+  const [saving, setSaving] = React.useState(false);
+  const [finished, setFinished] = React.useState(false);
+
+  const derived = deriveRecipeTestResult(criteria);
+  const answered = criteria.filter((criterion) => criterion.result !== "pendente").length;
+
+  const setResult = (key: string, result: RecipeTestResult) => {
+    setCriteria((current) => current.map((criterion) => criterion.key === key ? { ...criterion, result } : criterion));
+  };
+  const setCritNote = (key: string, value: string) => {
+    setCriteria((current) => current.map((criterion) => criterion.key === key ? { ...criterion, note: value } : criterion));
+  };
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const next = await submitRecipeTest(test.id, criteria, note.trim());
+      onSubmitted(next);
+      setFinished(true);
+    } catch {
+      toast("Nao foi possivel salvar o teste.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="op">
+      <div className="op-head">
+        <button className="op-exit" onClick={onExit}><Icon name="x" size={18} /> Sair</button>
+        <div className="op-doc">
+          <span className="op-doc-mode">Teste de receita</span>
+          <span className="op-doc-title">{test.recipeName} {test.recipeVersion} - Teste {test.seq}</span>
+        </div>
+        <Barcode code={test.code} size="sm" className="op-head-code" />
+        <div style={{ flex: 1 }} />
+        <div className="op-prog"><div className="op-prog-ring">
+          <ProgressRing pct={Math.round((answered / criteria.length) * 100)} />
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700 }}>{answered}/{criteria.length}</div>
+        </div></div>
+      </div>
+
+      <div className="op-body" style={{ gridTemplateColumns: "1fr" }}>
+        <div className="op-col" style={{ maxWidth: 860, margin: "0 auto", width: "100%" }}>
+          <div className="op-coltitle"><span>Protocolo de qualidade - {test.productName}</span><span>{TEST_RESULT_LABEL[derived]}</span></div>
+          {RECIPE_TEST_CRITERIA.map((meta) => {
+            const criterion = criteria.find((item) => item.key === meta.key);
+            const result = criterion?.result ?? "pendente";
+            return (
+              <div key={meta.key} className="op-test-crit">
+                <div className="op-test-crit-info">
+                  <div className="op-test-crit-name">{meta.label}</div>
+                  <div className="op-test-crit-how">{meta.howTo}</div>
+                  <div className="op-test-crit-approve"><Icon name="check" size={13} /> {meta.approveWhen}</div>
+                </div>
+                <div className="op-test-results">
+                  {(["aprovado", "ajustar", "reprovado"] as RecipeTestResult[]).map((value) => (
+                    <button
+                      key={value}
+                      className={cn("op-test-btn", `op-test-btn--${value}`, result === value && "op-test-btn--on")}
+                      onClick={() => setResult(meta.key, value)}
+                    >
+                      {TEST_RESULT_LABEL[value]}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  className="op-test-note"
+                  value={criterion?.note ?? ""}
+                  placeholder="Observacao da medicao (opcional)"
+                  onChange={(event) => setCritNote(meta.key, event.target.value)}
+                />
+              </div>
+            );
+          })}
+          <textarea
+            className="op-test-note op-test-note--block"
+            value={note}
+            placeholder="Observacao geral do teste"
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="op-foot">
+        <div style={{ flex: 1, color: "var(--op-mut)", fontSize: 13.5 }}>
+          {answered < criteria.length ? `Faltam ${criteria.length - answered} criterios para registrar.` : `Resultado: ${TEST_RESULT_LABEL[derived]}.`}
+        </div>
+        <button className="op-fbtn op-fbtn--primary" disabled={saving} onClick={submit}>
+          <Icon name="check" size={18} /> Salvar teste
+        </button>
+      </div>
+
+      {finished && (
+        <div className="op-done">
+          <div className="op-done-card">
+            <div className="op-done-ring"><Icon name="check" size={42} strokeWidth={2.4} /></div>
+            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Teste registrado</div>
+            <div style={{ color: "var(--op-mut)", fontSize: 14.5, marginBottom: 24 }}>{test.recipeName} {test.recipeVersion} - {TEST_RESULT_LABEL[derived]}</div>
+            <button className="op-fbtn" onClick={onExit}>Voltar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ORDER_PACK_CHECKLIST = [
   "Pedido conferido com a pick list",
@@ -200,6 +337,8 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
   const dir = useItemDirectory();
   const find = dir.find;
   const [recipes, setRecipes] = React.useState<Recipe[]>([]);
+  const [recipeTests, setRecipeTests] = React.useState<RecipeTest[]>([]);
+  const [selectedTestId, setSelectedTestId] = React.useState<string | null>(route.test ?? null);
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [productionOrders, setProductionOrders] = React.useState<ProductionOrder[]>([]);
   const orderStatusMap = React.useMemo(() => buildStatusMap(workflows.order), [workflows.order]);
@@ -229,8 +368,13 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     loadOrders().then((next) => { if (alive) setOrders(next); }).catch(() => null);
     loadProduction().then((next) => { if (alive) setProductionOrders(next); }).catch(() => null);
     loadRecipes().then((next) => { if (alive) setRecipes(next); }).catch(() => null);
+    loadRecipeTests().then((next) => { if (alive) setRecipeTests(next); }).catch(() => null);
     return () => { alive = false; };
   }, []);
+
+  React.useEffect(() => {
+    if (route.test) setSelectedTestId(route.test);
+  }, [route.test]);
 
   React.useEffect(() => {
     const nextProduction = route.production ?? null;
@@ -351,7 +495,17 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
       selectProduction(productionHit, "scan");
       return;
     }
-    setFeedback({ kind: "bad", name: "Documento nao encontrado", sub: `"${raw}" nao corresponde a pedido ou OP`, fix: "Bipe o codigo da pick list ou selecione manualmente." });
+    const testHit = findRecipeTestByScan(recipeTests, value);
+    if (testHit) {
+      setSelectedTestId(testHit.id);
+      setSelectedOrderId(null);
+      setSelectedProductionId(null);
+      setFeedback({ kind: "ok", name: `Teste ${testHit.seq} carregado`, sub: `${testHit.recipeName} ${testHit.recipeVersion}` });
+      pushLog({ kind: "neutral", label: `Teste carregado: ${testHit.recipeName} ${testHit.recipeVersion}` });
+      flash("ok");
+      return;
+    }
+    setFeedback({ kind: "bad", name: "Documento nao encontrado", sub: `"${raw}" nao corresponde a pedido, OP ou teste`, fix: "Bipe o codigo da pick list ou etiqueta de teste, ou selecione manualmente." });
     pushLog({ kind: "bad", label: "Documento desconhecido" });
     flash("bad");
   };
@@ -520,9 +674,21 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     go(order ? "pedidos" : "hoje", order ? { open: order.id } : {});
   };
 
+  const selectedTest = recipeTests.find((test) => test.id === selectedTestId) ?? null;
+  if (selectedTest) {
+    return (
+      <RecipeTestRunner
+        test={selectedTest}
+        onSubmitted={setRecipeTests}
+        onExit={() => { setSelectedTestId(null); go("receitas", { open: selectedTest.recipeVersionId }); }}
+      />
+    );
+  }
+
   if (!targetKind) {
     const ordersToOperate = orderQueue(orders);
     const productionsToOperate = productionQueue(productionOrders);
+    const testsToFill = recipeTests.filter((test) => test.status === "pendente" || test.status === "ajustar");
     return (
       <div className="op" onClick={() => inputRef.current?.focus()}>
         <div className="op-head">
@@ -595,6 +761,24 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
                 );
               })}
             </div>
+
+            {testsToFill.length > 0 && (
+              <>
+                <div className="op-coltitle" style={{ marginTop: 18 }}><span>Testes de receita</span><span>{testsToFill.length}</span></div>
+                <div className="op-order-list">
+                  {testsToFill.map((item) => (
+                    <button key={item.id} className="op-order-card" onClick={() => { setSelectedTestId(item.id); setSelectedOrderId(null); setSelectedProductionId(null); }}>
+                      <div className="op-order-main">
+                        <div className="op-order-num">Teste {item.seq}</div>
+                        <div className="op-order-sub">{item.recipeName} {item.recipeVersion}</div>
+                        <div className="op-order-status">{TEST_RESULT_LABEL[item.status]} - {item.batchQty} un</div>
+                      </div>
+                      <Barcode code={item.code} size="sm" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

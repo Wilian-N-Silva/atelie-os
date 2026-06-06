@@ -210,11 +210,6 @@ function productionCurePatch(order: ProductionOrder, recipe: Recipe | undefined)
   };
 }
 
-function nextProductionStatus(steps: WorkflowStep[], current: string) {
-  const index = steps.findIndex((step) => step.key === current);
-  return index >= 0 ? steps[index + 1]?.key ?? null : null;
-}
-
 function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint, onUpdate }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void; onUpdate: (productionId: string, patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>) => Promise<void> }) {
   const status = statusInfo(statusMap, order.status);
   const recipe = recipeFor(order, recipes);
@@ -505,7 +500,6 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
                 {cards.map((order) => {
                   const rows = materialRows(order, recipes, dir.find);
                   const short = rows.some((row) => row.short);
-                  const nextStatus = nextProductionStatus(workflows.production, order.status);
                   return (
                     <div className="kcard" key={order.id} onClick={() => setOpenId(order.id)}>
                       <div className="kcard-top">
@@ -520,21 +514,6 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
                       {order.status === "em_cura" && <div className="row between"><Badge tone="cure" dot>Cura</Badge><span className="muted" style={{ fontSize: 12 }}>faltam {order.cureDayLeft}d</span></div>}
                       {order.status === "aguardando_revisao" && <Badge tone="warn" dot>Revisar agora</Badge>}
                       {order.status === "liberada" && <Badge tone="ok" dot>Lote liberado</Badge>}
-                      {nextStatus && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon="arrowRight"
-                          style={{ marginTop: 10, width: "100%" }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            const patch = nextStatus === "em_cura" ? productionCurePatch(order, recipeFor(order, recipes)) : { status: nextStatus };
-                            updateOrder(order.id, patch).catch(() => toast("Nao foi possivel avancar a OP.", "bad"));
-                          }}
-                        >
-                          Avancar
-                        </Button>
-                      )}
                     </div>
                   );
                 })}

@@ -120,6 +120,8 @@ export const auditActionEnum = pgEnum("audit_action", [
   "customer.upsert",
   "recipe.create",
   "recipe.update",
+  "recipe.test_create",
+  "recipe.test_submit",
   "production.create",
   "production.update",
   "supplier.create",
@@ -676,6 +678,33 @@ export const recipeComponents = pgTable(
   },
   (table) => ({
     versionIdx: index("recipe_components_version_idx").on(table.recipeVersionId),
+  }),
+);
+
+export const recipeTests = pgTable(
+  "recipe_tests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    recipeVersionId: uuid("recipe_version_id")
+      .notNull()
+      .references(() => recipeVersions.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    seq: integer("seq").notNull().default(1),
+    batchQty: integer("batch_qty").notNull().default(1),
+    status: text("status").notNull().default("pendente"),
+    criteria: jsonb("criteria").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    note: text("note").notNull().default(""),
+    testedAt: timestamp("tested_at", { withTimezone: true }),
+    testedByUserId: text("tested_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCodeIdx: uniqueIndex("recipe_tests_company_code_idx").on(table.companyId, table.code),
+    versionIdx: index("recipe_tests_version_idx").on(table.recipeVersionId),
   }),
 );
 

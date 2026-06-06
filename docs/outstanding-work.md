@@ -49,6 +49,9 @@ These are no longer future feature ideas; they exist in the current local code a
 - [x] Store/sender/fiscal profile fields in shipping settings, reused by label sender inputs.
 - [x] Sellable item logistics validation for weight and dimensions, with order quote defaults derived from item package data.
 - [x] Suggested replenishment screen and API, based on stock minimums, available balance, open order demand, and open production material demand.
+- [x] Recipe approval flow with quality protocol: per-version test batches (`recipe_tests`) carrying a 12-digit scannable code, the 5 protocol criteria (aroma frio/quente, queima, acabamento, consistencia) each with status + note, manual approval gated on at least one passed test, and a printable test label.
+- [x] Test protocol fillable in Modo Operacao: scanning (or selecting) a recipe-test label opens the criteria form; manual fill also available from the recipe drawer.
+- [x] Removed the production kanban "Avancar" shortcut so OPs cannot skip the essential operation steps.
 
 ---
 
@@ -113,6 +116,10 @@ Notes:
   - Tenant data context controls.
   - Saved prompt/template management.
   - Approval workflow beyond generated-history persistence.
+- [ ] Tenant-editable catalog parameters (units of measure, material/item types, etc.):
+  - These reference tables already exist in the DB but are not editable from the UI; expose them in tenant settings.
+  - Protect canonical measurement standards and conversions (e.g. 1000 g = 1 kg) so edits cannot break unit math.
+  - Keep behavior keyed off stable technical keys, not editable display labels (same invariant as workflows).
 
 ---
 
