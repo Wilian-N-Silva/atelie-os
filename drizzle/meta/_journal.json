@@ -64,6 +64,13 @@
       "when": 1780869600000,
       "tag": "0008_order_track_token",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780956000000,
+      "tag": "0009_price_history",
+      "breakpoints": true
     }
   ]
 }

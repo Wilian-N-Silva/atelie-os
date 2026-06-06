@@ -52,6 +52,7 @@ export type CatalogItem = {
     aroma: string | null;
     collection: string | null;
     cureDays: number | null;
+    kitMode: string | null;
   };
 };
 
@@ -97,6 +98,7 @@ export type ItemFormInput = {
     aroma: string | null;
     collection: string | null;
     cureDays: number | null;
+    kitMode: string | null;
   };
 };
 

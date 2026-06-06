@@ -122,6 +122,7 @@ export const auditActionEnum = pgEnum("audit_action", [
   "recipe.update",
   "recipe.test_create",
   "recipe.test_submit",
+  "price.update",
   "production.create",
   "production.update",
   "supplier.create",
@@ -527,6 +528,29 @@ export const items = pgTable(
     companySkuIdx: uniqueIndex("items_company_sku_idx").on(table.companyId, table.sku),
     companyCodeIdx: uniqueIndex("items_company_internal_code_idx").on(table.companyId, table.internalCode),
     companyTypeIdx: index("items_company_type_idx").on(table.companyId, table.type),
+  }),
+);
+
+export const priceHistory = pgTable(
+  "price_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+    previousPrice: numeric("previous_price", { precision: 12, scale: 2 }),
+    cost: numeric("cost", { precision: 12, scale: 4 }),
+    marginPct: numeric("margin_pct", { precision: 6, scale: 2 }),
+    channelKey: text("channel_key"),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    companyItemIdx: index("price_history_company_item_idx").on(table.companyId, table.itemId, table.createdAt),
   }),
 );
 

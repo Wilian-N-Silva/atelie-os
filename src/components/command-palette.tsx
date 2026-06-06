@@ -34,6 +34,7 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
     { id: "n-prod", kind: "nav", icon: "producao", title: "Producao", sub: "Ordens e cura", go: { screen: "producao" } },
     { id: "n-itens", kind: "nav", icon: "itens", title: "Itens / SKUs", sub: "Catalogo", go: { screen: "itens" } },
     { id: "n-receitas", kind: "nav", icon: "receitas", title: "Receitas", sub: "Formulas", go: { screen: "receitas" } },
+    { id: "n-precificacao", kind: "nav", icon: "trendUp", title: "Precificacao", sub: "Custo, margem e preco", go: { screen: "precificacao" } },
     { id: "n-estoque", kind: "nav", icon: "estoque", title: "Estoque", sub: "Saldos e movimentos", go: { screen: "estoque" } },
     { id: "n-reposicao", kind: "nav", icon: "refresh", title: "Reposicao", sub: "Sugestoes de compra e producao", go: { screen: "reposicao" } },
     { id: "n-compras", kind: "nav", icon: "inbox", title: "Compras", sub: "Fornecedores e recebimentos", go: { screen: "compras" } },

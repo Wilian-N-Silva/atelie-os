@@ -16,6 +16,7 @@ export const NAV = [
   { group: "Catálogo & estoque", items: [
     { id: "itens", label: "Itens / SKUs", icon: "itens" },
     { id: "receitas", label: "Receitas", icon: "receitas" },
+    { id: "precificacao", label: "Precificação", icon: "trendUp" },
     { id: "estoque", label: "Estoque", icon: "estoque" },
     { id: "reposicao", label: "Reposição", icon: "refresh" },
     { id: "compras", label: "Compras", icon: "inbox" },
@@ -42,6 +43,7 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   producao: { title: "Produção", sub: "Ordens, cura e liberação" },
   itens: { title: "Itens / SKUs", sub: "Catálogo do ateliê" },
   receitas: { title: "Receitas", sub: "Fórmulas e testes" },
+  precificacao: { title: "Precificação", sub: "Custo, margem e preço sugerido" },
   estoque: { title: "Estoque", sub: "Saldos · lotes · movimentos" },
   reposicao: { title: "Reposição", sub: "Sugestões de compra e produção" },
   compras: { title: "Compras", sub: "Fornecedores e recebimentos" },

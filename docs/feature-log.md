@@ -35,6 +35,11 @@ One line per feature. Migrations are noted as `0NNN`.
 - Production kanban "Avancar" shortcut removed so OPs cannot skip operation steps.
 - Dev DB pool `max` 1 -> 10 (a single connection deadlocked transactional routes and login); `recipe-tests` route uses the `tx` client inside transactions.
 
+## 2026-06-06 — Pricing & margin; kit composition
+- Pricing screen + `GET/POST /api/app/pricing`: per-product cost (active-recipe materials/packaging, real average cost overriding estimate) + labor/extra + desired margin -> suggested price; channel-fee simulation; low-margin alert; save practiced price -> `price_history` + `price.update` audit; `0009`. Pure math in `src/lib/pricing.ts` (5 tests, incl. the PRD 26,10 -> 65,25 example).
+- Kit recipes can now use finished products as components (e.g. 3 velas + caixa = Kit Ritual Noturno), enabling assembled kits via a production OP (consume components, output kit).
+- Virtual-bundle kits: kit-mode flag (`assembled` | `virtual`) on the item, availability derived from component stock, and order reservation/shipment decomposing a virtual-kit line into component stock movements. Pure planner in `src/lib/kit-composition.ts` (unit-tested); composition resolved from the kit's active recipe in `src/lib/kit-composition-server.ts`. Pick list / Modo Operacao component display remains (see outstanding-work.md).
+
 ## 2026-06-06 — Public order tracking API (foundation)
 - Public, CORS-enabled, read-only endpoint `GET /api/public/track` for the (separate) company website to consume from another origin. Lookup by opaque `track_token` (shareable link) or by order number + email/CEP (email/CEP is the auth factor). `0008` adds unique `orders.track_token`, backfilled and generated on order creation.
 - Sanitized payload (no PII/costs/tokens): order number, payment status, customer-friendly fulfillment stage + timeline (recebido -> em preparacao -> embalado -> enviado -> em transito -> entregue), and carrier/tracking code/url/ETA. Generic 404 so existence cannot be probed.

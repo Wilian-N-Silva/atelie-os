@@ -11,6 +11,7 @@ import {
   workflowSteps,
   workflows,
 } from "@/db/schema";
+import { expandStockTargets } from "@/lib/kit-composition";
 
 type AutomationEntity = "order" | "production";
 type StockMovementInsert = typeof stockMovements.$inferInsert;
@@ -179,25 +180,36 @@ export async function applyOrderWorkflowAutomations(input: {
     columns: { itemId: true, quantity: true, sku: true },
   });
 
+  // Decompose virtual-kit lines into their component products; assembled kits
+  // and plain items pass through and keep their original stock movements.
+  // Imported lazily so the pure planners stay importable without a DB client.
+  const { resolveVirtualKitComponents } = await import("@/lib/kit-composition-server");
+  const virtualKits = await resolveVirtualKitComponents(companyId);
+  const targets = expandStockTargets(
+    lines.flatMap((line) => {
+      const quantity = Number(line.quantity);
+      if (!line.itemId || !Number.isFinite(quantity) || quantity <= 0) return [];
+      return [{ itemId: line.itemId, quantity, sku: line.sku }];
+    }),
+    virtualKits,
+  );
+
   let inserted = 0;
-  for (const line of lines) {
-    if (!line.itemId) continue;
-    const quantity = Number(line.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) continue;
-    const locationId = await defaultLocationId(tx, companyId, line.itemId);
+  for (const target of targets) {
+    const locationId = await defaultLocationId(tx, companyId, target.itemId);
 
     if (shouldReserve) {
       const didInsert = await insertMovementOnce(tx, {
         companyId,
-        itemId: line.itemId,
+        itemId: target.itemId,
         movementType: "reservation",
-        quantity: quantityString(quantity),
+        quantity: quantityString(target.quantity),
         toLocationId: locationId,
         reason: "Reserva automatica por pagamento confirmado",
         sourceType: "order.payment",
-        sourceId: `${orderId}:${line.itemId}`,
+        sourceId: `${orderId}:${target.sourceKey}`,
         createdByUserId: actorUserId,
-        metadata: { orderId, sku: line.sku },
+        metadata: { orderId, sku: target.sku },
       });
       if (didInsert) inserted += 1;
     }
@@ -205,27 +217,27 @@ export async function applyOrderWorkflowAutomations(input: {
     if (shouldShip) {
       const released = await insertMovementOnce(tx, {
         companyId,
-        itemId: line.itemId,
+        itemId: target.itemId,
         movementType: "reservation_release",
-        quantity: quantityString(quantity),
+        quantity: quantityString(target.quantity),
         fromLocationId: locationId,
         reason: "Baixa automatica da reserva no envio",
         sourceType: "order.shipment.release",
-        sourceId: `${orderId}:${line.itemId}`,
+        sourceId: `${orderId}:${target.sourceKey}`,
         createdByUserId: actorUserId,
-        metadata: { orderId, sku: line.sku },
+        metadata: { orderId, sku: target.sku },
       });
       const shipped = await insertMovementOnce(tx, {
         companyId,
-        itemId: line.itemId,
+        itemId: target.itemId,
         movementType: "order_shipment",
-        quantity: quantityString(quantity),
+        quantity: quantityString(target.quantity),
         fromLocationId: locationId,
         reason: "Saida automatica por pedido enviado",
         sourceType: "order.shipment",
-        sourceId: `${orderId}:${line.itemId}`,
+        sourceId: `${orderId}:${target.sourceKey}`,
         createdByUserId: actorUserId,
-        metadata: { orderId, sku: line.sku },
+        metadata: { orderId, sku: target.sku },
       });
       if (released) inserted += 1;
       if (shipped) inserted += 1;

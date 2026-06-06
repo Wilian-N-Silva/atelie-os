@@ -19,6 +19,7 @@ import { OrdersScreen } from "@/screens/orders";
 import { ProductionScreen } from "@/screens/production";
 import { ReplenishmentScreen } from "@/screens/replenishment";
 import { RecipesScreen } from "@/screens/recipes";
+import { PricingScreen } from "@/screens/pricing";
 import { LabelsScreen } from "@/screens/labels";
 import { AIContentScreen } from "@/screens/ai-content";
 import { SettingsScreen } from "@/screens/settings";
@@ -53,6 +54,7 @@ const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   producao: ProductionScreen as React.ComponentType<ScreenComponentProps>,
   itens: ItemsScreen as React.ComponentType<ScreenComponentProps>,
   receitas: RecipesScreen as React.ComponentType<ScreenComponentProps>,
+  precificacao: PricingScreen as React.ComponentType<ScreenComponentProps>,
   estoque: InventoryScreen as React.ComponentType<ScreenComponentProps>,
   reposicao: ReplenishmentScreen as React.ComponentType<ScreenComponentProps>,
   compras: PurchasesScreen as React.ComponentType<ScreenComponentProps>,

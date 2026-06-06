@@ -12,6 +12,8 @@ import {
   type ItemType,
 } from "@/lib/items";
 import { emptyStockBalance, getStockBalancesForCompany } from "@/lib/stock-balances";
+import { kitAvailableFromComponents } from "@/lib/kit-composition";
+import { resolveVirtualKitComponents } from "@/lib/kit-composition-server";
 
 const ITEM_TYPES: ItemType[] = ["raw_material", "packaging", "finished_good", "kit", "auxiliary"];
 const ITEM_STATUSES: ItemStatus[] = ["active", "archived", "blocked"];
@@ -84,6 +86,10 @@ function metadataFromInput(input: ItemFormInput) {
   if (input.metadata.aroma) metadata.aroma = input.metadata.aroma;
   if (input.metadata.collection) metadata.collection = input.metadata.collection;
   if (input.metadata.cureDays != null) metadata.cureDays = input.metadata.cureDays;
+  // Kit mode only matters for kit items; "virtual" decomposes into components on sale.
+  if (input.type === "kit" && (input.metadata.kitMode === "virtual" || input.metadata.kitMode === "assembled")) {
+    metadata.kitMode = input.metadata.kitMode;
+  }
   return metadata;
 }
 
@@ -159,6 +165,7 @@ export function parseItemInput(payload: unknown): { input: ItemFormInput } | { e
       aroma: cleanOptionalString(metadata.aroma, 240),
       collection: cleanOptionalString(metadata.collection, 80),
       cureDays: cleanNullableInteger(metadata.cureDays),
+      kitMode: metadata.kitMode === "virtual" || metadata.kitMode === "assembled" ? metadata.kitMode : null,
     },
   };
 
@@ -309,6 +316,7 @@ export async function buildItemsResponse(company: AppRouteContext["company"]): P
         aroma: metadataString(row.metadata, "aroma"),
         collection: metadataString(row.metadata, "collection"),
         cureDays: metadataNumber(row.metadata, "cureDays"),
+        kitMode: metadataString(row.metadata, "kitMode") || null,
       },
     };
 
@@ -317,6 +325,21 @@ export async function buildItemsResponse(company: AppRouteContext["company"]): P
       stockStatus: getStockStatus(item),
     };
   });
+
+  // Virtual kits hold no stock of their own: derive availability from how many
+  // full kits the component products' available stock supports.
+  const virtualKits = await resolveVirtualKitComponents(company.id);
+  if (virtualKits.size) {
+    const availableByItemId = new Map(catalogItems.map((item) => [item.id, item.available]));
+    for (const item of catalogItems) {
+      const components = virtualKits.get(item.id);
+      if (!components) continue;
+      const available = kitAvailableFromComponents(components, availableByItemId);
+      item.physical = available;
+      item.available = available;
+      item.stockStatus = getStockStatus(item);
+    }
+  }
 
   return {
     companyName: company.name,

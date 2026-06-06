@@ -100,6 +100,7 @@ type ItemFormState = {
   aroma: string;
   collection: string;
   cureDays: string;
+  kitMode: string;
 };
 
 const TYPE_OPTIONS = [
@@ -288,6 +289,7 @@ function defaultForm(lookups: ItemLookups): ItemFormState {
     aroma: "",
     collection: "",
     cureDays: "",
+    kitMode: "assembled",
   };
 }
 
@@ -317,6 +319,7 @@ function formFromItem(item: CatalogItem, lookups: ItemLookups): ItemFormState {
     aroma: item.metadata.aroma ?? "",
     collection: item.metadata.collection ?? "",
     cureDays: item.metadata.cureDays == null ? "" : String(item.metadata.cureDays),
+    kitMode: item.metadata.kitMode === "virtual" ? "virtual" : "assembled",
   };
 }
 
@@ -384,6 +387,7 @@ function formToInput(form: ItemFormState): { input: ItemFormInput } | { error: s
         aroma: form.aroma.trim() || null,
         collection: form.collection.trim() || null,
         cureDays: parseOptionalInteger(form.cureDays),
+        kitMode: form.type === "kit" ? form.kitMode : null,
       },
     },
   };
@@ -657,6 +661,21 @@ function ItemFormModal({
           <Input value={form.aroma} onChange={(event) => setField("aroma", event.target.value)} />
         </Field>
       </div>
+
+      {form.type === "kit" && (
+        <div className="ff-grid">
+          <Field label="Tipo de kit">
+            <Select
+              value={form.kitMode}
+              onChange={(value) => setField("kitMode", value)}
+              options={[
+                { value: "assembled", label: "Montado (estoque proprio, via producao)" },
+                { value: "virtual", label: "Virtual (baixa os componentes na venda)" },
+              ]}
+            />
+          </Field>
+        </div>
+      )}
 
       <div className="row-wrap" style={{ gap: 16, marginTop: 4 }}>
         <label className="row" style={{ gap: 8, fontSize: 13 }}><input type="checkbox" checked={form.tracksLot} onChange={(event) => setField("tracksLot", event.target.checked)} /> Controla lote</label>

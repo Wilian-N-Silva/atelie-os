@@ -398,6 +398,12 @@ function RecipeFormModal({
   }, [open, mode, baseRecipe, products, materials]);
 
   const product = products.find((item) => item.sku === productSku) ?? products[0];
+  // A kit is assembled from finished products (e.g. 3 velas) plus packaging, so
+  // its recipe components may be finished products too - not only raw materials.
+  const isKit = product?.type === "kit";
+  const componentOptions = isKit
+    ? [...materials, ...products.filter((item) => item.type !== "kit" && item.sku !== product?.sku)]
+    : materials;
 
   const resolvedComponents = components.map((component) => {
     const item = find(component.sku);
@@ -423,8 +429,8 @@ function RecipeFormModal({
   };
 
   const addComponent = () => {
-    const nextSku = materials.find((item) => !components.some((component) => component.sku === item.sku))?.sku
-      ?? materials[0]?.sku
+    const nextSku = componentOptions.find((item) => !components.some((component) => component.sku === item.sku))?.sku
+      ?? componentOptions[0]?.sku
       ?? "";
     if (!nextSku) return;
     setComponents((current) => [...current, recipeComponentFromSku(nextSku, current.length)]);
@@ -543,7 +549,7 @@ function RecipeFormModal({
                       <Select
                         value={component.sku}
                         onChange={(value) => setComponent(component.key, { sku: value })}
-                        options={materials.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
+                        options={componentOptions.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
                       />
                       <div className="cell-sub" style={{ marginTop: 4 }}>
                         <span className="sku">{component.sku}</span> - {BRL(component.item?.costAvg ?? 0)}/{component.unit}
