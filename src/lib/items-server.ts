@@ -318,6 +318,7 @@ export async function buildItemsResponse(company: AppRouteContext["company"]): P
         cureDays: metadataNumber(row.metadata, "cureDays"),
         kitMode: metadataString(row.metadata, "kitMode") || null,
       },
+      kitComponents: [] as { sku: string; qty: number }[],
     };
 
     return {
@@ -337,6 +338,7 @@ export async function buildItemsResponse(company: AppRouteContext["company"]): P
       const available = kitAvailableFromComponents(components, availableByItemId);
       item.physical = available;
       item.available = available;
+      item.kitComponents = components.map((component) => ({ sku: component.sku, qty: component.perKit }));
       item.stockStatus = getStockStatus(item);
     }
   }

@@ -13,6 +13,7 @@ import { AuthFlow } from "@/components/auth/auth-flow";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { Dashboard } from "@/screens/dashboard";
 import { InventoryScreen } from "@/screens/inventory";
+import { StockCountScreen } from "@/screens/stock-count";
 import { ItemsScreen } from "@/screens/items";
 import { ManualScreen } from "@/screens/manual";
 import { OrdersScreen } from "@/screens/orders";
@@ -56,6 +57,7 @@ const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   receitas: RecipesScreen as React.ComponentType<ScreenComponentProps>,
   precificacao: PricingScreen as React.ComponentType<ScreenComponentProps>,
   estoque: InventoryScreen as React.ComponentType<ScreenComponentProps>,
+  contagem: StockCountScreen as React.ComponentType<ScreenComponentProps>,
   reposicao: ReplenishmentScreen as React.ComponentType<ScreenComponentProps>,
   compras: PurchasesScreen as React.ComponentType<ScreenComponentProps>,
   financeiro: FinanceScreen as React.ComponentType<ScreenComponentProps>,

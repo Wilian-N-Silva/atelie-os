@@ -734,6 +734,48 @@ export const recipeTests = pgTable(
   }),
 );
 
+export const stockCounts = pgTable(
+  "stock_counts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("aberta"),
+    note: text("note").notNull().default(""),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    appliedByUserId: text("applied_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => ({
+    companyCreatedIdx: index("stock_counts_company_created_idx").on(table.companyId, table.createdAt),
+  }),
+);
+
+export const stockCountItems = pgTable(
+  "stock_count_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    countId: uuid("count_id")
+      .notNull()
+      .references(() => stockCounts.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    sku: text("sku").notNull(),
+    name: text("name").notNull(),
+    expectedQty: numeric("expected_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+    countedQty: numeric("counted_qty", { precision: 12, scale: 3 }),
+    ...timestamps,
+  },
+  (table) => ({
+    countIdx: index("stock_count_items_count_idx").on(table.countId),
+  }),
+);
+
 export const productionOrders = pgTable(
   "production_orders",
   {

@@ -52,7 +52,32 @@ export type ItemSummary = {
   packedDimensions?: string | null;
   collection?: string;
   aroma?: string;
+  kitMode?: "assembled" | "virtual" | null;
+  kitComponents?: { sku: string; qty: number }[];
 };
+
+/**
+ * Expand order lines for fulfillment: a virtual-kit line becomes its component
+ * products (qty x perKit); everything else passes through. Duplicate SKUs are
+ * consolidated so pick lists and Modo Operacao show one row per product.
+ */
+export function expandKitOrderItems(
+  items: { sku: string; qty: number }[],
+  find: (sku: string) => ItemSummary | undefined,
+): { sku: string; qty: number }[] {
+  const merged = new Map<string, number>();
+  for (const line of items) {
+    const item = find(line.sku);
+    if (item?.kitMode === "virtual" && item.kitComponents?.length) {
+      for (const component of item.kitComponents) {
+        merged.set(component.sku, (merged.get(component.sku) ?? 0) + line.qty * component.qty);
+      }
+    } else {
+      merged.set(line.sku, (merged.get(line.sku) ?? 0) + line.qty);
+    }
+  }
+  return [...merged].map(([sku, qty]) => ({ sku, qty: Math.round(qty * 1000) / 1000 }));
+}
 
 export type CustomerAddress = {
   address: string;

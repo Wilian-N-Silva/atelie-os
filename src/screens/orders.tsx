@@ -23,6 +23,7 @@ import { Barcode } from "@/components/barcode";
 import {
   BRL,
   CHANNELS,
+  expandKitOrderItems,
   type Customer,
   type ItemSummary,
   type Order,
@@ -309,7 +310,7 @@ function PickListDocument({ job, find }: { job: PickListJob | null; find: FindIt
         </section>
 
         {job.orders.map((order) => {
-          const lines = order.items.map((line) => ({ ...line, item: find(line.sku) }));
+          const lines = expandKitOrderItems(order.items, find).map((line) => ({ ...line, item: find(line.sku) }));
           return (
             <article className="pickdoc-order" key={order.id}>
               <div className="pickdoc-order-head">

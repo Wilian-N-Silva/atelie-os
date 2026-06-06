@@ -5,6 +5,7 @@ import { Barcode } from "@/components/barcode";
 import { Icon, cn, toast } from "@/components/ui";
 import {
   CHANNELS,
+  expandKitOrderItems,
   type ItemSummary,
   type Order,
   type ProductionOrder,
@@ -316,7 +317,8 @@ function stageLabel(mode: OperationMode) {
 
 function orderLines(order: Order | null, find: FindItem): OperationLine[] {
   if (!order) return [];
-  return order.items.flatMap((line) => {
+  // Virtual-kit lines are separated as their component products.
+  return expandKitOrderItems(order.items, find).flatMap((line) => {
     const item = find(line.sku);
     if (!item) return [];
     return [{

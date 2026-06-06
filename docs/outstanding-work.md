@@ -68,7 +68,7 @@ Notes:
 - [~] Kits — both models implemented; one display gap remains:
   - [x] Assembled: kit recipe with finished-product components + production OP (consume components, output kit with own stock).
   - [x] Virtual: kit-mode flag (`assembled` | `virtual`) on the kit item (Itens form), availability derived from component stock (`/api/app/items`), and order reservation/shipment decomposing the virtual-kit line into component stock movements. Pure planner unit-tested.
-  - [ ] Remaining: pick list and Modo Operacao should list the component products for a virtual-kit order line (today they still show the kit line). Optionally surface `kitMode` to the order form so it can label virtual kits.
+  - [x] Pick list and Modo Operacao now list the component products for a virtual-kit order line (`expandKitOrderItems`); `kitMode`/`kitComponents` are exposed on the item directory. Optional: label virtual kits in the order form.
 - [ ] Quality control, lots, and checklists:
   - QC checklist per production order.
   - Required loss/approval reasons.
@@ -123,7 +123,7 @@ Notes:
 Modules from the PRD (`prd-v2.1`) that are still missing or only partial, with the section and the MVP acceptance item (§12) they unblock. These are what stand between the current build and a "complete MVP".
 
 - [x] **Pricing and margin** (PRD 7.19 / screen 8.17 / accept. 11-12) — Phase 1 delivered: Precificacao screen + `/api/app/pricing` with cost (active recipe + real average) + labor/extra + desired margin -> suggested price, channel-fee simulation, low-margin alert, save practiced price, and `price_history`. Remaining (Phase 2): persisted per-channel fee rules (config), and a richer labor model.
-- [ ] **Stock count / contagem** (PRD 7.22 / screen 8.20 / accept. 9) — not built. Direct adjustments exist, but not the count flow: expected vs counted -> divergence -> confirm adjustment with justification -> movement + audit. No automatic balance change.
+- [x] **Stock count / contagem** (PRD 7.22 / screen 8.20 / accept. 9) — delivered: Contagem screen + `/api/app/stock-counts` snapshots expected physical per item, operator enters counted, divergence is shown, and only on explicit "Aplicar ajustes" are `adjustment_positive/negative` movements + audit created (`0010`). Pure planner unit-tested. Remaining (Phase 2): per-location counts and loss-reason categories.
 - [ ] **Lot quality control + post-cure release** (PRD 7.21 / screen 8.18 / accept. 18-19) — partial. Production carries `em_cura` status, and recipe tests now exist, but there is no dedicated lot QC screen: lot quality checklist, lot quality states, release/block/partial-loss decision with user+date. Recipe tests (formula validation) are a separate concept from per-lot QC.
 - [ ] **Returns / exchanges full flow** (PRD 7.20 / screen 8.19 / accept. 25-26) — foundation only (incidents). Needs: incident-driven return with stock-impact decision (available / blocked-for-review / loss / discard), refund record in finance, and the rule that shipped orders cannot be cancelled directly.
 - [ ] **Data export / backup (CSV portability)** (PRD 7.25 / accept. 38) — not built. Reports export specific report CSVs, but there is no entity export (items, stock, lots, movements, suppliers, customers, purchases, recipes, production, orders, finance, AI content, audit) with permission checks, pt-BR headers, no credentials, and an audit row per export.

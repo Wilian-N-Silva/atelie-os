@@ -31,6 +31,8 @@ export function catalogToItemSummary(item: CatalogItem): ItemSummary {
     packedDimensions: item.packedDimensions,
     collection: item.metadata.collection ?? undefined,
     aroma: item.metadata.aroma ?? undefined,
+    kitMode: item.metadata.kitMode === "virtual" ? "virtual" : item.metadata.kitMode === "assembled" ? "assembled" : null,
+    kitComponents: item.kitComponents ?? [],
   };
 }
 

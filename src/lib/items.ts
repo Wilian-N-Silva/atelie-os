@@ -54,6 +54,7 @@ export type CatalogItem = {
     cureDays: number | null;
     kitMode: string | null;
   };
+  kitComponents: { sku: string; qty: number }[];
 };
 
 export type ItemsResponse = {
