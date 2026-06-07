@@ -997,6 +997,7 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
               Novo movimento
             </Button>
           )}
+          <Button variant="outline" icon="listChecks" onClick={() => go("contagem")}>Contagem completa</Button>
           <Button variant="outline" icon="itens" onClick={() => go("itens")}>Itens / SKUs</Button>
           <Button variant="outline" icon="refresh" onClick={() => void load(locationId)} disabled={loading}>Atualizar</Button>
         </div>

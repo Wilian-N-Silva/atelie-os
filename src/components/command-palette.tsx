@@ -47,7 +47,7 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
     { id: "n-etiq", kind: "nav", icon: "tag", title: "Etiquetas", sub: "Editor e impressao", go: { screen: "etiquetas" } },
     { id: "n-ia", kind: "nav", icon: "ia", title: "Conteudo IA", sub: "Textos da marca", go: { screen: "ia" } },
     { id: "n-auditoria", kind: "nav", icon: "fileText", title: "Auditoria", sub: "Acoes criticas", go: { screen: "auditoria" } },
-    { id: "n-exportar", kind: "nav", icon: "fileText", title: "Exportar dados", sub: "Baixar CSV", go: { screen: "exportar" } },
+    { id: "n-exportar", kind: "nav", icon: "fileText", title: "Exportar dados", sub: "Baixar CSV", go: { screen: "configuracoes", tab: "export" } },
     { id: "n-settings", kind: "nav", icon: "settings", title: "Configuracoes", sub: "Marca, fluxos e acessos", go: { screen: "configuracoes" } },
     { id: "n-manual", kind: "nav", icon: "fileText", title: "Manual & ajuda", sub: "Guia de uso", go: { screen: "manual" } },
   ];
