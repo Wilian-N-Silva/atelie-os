@@ -162,6 +162,20 @@ Decision to make: pick the first integration to implement after the MVP gaps in 
 
 ---
 
+## J. Production readiness (pre-launch, beyond features)
+
+Decisions locked with the user (2026-06-07):
+
+- [ ] **Email via Resend** — wire Resend to send everything: password reset and team invites first (Better Auth e-mail+password is on but has no mail provider today, so recovery/invites do not work). Server-only API key in env.
+- [ ] **File storage via Cloudflare R2** — storage abstraction (PRD 4.3) for external label PDFs, attachments, generated documents. S3-compatible client; keys server-only.
+- [ ] **Permissions enforcement** — role-gating infra exists (`requireAppRouteContext` has `role`) but is not applied on most routes; enforce the PRD matrix (operator/finance/readonly write limits).
+- [ ] **Real-tenant onboarding** — a new company configures units/locations/items without relying on seeds; clear demo/named data (section F).
+- [ ] **Deploy** — not a major concern per the user, as long as env is well documented. Keep `.env.example` complete; set real `BETTER_AUTH_SECRET`, `INTEGRATION_SECRETS_KEY`, provider keys in prod.
+
+Hardware (confirmed): only a **barcode reader + A4 printer** for now — no thermal/sticker printer. Internal labels already target A4 sheet layouts (sheet models with cols/rows), so no ZPL/thermal work is needed. Validate print + scan on the real A4 sheets and reader.
+
+---
+
 ## Suggested sequencing
 
 1. Manual QA for the current branch.
