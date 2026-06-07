@@ -111,3 +111,17 @@ export async function createIncident(input: Record<string, unknown>) {
     body: JSON.stringify(input),
   }), "incidents");
 }
+
+export async function resolveIncident(input: {
+  incidentId: string;
+  stockImpact: "available" | "blocked" | "loss" | "none";
+  refundAmount?: number;
+  resolution?: string;
+}) {
+  return parse<Incident[]>(await fetch("/api/app/incidents", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  }), "incidents");
+}

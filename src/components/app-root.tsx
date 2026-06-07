@@ -31,6 +31,7 @@ import { PurchasesScreen } from "@/screens/purchases";
 import { FinanceScreen } from "@/screens/finance";
 import { ReportsScreen } from "@/screens/reports";
 import { IncidentsScreen } from "@/screens/incidents";
+import { ExportsScreen } from "@/screens/exports";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
@@ -69,6 +70,7 @@ const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   ia: AIContentScreen as React.ComponentType<ScreenComponentProps>,
   configuracoes: SettingsScreen as React.ComponentType<ScreenComponentProps>,
   auditoria: AuditLogsScreen as React.ComponentType<ScreenComponentProps>,
+  exportar: ExportsScreen as React.ComponentType<ScreenComponentProps>,
   manual: ManualScreen as React.ComponentType<ScreenComponentProps>,
 };
 
@@ -87,6 +89,17 @@ function Workspace({
   const [cmdOpen, setCmdOpen] = React.useState(false);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [notifState, setNotifState] = React.useState<Record<string, "read" | "resolved">>({});
+  const [notifData, setNotifData] = React.useState<Notification[]>([]);
+
+  // Notifications are derived server-side from current data (no persistence).
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/notifications", { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { notifications: [] }))
+      .then((payload: { notifications?: Notification[] }) => { if (alive) setNotifData(payload.notifications ?? []); })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, [route.screen]);
 
   // hydrate persisted UI prefs (client-only to avoid SSR mismatch)
   React.useEffect(() => {
@@ -102,8 +115,8 @@ function Workspace({
   }, [session.companyBranding?.themeTokens]);
 
   const notifications = React.useMemo(
-    () => ([] as Notification[]).map((n) => ({ ...n, status: (notifState[n.id] ?? "unread") as "unread" | "read" | "resolved" })),
-    [notifState]
+    () => notifData.map((n) => ({ ...n, status: (notifState[n.id] ?? "unread") as "unread" | "read" | "resolved" })),
+    [notifData, notifState]
   );
   const unread = notifications.filter((n) => n.status === "unread").length;
   const markRead = (id: string) => setNotifState((s) => (s[id] === "resolved" ? s : { ...s, [id]: "read" }));

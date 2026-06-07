@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Badge, Button, Card, Empty, Field, Input, Select, Textarea, toast } from "@/components/ui";
-import { createIncident, loadIncidents, type Incident } from "@/lib/core-ops-client";
+import { Badge, Button, Card, Empty, Field, Input, Modal, Select, Textarea, toast } from "@/components/ui";
+import { createIncident, loadIncidents, resolveIncident, type Incident } from "@/lib/core-ops-client";
 import { loadOrders } from "@/lib/orders-client";
 import type { Order } from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
@@ -104,6 +104,33 @@ export function IncidentsScreen() {
   const [itemTitle, setItemTitle] = React.useState("");
   const [quantity, setQuantity] = React.useState("1");
   const [reason, setReason] = React.useState("");
+  const [resolveTarget, setResolveTarget] = React.useState<Incident | null>(null);
+  const [stockImpact, setStockImpact] = React.useState("available");
+  const [refundAmount, setRefundAmount] = React.useState("");
+  const [resolutionText, setResolutionText] = React.useState("");
+
+  const openResolve = (incident: Incident) => {
+    setResolveTarget(incident);
+    setStockImpact(incident.type === "loss" ? "loss" : "available");
+    setRefundAmount("");
+    setResolutionText("");
+  };
+
+  const submitResolve = async () => {
+    if (!resolveTarget) return;
+    try {
+      setIncidents(await resolveIncident({
+        incidentId: resolveTarget.id,
+        stockImpact: stockImpact as "available" | "blocked" | "loss" | "none",
+        refundAmount: Number(refundAmount.replace(",", ".")) || 0,
+        resolution: resolutionText.trim(),
+      }));
+      setResolveTarget(null);
+      toast("Incidente resolvido.", "ok");
+    } catch {
+      toast("Não foi possível resolver o incidente.", "bad");
+    }
+  };
 
   React.useEffect(() => {
     loadIncidents().then(setIncidents).catch(() => null);
@@ -203,7 +230,7 @@ export function IncidentsScreen() {
 
       <Card style={{ overflow: "hidden", marginTop: 14 }}>
         <table className="om-table">
-          <thead><tr><th>Data</th><th>Tipo</th><th>Pedido</th><th>Item</th><th>Status</th><th>Motivo</th></tr></thead>
+          <thead><tr><th>Data</th><th>Tipo</th><th>Pedido</th><th>Item</th><th>Status</th><th>Motivo</th><th /></tr></thead>
           <tbody>
             {incidents.map((incident) => (
               <tr key={incident.id}>
@@ -211,14 +238,57 @@ export function IncidentsScreen() {
                 <td><Badge tone={incident.type === "loss" ? "bad" : "warn"}>{incident.type}</Badge></td>
                 <td>{incident.orderNumber ?? "-"}</td>
                 <td>{incident.itemSku ? `${incident.itemSku} (${incident.quantity ?? "-"})` : incident.itemName ?? "-"}</td>
-                <td><Badge tone="info">{incident.status}</Badge></td>
+                <td><Badge tone={incident.status === "resolved" ? "ok" : "info"}>{incident.status}</Badge></td>
                 <td>{incident.reason}</td>
+                <td className="om-td-right">{incident.status === "open" && <Button variant="outline" size="sm" icon="check" onClick={() => openResolve(incident)}>Resolver</Button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {incidents.length === 0 && <Empty icon="alertCircle" title="Nenhum incidente registrado" />}
       </Card>
+
+      {resolveTarget && (
+        <Modal
+          open
+          onClose={() => setResolveTarget(null)}
+          icon="alertCircle"
+          title="Resolver incidente"
+          subtitle={resolveTarget.reason}
+          width={520}
+          footer={(
+            <>
+              <Button variant="outline" onClick={() => setResolveTarget(null)}>Cancelar</Button>
+              <div className="spacer" style={{ flex: 1 }} />
+              <Button variant="default" icon="check" onClick={submitResolve}>Resolver</Button>
+            </>
+          )}
+        >
+          <Field label="Impacto no estoque">
+            <Select
+              value={stockImpact}
+              onChange={setStockImpact}
+              options={[
+                { value: "available", label: "Retornar ao disponível" },
+                { value: "blocked", label: "Retornar bloqueado para revisão" },
+                { value: "loss", label: "Registrar como perda" },
+                { value: "none", label: "Sem impacto no estoque" },
+              ]}
+            />
+          </Field>
+          {resolveTarget.itemSku ? (
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{resolveTarget.itemSku} · {resolveTarget.quantity ?? 0} un</div>
+          ) : (
+            <div className="rt-hint" style={{ marginTop: 8 }}>Sem item/quantidade vinculados: nenhum movimento de estoque será gerado.</div>
+          )}
+          <Field label="Reembolso (R$) — opcional" style={{ marginTop: 12 }}>
+            <Input inputMode="decimal" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="0,00" />
+          </Field>
+          <Field label="Resolução" style={{ marginTop: 10 }}>
+            <Textarea value={resolutionText} onChange={(e) => setResolutionText(e.target.value)} placeholder="Decisão tomada, acordo com o cliente..." />
+          </Field>
+        </Modal>
+      )}
     </div>
   );
 }

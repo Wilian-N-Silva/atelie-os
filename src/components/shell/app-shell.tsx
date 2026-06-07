@@ -34,6 +34,7 @@ export const NAV = [
   ] },
   { group: "Sistema", items: [
     { id: "auditoria", label: "Auditoria", icon: "fileText" },
+    { id: "exportar", label: "Exportar dados", icon: "fileText" },
     { id: "configuracoes", label: "Configurações", icon: "settings" },
     { id: "manual", label: "Manual & ajuda", icon: "fileText" },
   ] },

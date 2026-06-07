@@ -130,6 +130,7 @@ export const auditActionEnum = pgEnum("audit_action", [
   "purchase.create",
   "finance.create",
   "incident.create",
+  "incident.update",
   "report.export",
   "shipping.update",
   "shipping.connect",

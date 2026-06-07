@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, incidents, inventoryLocations, items, orders, stockMovements } from "@/db/schema";
+import { auditLogs, financeEntries, incidents, inventoryLocations, items, orders, stockMovements } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 
 export const runtime = "nodejs";
@@ -98,8 +98,6 @@ export async function POST(request: Request) {
     });
     if (!item) return NextResponse.json({ error: "item_not_found" }, { status: 404 });
   }
-  const returnLocationId = itemId && quantity ? await defaultLocationId(context.company.id, itemId) : null;
-
   await db.transaction(async (tx) => {
     const [incident] = await tx.insert(incidents).values({
       companyId: context.company.id,
@@ -114,20 +112,8 @@ export async function POST(request: Request) {
       metadata: { orderTitle, itemTitle },
     }).returning({ id: incidents.id });
 
-    if ((type === "return" || type === "exchange") && itemId && quantity) {
-      await tx.insert(stockMovements).values({
-        companyId: context.company.id,
-        itemId,
-        movementType: "return",
-        quantity: quantity.toString(),
-        toLocationId: returnLocationId,
-        reason: `Retorno por incidente: ${reason}`,
-        sourceType: "incident.return",
-        sourceId: incident.id,
-        createdByUserId: context.user.id,
-        metadata: { incidentId: incident.id, orderId, type },
-      });
-    }
+    // Stock is NOT moved on creation: a returned product only re-enters stock
+    // after review, via the resolution decision (PRD 10.9).
 
     await tx.insert(auditLogs).values({
       companyId: context.company.id,
@@ -140,4 +126,103 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ incidents: await listIncidents(context.company.id) }, { status: 201 });
+}
+
+async function blockedLocationId(companyId: string) {
+  const blocked = await db.query.inventoryLocations.findFirst({
+    where: and(eq(inventoryLocations.companyId, companyId), eq(inventoryLocations.type, "blocked"), eq(inventoryLocations.isActive, true)),
+    columns: { id: true },
+  });
+  return blocked?.id ?? null;
+}
+
+const STOCK_IMPACTS = ["available", "blocked", "loss", "none"] as const;
+type StockImpact = (typeof STOCK_IMPACTS)[number];
+
+export async function PATCH(request: Request) {
+  const contextResult = await requireAppRouteContext(request);
+  if ("response" in contextResult) return contextResult.response;
+
+  const { context } = contextResult;
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const incidentId = cleanString(body?.incidentId, 80);
+  const stockImpact: StockImpact = STOCK_IMPACTS.includes(body?.stockImpact as StockImpact) ? (body!.stockImpact as StockImpact) : "none";
+  const resolution = cleanString(body?.resolution, 500);
+  const refundRaw = Number(body?.refundAmount);
+  const refundAmount = Number.isFinite(refundRaw) && refundRaw > 0 ? Math.round(refundRaw * 100) / 100 : 0;
+  if (!incidentId) return NextResponse.json({ error: "invalid_incident" }, { status: 400 });
+
+  const incident = await db.query.incidents.findFirst({
+    where: and(eq(incidents.companyId, context.company.id), eq(incidents.id, incidentId)),
+  });
+  if (!incident) return NextResponse.json({ error: "incident_not_found" }, { status: 404 });
+  if (incident.status !== "open") return NextResponse.json({ error: "incident_not_open" }, { status: 409 });
+
+  const quantity = incident.quantity == null ? 0 : Number(incident.quantity);
+
+  await db.transaction(async (tx) => {
+    if (stockImpact !== "none" && incident.itemId && quantity > 0) {
+      const defaultLoc = await defaultLocationId(context.company.id, incident.itemId);
+      if (stockImpact === "loss") {
+        await tx.insert(stockMovements).values({
+          companyId: context.company.id,
+          itemId: incident.itemId,
+          movementType: "loss",
+          quantity: quantity.toString(),
+          fromLocationId: defaultLoc,
+          reason: `Perda na devolucao do incidente: ${incident.reason}`,
+          sourceType: "incident.loss",
+          sourceId: `${incident.id}:loss`,
+          createdByUserId: context.user.id,
+          metadata: { incidentId: incident.id, type: incident.type },
+        });
+      } else {
+        const toLocationId = stockImpact === "blocked" ? (await blockedLocationId(context.company.id)) ?? defaultLoc : defaultLoc;
+        await tx.insert(stockMovements).values({
+          companyId: context.company.id,
+          itemId: incident.itemId,
+          movementType: "return",
+          quantity: quantity.toString(),
+          toLocationId,
+          reason: `Retorno (${stockImpact === "blocked" ? "bloqueado para revisao" : "disponivel"}): ${incident.reason}`,
+          sourceType: "incident.return",
+          sourceId: `${incident.id}:return`,
+          createdByUserId: context.user.id,
+          metadata: { incidentId: incident.id, type: incident.type, stockImpact },
+        });
+      }
+    }
+
+    if (refundAmount > 0) {
+      await tx.insert(financeEntries).values({
+        companyId: context.company.id,
+        type: "despesa",
+        status: "pending",
+        description: `Reembolso incidente ${incident.id.slice(0, 8)}`,
+        amount: refundAmount.toString(),
+        sourceType: "incident.refund",
+        sourceId: incident.id,
+        createdByUserId: context.user.id,
+        metadata: { incidentId: incident.id },
+      });
+    }
+
+    await tx.update(incidents).set({
+      status: "resolved",
+      resolution: resolution || incident.resolution,
+      metadata: { ...(incident.metadata as Record<string, unknown>), stockImpact, refundAmount },
+      updatedAt: new Date(),
+    }).where(eq(incidents.id, incident.id));
+
+    await tx.insert(auditLogs).values({
+      companyId: context.company.id,
+      actorUserId: context.user.id,
+      action: "incident.update",
+      entityType: "incident",
+      entityId: incident.id,
+      metadata: { operation: "resolve", stockImpact, refundAmount },
+    });
+  });
+
+  return NextResponse.json({ incidents: await listIncidents(context.company.id) });
 }
