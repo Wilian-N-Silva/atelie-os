@@ -60,3 +60,15 @@ One line per feature. Migrations are noted as `0NNN`.
 - Sidebar groups are collapsible (state persisted in `atelie-nav-collapsed`); the group with the active screen stays open.
 - Moved screens off the top level into their parents to cut clutter (each keeps its route + command-palette entry): Exportar dados -> a Configuracoes tab; Contagem -> a "Contagem completa" button in Estoque; Qualidade -> a button in Producao; Importar pedidos -> an "Importar" button in Pedidos.
 - Branch note: `feature/marketplace-imports` merged `feature/remove-localstorage-persistence` to pick up the slimmer nav; the marketplace "Importar pedidos" item was consolidated into Pedidos here.
+
+## 2026-06-07 - Mercado Livre connector foundation
+- Mercado Livre OAuth foundation: `/api/app/integrations/mercado-livre/oauth/start` + callback with PKCE (`S256`), signed state, encrypted tokens in `integration_credentials` under provider `mercado_livre`, and audited connect attempts.
+- Connection status endpoint: `/api/app/integrations/mercado-livre/status` reads credential state, refreshes near-expiry/401 tokens, and validates the token against Mercado Livre `/users/me` without exposing secrets.
+- Public webhook stub: `/api/webhooks/mercado-livre` responds quickly with `200` for DevCenter validation; real event/order processing remains pending.
+- Verified locally on 2026-06-07 with ngrok: token stored as `connected`, `externalUserId` captured, `/users/me` returned `200`.
+- Manual order-sync endpoint: `/api/app/integrations/mercado-livre/sync-orders` fetches recent seller orders from `/orders/search`, normalizes lines into the existing import staging shape, dedupes by external order id, and writes `import_orders` as `ready` or `pending` based on `channel_sku_mappings`. Verified API call returned `200` with zero current orders on the connected account.
+
+## 2026-06-07 - Nuvemshop connector foundation
+- Nuvemshop OAuth foundation: `/api/app/integrations/nuvemshop/oauth/start` + callback, signed state, encrypted tokens in `integration_credentials` under provider `nuvemshop`, and audited connect attempts.
+- Connection status endpoint: `/api/app/integrations/nuvemshop/status` reads credential state and validates the token against Nuvemshop `GET /v1/{store_id}/store` with the required `User-Agent` header.
+- Public webhook stub: `/api/webhooks/nuvemshop` responds quickly with `200`; real event/order processing remains pending.

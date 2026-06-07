@@ -139,15 +139,15 @@ Modules from the PRD (`prd-v2.1`) that are still missing or only partial, with t
 
 Requested direction beyond the PRD's CSV-only marketplace prep (PRD 3.4 keeps full APIs out of the MVP). Build all of these on the existing secure pattern: per-tenant encrypted tokens in `integration_credentials`, scoped per provider, never exposed to the frontend, masked in logs, omitted from exports, with connect/disconnect/sync audit events (same model already used for Melhor Envio). Each integration must preserve manual fallback and the marketplace customer dedupe strategy in section C (external buyer id, document, email, phone, channel precedence).
 
-- [ ] **Marketplace integrations (real APIs):**
-  - Mercado Livre
+- [~] **Marketplace integrations (real APIs):**
+  - Mercado Livre: foundation delivered but paused/backlog for now. Implemented: OAuth/connect (`mercado_livre` encrypted credential, PKCE), `/users/me` status/refresh, webhook stub, manual recent-order sync endpoint (`/api/app/integrations/mercado-livre/sync-orders`) to stage orders in `import_orders`, and SKU mapping verified for item `MLB4746142001` / external SKU `010300001287` -> internal `VEL-LAV-156` with available stock 24. Remaining if resumed: test with real seller orders, customer dedupe, webhook event processing, tracking/status sync, optional stock sync/update to ML.
   - Shopee
   - Amazon
   - TikTok Shop
   - Per provider: OAuth/token connect, order ingestion (-> internal orders with channel/source + raw payload), external-SKU mapping reuse, optional stock sync, and fulfillment/tracking status sync back. Out of scope still: ad publishing, price push, chat/claims, fiscal/NF-e.
 - [ ] **E-commerce platform integrations:**
+  - Nuvemshop (Tiendanube): OAuth/connect + status foundation delivered (`nuvemshop` encrypted credential, store-id capture, `/store` status check, webhook stub), but API access is plan-gated by Nuvemshop (Escala/Next). Treat as conditional/premium integration, not the default path for small ateliers. CSV import remains the fallback for lower plans. Remaining if pursued: test with real app credentials, order ingestion into `import_orders`, catalog/stock sync, webhooks.
   - WooCommerce
-  - Nuvemshop (Tiendanube)
   - Order ingestion + catalog/stock sync via each platform's API/webhooks.
 - [ ] **Open platform option (own storefront + ERP):**
   - The site/storefront is a SEPARATE application from this ERP; it integrates over HTTP, not in-process.
@@ -158,7 +158,7 @@ Requested direction beyond the PRD's CSV-only marketplace prep (PRD 3.4 keeps fu
 - [ ] **Marketplace/channel data ingestion must drive tracking:** when integrations land, order creation/sync must populate payment status, order status, and carrier tracking on the internal order so the public tracking API reflects them automatically.
 - [ ] **Public tracking follow-ups:** rate-limiting/abuse protection; company scoping for the order#+email/CEP lookup once a public company identifier (slug) exists for multi-tenant; optional richer status history table if per-event timestamps beyond shipping milestones are needed.
 
-Decision to make: pick the first integration to implement after the MVP gaps in section H are closed (likely Mercado Livre or Nuvemshop for the BR market), or prioritize the open API so the custom storefront path is unblocked first.
+Current integration sequence: Mercado Livre and Nuvemshop foundations exist but are not the immediate product path. Mercado Livre is paused by user decision; Nuvemshop is plan-gated (Escala/Next). Default fallback remains CSV import, and the likely next integration direction is either the open API/storefront path or another channel chosen by product priority.
 
 ---
 

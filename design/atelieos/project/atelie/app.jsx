@@ -114,6 +114,7 @@ function Workspace({ session, onSignOut }) {
     etiquetas: window.Etiquetas,
     ia: window.ConteudoIA,
     configuracoes: window.Configuracoes,
+    manual: window.Manual,
   };
 
   const screenProps = { go, route };
