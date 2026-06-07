@@ -13,6 +13,7 @@ export interface OnboardingDonePayload {
   companyName: string;
   segment: string;
   teamSize: string;
+  logoUrl?: string | null;
   invites: OnboardingInvite[];
 }
 
@@ -90,14 +91,13 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
   const rmInvite = (i: number) => setInvites((list) => (list.length === 1 ? [{ email: "", role: "operator" }] : list.filter((_, idx) => idx !== i)));
 
   const finish = async () => {
-    if (logo) { try { localStorage.setItem("atelie-logo", logo); } catch {} }
-    if (validInvites.length) { try { localStorage.setItem("atelie-pending-invites", JSON.stringify(validInvites)); } catch {} }
     setSaving(true);
     try {
       await onDone({
         companyName: coName.trim(),
         segment,
         teamSize: size,
+        logoUrl: logo,
         invites: validInvites.map((invite) => ({
           email: invite.email.trim().toLowerCase(),
           role: invite.role === "admin" ? "admin" : "operator",

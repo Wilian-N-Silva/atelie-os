@@ -248,6 +248,7 @@ export async function createCompanyForUser(input: {
   segment?: string | null;
   teamSize?: string | null;
   invites?: OnboardingInvite[];
+  logoUrl?: string | null;
 }) {
   const existingMembership = await db.query.companyMembers.findFirst({
     where: and(eq(companyMembers.userId, input.userId), eq(companyMembers.status, "active")),
@@ -285,6 +286,13 @@ export async function createCompanyForUser(input: {
   });
 
   await seedCompanyDefaults(company.id, input.userId);
+
+  if (input.logoUrl) {
+    await db
+      .update(companyBrandSettings)
+      .set({ logoUrl: input.logoUrl, updatedAt: new Date() })
+      .where(eq(companyBrandSettings.companyId, company.id));
+  }
 
   const validInvites = (input.invites ?? []).filter((invite): invite is { email: string; role: MemberRole } =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email) &&

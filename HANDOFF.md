@@ -1,102 +1,39 @@
-# Atelie OS - Implementation Handoff
+# Atelie OS - Handoff
 
-Last updated: 2026-06-02 during the foundation-hardening slice.
+Orientation for coding agents. Read this, then use the doc map below. Technical notes stay ASCII-safe.
 
-## Current Baseline
+## Stack
+Next.js 16 App Router, React 19, Tailwind CSS 4, Better Auth + Drizzle ORM, PostgreSQL 17 (Docker Compose for local dev). Product language is pt-BR. Multi-tenant and white-label: keep every app query company-scoped.
 
-Atelie OS is a greenfield Next.js backoffice for a small candle atelier, built white-label from day one. The working product language is pt-BR, but this handoff keeps technical notes ASCII-safe.
+## Branches
+- `main` release; `development` integration; branch feature work from `development`.
+- Current slice: `feature/remove-localstorage-persistence`.
+- The working tree may hold unrelated `design/**` prototype edits; keep them out of app commits.
 
-Current stack:
-
-- Next.js 16 App Router
-- React 19
-- Tailwind CSS 4 with the ported prototype token/class system
-- Better Auth with Drizzle adapter
-- Drizzle ORM
-- PostgreSQL 17 through Docker Compose for local development
-
-The app has the ported shell, auth flow, onboarding flow, and dashboard visual layout. Backend foundation tables, Better Auth tables, company membership, defaults, seed catalog, stock movements, audit logs, and first app API routes exist.
-
-## Branch Workflow
-
-- `main` is reserved for release promotion.
-- `development` is the integration branch.
-- Feature work should branch from `development`.
-- This slice is on `feature/foundation-hardening`.
-
-The previous split commits should stay as-is: `feat: port design prototype` and `feat: add backend foundation`.
-
-## Local Setup
-
-Run these from the repo root:
-
+## Local setup
 ```powershell
 docker compose up -d postgres
 npm run db:migrate
 npm run db:seed
 npm run dev
 ```
+Checks: `npm run lint`, `npm run test`, `npm run build`. Seed identity comes from `.env` (`SEED_*`); never commit real credentials, company names, or personal names.
 
-Seeded company and owner identity use neutral placeholders by default:
+## Environment
+Server-only secrets: `INTEGRATION_SECRETS_KEY` (encrypts provider tokens), `OPENAI_API_KEY` / `OPENAI_TEXT_MODEL` (bundled AI), `MELHOR_ENVIO_*` (OAuth). For local dev, `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` must match how the app is opened (localhost vs ngrok), or Better Auth returns 401 on sign-in.
 
-- Company: defaults to `Atelie OS` when `SEED_COMPANY_NAME` is not set
-- Name: defaults to `SEED_OWNER_EMAIL` when `SEED_OWNER_NAME` is not set
-- Email: `admin@example.com`
+## Doc map
+- `docs/prd-v2.1-atelie-os-instante-ambar.md` - authoritative product spec.
+- `docs/feature-log.md` - delivered features, concise (one line each).
+- `docs/outstanding-work.md` - pending work, PRD coverage gaps (section H), integration roadmap (section I).
+- `docs/integration-melhor-envio.md` - shipping integration notes.
+- `docs/integration-public-tracking.md` - public order tracking API for the separate site.
+- `docs/git-workflow.md` - branching rules.
+- `CLAUDE.md` - architecture invariants and current backend notes (authoritative for both).
 
-Set `SEED_COMPANY_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, and `SEED_OWNER_PASSWORD` in local `.env` before running `npm run db:seed`. Do not record real seed credentials, company names, or personal names in committed docs, examples, or source defaults.
-
-## Important Files
-
-- `src/db/schema.ts` - Better Auth core tables plus company, membership, defaults, catalog, stock movement, workflow, audit, and help scaffolding.
-- `src/db/bootstrap.ts` - default company setup and onboarding company creation.
-- `src/db/seed.ts` - idempotent seed owner/company/catalog/stock/audit data.
-- `src/lib/auth.ts` - Better Auth server config.
-- `src/lib/app-route-context.ts` - server helper for authenticated user, active company, and role.
-- `src/app/api/app/session/route.ts` - auth session payload for the client gate.
-- `src/app/api/app/dashboard/route.ts` - DB-backed dashboard stock summary.
-- `src/screens/dashboard.tsx` - keeps prototype dashboard layout and consumes backend low-stock data when available.
-
-## Foundation Hardening Status
-
-Done in this slice:
-
-- Created `development` from `feature/backend-foundation`.
-- Created and switched to `feature/foundation-hardening`.
-- Added a shared server app-route context resolver.
-- Moved session, onboarding, and demo invite routes to the shared authenticated-user helper.
-- Added `GET /api/app/dashboard`.
-- Dashboard stock data now comes from `/api/app/dashboard` where safe.
-- Dashboard stock summary is derived from `stock_movements`, not item balance fields.
-- Seed audit rows are deterministic and do not duplicate across repeated seed runs.
-- Seed stock movements are checked by item and deterministic seed source type, so partial seed reruns fill gaps without duplicating existing seed movements.
-
-Verification completed on 2026-06-02:
-
-- `docker compose ps postgres` reported Postgres healthy.
-- `npm run db:migrate` applied successfully.
-- `npm run db:seed` ran repeatedly without adding duplicate seeded stock movement groups.
-- `npm run lint` passed.
-- `npm run build` passed.
-- Unauthenticated `GET /api/app/dashboard` returned `401`.
-- Seeded owner login returned `200` and authenticated `GET /api/app/dashboard` returned `200`.
-- A freshly signed-up authenticated user without company membership received `403` on `GET /api/app/dashboard`.
-
-Local database note:
-
-- `.env` may override the placeholder seed owner name, email, and password for local testing.
-- The local database already had three historical `seed.run` audit rows per seed entity from earlier pre-hardening seed runs. The new idempotency guard kept that count stable on subsequent runs; it did not delete old audit history.
-
-## Product Invariants
-
-- Keep single-company UI for now, but preserve `company_id` on every app query.
-- Stock balances are derived from `stock_movements`; do not write editable balance fields.
-- Workflows are configurable; logic must use stable `technical_key` / automation metadata, not display labels.
-- Internal codes are numeric 12-digit scanner-friendly codes, separate from human SKUs.
-- Scanner flows must always have a manual fallback.
-- Melhor Envio is optional; manual freight/labels must remain possible.
-- AI is text-only and must not auto-publish.
-- Critical actions require audit rows; do not expose tokens or sensitive auth internals to the frontend.
-
-## Next Recommended Slice
-
-Finish verification for this foundation-hardening branch first. After that, remove remaining prototype fixture data from active UI paths before porting more screens. Use `docs/next-steps-fixture-data-cleanup.md` as the next planning note, then continue screen-by-screen from the product build order.
+## Key files
+- `src/db/schema.ts`, `src/db/seed.ts`, `src/db/client.ts` (dev pool `max` 10).
+- `src/lib/app-route-context.ts` (auth + active company), `src/lib/stock-balances.ts` (stock from movements).
+- `src/lib/workflows.ts` / `workflow-status.ts` / `workflow-automations-server.ts` (configurable workflows + automations).
+- `src/lib/shipping-integrations-server.ts`, `src/lib/integration-secrets-server.ts` (Melhor Envio OAuth + AES-256-GCM secrets).
+- `src/screens/settings.tsx` (branding, users, workflows, labels, shipping).

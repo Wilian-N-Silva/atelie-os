@@ -15,7 +15,7 @@ Current stack:
 - Drizzle ORM
 - PostgreSQL 17
 
-The design prototype has been ported into the shell, auth flow, onboarding flow, and dashboard. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
+The design prototype has been ported into the shell, auth flow, onboarding flow, dashboard, a DB-backed Items / SKUs register, and a local DB-backed Estoque screen in progress. The backend foundation is in place with Better Auth tables, company membership, defaults, seed data, stock movements, workflow scaffolding, audit logs, and app API routes.
 
 Read `HANDOFF.md` before continuing implementation work.
 
@@ -24,7 +24,8 @@ Read `HANDOFF.md` before continuing implementation work.
 - `docs/prd-v2.1-atelie-os-instante-ambar.md` - authoritative product spec.
 - `docs/manual-base-atelie-os-instante-ambar.md` - operator/user flow context.
 - `docs/git-workflow.md` - branching rules.
-- `docs/next-steps-foundation-hardening.md` - current foundation-hardening slice notes.
+- `docs/outstanding-work.md` - consolidated list of remaining/open work.
+- `docs/feature-log.md` - concise log of delivered features (replaces the old per-session logs).
 
 The PRD notes that table and field names are suggestions. Preserve the concepts even when implementation names differ.
 
@@ -36,7 +37,7 @@ The PRD notes that table and field names are suggestions. Preserve the concepts 
 - Merge finished work back into `development`.
 - Promote `development` to `main` only for releases.
 
-Current hardening work is intended for `feature/foundation-hardening`.
+Current local module work is on `feature/inventory-module`. No PR is open for that branch by request.
 
 ## Local Setup
 
@@ -117,5 +118,12 @@ Production and orders:
 - Use `src/lib/app-route-context.ts` for app API authentication and active company resolution.
 - Company-scoped app resources should return `401` when unauthenticated and `403` when authenticated without active company access.
 - Onboarding/session endpoints may authenticate without requiring an existing company so new users can complete onboarding.
-- `GET /api/app/dashboard` is the first DB-backed dashboard endpoint. It derives stock summary from `stock_movements`.
+- `GET /api/app/dashboard` derives stock summary from `stock_movements`.
+- `GET /api/app/items` lists company-scoped catalog items with category, unit, default location, pricing flags, and derived stock balances.
+- `POST /api/app/items` and `PUT /api/app/items/[itemId]` create/update item metadata with lookup validation, duplicate SKU/code checks, and `item.create` / `item.update` audit rows.
+- `GET /api/app/items/[itemId]/movements` lists recent stock movements for one company-scoped item.
+- `POST /api/app/items/[itemId]/stock-adjustment` records manual positive/negative stock adjustments as `stock_movements` plus `stock.adjust` audit rows.
+- `GET /api/app/inventory` returns company-scoped inventory cards, active locations, item balances, and recent movement history, with optional `locationId` filtering.
+- Use `src/lib/stock-balances.ts` for stock movement interpretation in app APIs.
+- `src/lib/stock-balances.ts` supports both company-wide and location-scoped balance views; preserve company-scoped behavior for dashboard/items callers.
 - The known `drizzle-kit` dev-only audit warning is documented; do not run `npm audit fix --force` to downgrade or churn Drizzle Kit.

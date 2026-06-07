@@ -16,44 +16,74 @@ export const NAV = [
   { group: "Catálogo & estoque", items: [
     { id: "itens", label: "Itens / SKUs", icon: "itens" },
     { id: "receitas", label: "Receitas", icon: "receitas" },
+    { id: "precificacao", label: "Precificação", icon: "trendUp" },
     { id: "estoque", label: "Estoque", icon: "estoque" },
+    { id: "reposicao", label: "Reposição", icon: "refresh" },
+    { id: "compras", label: "Compras", icon: "inbox" },
     { id: "etiquetas", label: "Etiquetas", icon: "tag" },
+  ] },
+  { group: "Gestão", items: [
+    { id: "financeiro", label: "Financeiro", icon: "banknote" },
+    { id: "relatorios", label: "Relatórios", icon: "fileText" },
+    { id: "incidentes", label: "Incidentes", icon: "alertCircle" },
   ] },
   { group: "Conteúdo", items: [
     { id: "ia", label: "Conteúdo IA", icon: "ia" },
   ] },
   { group: "Sistema", items: [
+    { id: "auditoria", label: "Auditoria", icon: "fileText" },
     { id: "configuracoes", label: "Configurações", icon: "settings" },
+    { id: "manual", label: "Manual & ajuda", icon: "fileText" },
   ] },
 ] as const;
 
 export const PAGE_META: Record<string, { title: string; sub: string }> = {
   hoje: { title: "Hoje no ateliê", sub: "Painel operacional" },
   pedidos: { title: "Pedidos", sub: "Separação · embalagem · envio" },
+  importacoes: { title: "Importar pedidos", sub: "Marketplaces · CSV e mapeamento de SKU" },
   producao: { title: "Produção", sub: "Ordens, cura e liberação" },
+  qualidade: { title: "Qualidade", sub: "Revisão de lotes e liberação pós-cura" },
   itens: { title: "Itens / SKUs", sub: "Catálogo do ateliê" },
   receitas: { title: "Receitas", sub: "Fórmulas e testes" },
+  precificacao: { title: "Precificação", sub: "Custo, margem e preço sugerido" },
   estoque: { title: "Estoque", sub: "Saldos · lotes · movimentos" },
+  contagem: { title: "Contagem de estoque", sub: "Conferência física e ajustes" },
+  reposicao: { title: "Reposição", sub: "Sugestões de compra e produção" },
+  compras: { title: "Compras", sub: "Fornecedores e recebimentos" },
+  financeiro: { title: "Financeiro", sub: "Entradas, saídas e pendências" },
+  relatorios: { title: "Relatórios", sub: "Exports CSV operacionais" },
+  incidentes: { title: "Incidentes", sub: "Trocas, devoluções e perdas" },
   etiquetas: { title: "Etiquetas", sub: "Editor de modelos e impressão" },
   ia: { title: "Conteúdo IA", sub: "Textos na voz da marca" },
+  auditoria: { title: "Auditoria", sub: "Ações críticas e rastreabilidade" },
   configuracoes: { title: "Configurações", sub: "White-label · marca, fluxos, etiquetas" },
+  manual: { title: "Manual & ajuda", sub: "Guia de uso do sistema" },
 };
 
-export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, onSignOut, children }: {
+export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, logoUrl, onSignOut, children }: {
   route: Route; go: Go; theme: string; setTheme: (t: string) => void; unread: number;
   onOpenCmd: () => void; onOpenNotif: () => void;
-  user?: SessionUser; company?: string | null; onSignOut?: () => void; children: React.ReactNode;
+  user?: SessionUser; company?: string | null; logoUrl?: string | null; onSignOut?: () => void; children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [acctOpen, setAcctOpen] = React.useState(false);
-  const [logo, setLogo] = React.useState<string | null>(null);
   const [isMac, setIsMac] = React.useState(false);
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    try { setCollapsedGroups(new Set(JSON.parse(localStorage.getItem("atelie-nav-collapsed") || "[]"))); } catch {}
+  }, []);
+  const toggleGroup = (group: string) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(group)) next.delete(group); else next.add(group);
+    localStorage.setItem("atelie-nav-collapsed", JSON.stringify([...next]));
+    return next;
+  });
   const meta = PAGE_META[route.screen] || { title: "", sub: "" };
 
   React.useEffect(() => { setMobileOpen(false); }, [route.screen]);
   React.useEffect(() => {
     setIsMac(typeof navigator !== "undefined" && /Mac/.test(navigator.platform));
-    setLogo(localStorage.getItem("atelie-logo"));
   }, []);
   React.useEffect(() => {
     if (!acctOpen) return;
@@ -71,7 +101,7 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
       {mobileOpen && <div className="sb-backdrop" onClick={() => setMobileOpen(false)} />}
       <aside className={cn("sb", mobileOpen && "sb--open")}>
         <div className="sb-brand">
-          <div className="sb-mark">{logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /> : <Icon name="flame" size={18} strokeWidth={2.2} />}</div>
+          <div className="sb-mark">{logoUrl ? <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /> : <Icon name="flame" size={18} strokeWidth={2.2} />}</div>
           <div>
             <div className="sb-brand-name">{brandName}</div>
             <div className="sb-brand-sub">Ateliê OS</div>
@@ -87,19 +117,31 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
         </button>
 
         <nav className="sb-nav">
-          {NAV.map((grp) => (
-            <div className="sb-group" key={grp.group}>
-              <div className="sb-group-label">{grp.group}</div>
-              {grp.items.map((it) => (
-                <button key={it.id}
-                  className={cn("sb-item", route.screen === it.id && "sb-item--active")}
-                  onClick={() => go(it.id)}>
-                  <Icon name={it.icon} size={18} className="sb-item-icon" />
-                  {it.label}
+          {NAV.map((grp) => {
+            const hasActive = grp.items.some((it) => it.id === route.screen);
+            const open = hasActive || !collapsedGroups.has(grp.group);
+            return (
+              <div className="sb-group" key={grp.group}>
+                <button
+                  type="button"
+                  className="sb-group-label"
+                  onClick={() => toggleGroup(grp.group)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  <span>{grp.group}</span>
+                  <Icon name={open ? "chevronUp" : "chevronRight"} size={13} />
                 </button>
-              ))}
-            </div>
-          ))}
+                {open && grp.items.map((it) => (
+                  <button key={it.id}
+                    className={cn("sb-item", route.screen === it.id && "sb-item--active")}
+                    onClick={() => go(it.id)}>
+                    <Icon name={it.icon} size={18} className="sb-item-icon" />
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sb-foot acct-wrap">
@@ -143,7 +185,7 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
               if (grp) els.push(<span key="g" className="crumb crumb--muted">{grp.group}</span>);
               els.push(<span key="p" className="crumb crumb--current">{meta.title}</span>);
               if (route.screen === "configuracoes" && route.tab) {
-                const tabNames: Record<string, string> = { branding: "Aparência da marca", users: "Usuários e acessos", workflows: "Fluxos e Kanban", labels: "Modelos de etiqueta" };
+                const tabNames: Record<string, string> = { branding: "Aparência da marca", users: "Usuários e acessos", workflows: "Fluxos e Kanban", labels: "Modelos de etiqueta", shipping: "Envio" };
                 els.push(<span key="t" className="crumb crumb--current">{tabNames[route.tab] || ""}</span>);
               }
               return els.map((el, i) => <React.Fragment key={i}><Icon name="chevronRight" size={14} className="crumb-sep" />{el}</React.Fragment>);

@@ -8,6 +8,90 @@
       "when": 1780363145527,
       "tag": "0000_chemical_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780423962872,
+      "tag": "0001_sudden_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780587812081,
+      "tag": "0002_common_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780590974411,
+      "tag": "0003_naive_strong_guy",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780592200000,
+      "tag": "0004_core_ops_beta",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780680000000,
+      "tag": "0005_secure_integrations_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780696800000,
+      "tag": "0006_customer_store_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780783200000,
+      "tag": "0007_recipe_tests",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780869600000,
+      "tag": "0008_order_track_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780956000000,
+      "tag": "0009_price_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781042400000,
+      "tag": "0010_stock_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1781128800000,
+      "tag": "0011_incident_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1781215200000,
+      "tag": "0012_marketplace_imports",
+      "breakpoints": true
     }
   ]
 }

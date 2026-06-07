@@ -34,6 +34,11 @@ export function appRouteError(error: "unauthorized" | "forbidden", status: 401 |
   return NextResponse.json({ error }, { status });
 }
 
+export function requireAppRole(context: AppRouteContext, allowedRoles: readonly MemberRole[]) {
+  if (allowedRoles.includes(context.role)) return null;
+  return appRouteError("forbidden", 403);
+}
+
 export async function requireAuthenticatedUser(request: Request): Promise<AuthenticatedUserResult> {
   const session = await auth.api.getSession({
     headers: request.headers,

@@ -30,13 +30,26 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
   const nav: Hit[] = [
     { id: "n-hoje", kind: "nav", icon: "hoje", title: "Hoje no atelie", sub: "Dashboard", go: { screen: "hoje" } },
     { id: "n-pedidos", kind: "nav", icon: "pedidos", title: "Pedidos", sub: "Separacao e envio", go: { screen: "pedidos" } },
+    { id: "n-importacoes", kind: "nav", icon: "inbox", title: "Importar pedidos", sub: "Marketplaces CSV", go: { screen: "importacoes" } },
     { id: "n-op", kind: "nav", icon: "scan", title: "Modo Operacao", sub: "Bancada e scanner", go: { screen: "operacao" } },
     { id: "n-prod", kind: "nav", icon: "producao", title: "Producao", sub: "Ordens e cura", go: { screen: "producao" } },
+    { id: "n-qualidade", kind: "nav", icon: "listChecks", title: "Qualidade", sub: "Revisao de lotes pos-cura", go: { screen: "qualidade" } },
     { id: "n-itens", kind: "nav", icon: "itens", title: "Itens / SKUs", sub: "Catalogo", go: { screen: "itens" } },
     { id: "n-receitas", kind: "nav", icon: "receitas", title: "Receitas", sub: "Formulas", go: { screen: "receitas" } },
+    { id: "n-precificacao", kind: "nav", icon: "trendUp", title: "Precificacao", sub: "Custo, margem e preco", go: { screen: "precificacao" } },
     { id: "n-estoque", kind: "nav", icon: "estoque", title: "Estoque", sub: "Saldos e movimentos", go: { screen: "estoque" } },
+    { id: "n-contagem", kind: "nav", icon: "listChecks", title: "Contagem de estoque", sub: "Conferencia fisica e ajustes", go: { screen: "contagem" } },
+    { id: "n-reposicao", kind: "nav", icon: "refresh", title: "Reposicao", sub: "Sugestoes de compra e producao", go: { screen: "reposicao" } },
+    { id: "n-compras", kind: "nav", icon: "inbox", title: "Compras", sub: "Fornecedores e recebimentos", go: { screen: "compras" } },
+    { id: "n-financeiro", kind: "nav", icon: "banknote", title: "Financeiro", sub: "Entradas e saidas", go: { screen: "financeiro" } },
+    { id: "n-relatorios", kind: "nav", icon: "fileText", title: "Relatorios", sub: "Exports CSV", go: { screen: "relatorios" } },
+    { id: "n-incidentes", kind: "nav", icon: "alertCircle", title: "Incidentes", sub: "Trocas e devolucoes", go: { screen: "incidentes" } },
     { id: "n-etiq", kind: "nav", icon: "tag", title: "Etiquetas", sub: "Editor e impressao", go: { screen: "etiquetas" } },
     { id: "n-ia", kind: "nav", icon: "ia", title: "Conteudo IA", sub: "Textos da marca", go: { screen: "ia" } },
+    { id: "n-auditoria", kind: "nav", icon: "fileText", title: "Auditoria", sub: "Acoes criticas", go: { screen: "auditoria" } },
+    { id: "n-exportar", kind: "nav", icon: "fileText", title: "Exportar dados", sub: "Baixar CSV", go: { screen: "configuracoes", tab: "export" } },
+    { id: "n-settings", kind: "nav", icon: "settings", title: "Configuracoes", sub: "Marca, fluxos e acessos", go: { screen: "configuracoes" } },
+    { id: "n-manual", kind: "nav", icon: "fileText", title: "Manual & ajuda", sub: "Guia de uso", go: { screen: "manual" } },
   ];
 
   const actions: Hit[] = [

@@ -135,7 +135,6 @@ export function apply(theme: BrandTheme | null | undefined) {
   }
   deriveTints(root, colors);
   if (theme.radius) root.style.setProperty("--radius", theme.radius);
-  localStorage.setItem("atelie-brand", JSON.stringify(theme));
 }
 
 const RESTORE_PROPS = [
@@ -152,7 +151,6 @@ export function restore() {
   const root = document.documentElement;
   freezeTransitions();
   RESTORE_PROPS.forEach((p) => root.style.removeProperty(p));
-  localStorage.removeItem("atelie-brand");
   root.classList.toggle("dark", localStorage.getItem("atelie-theme") === "dark");
 }
 
@@ -175,13 +173,6 @@ export function validate(obj: unknown): string[] {
 }
 
 export function loadSaved(): boolean {
-  if (typeof localStorage === "undefined") return false;
-  try {
-    const raw = localStorage.getItem("atelie-brand");
-    if (raw) { apply(JSON.parse(raw)); return true; }
-  } catch {
-    /* ignore */
-  }
   return false;
 }
 

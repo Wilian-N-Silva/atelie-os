@@ -15,6 +15,14 @@ const baseURL =
   process.env.NEXT_PUBLIC_APP_URL ??
   "http://localhost:3000";
 
+const trustedOrigins = Array.from(new Set([
+  baseURL,
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.BETTER_AUTH_URL,
+  process.env.NODE_ENV !== "production" ? "http://localhost:3000" : null,
+  process.env.NODE_ENV !== "production" ? "https://ablutionary-unvesiculated-marylynn.ngrok-free.dev" : null,
+].filter((value): value is string => Boolean(value))));
+
 export const auth = betterAuth({
   baseURL,
   secret: authSecret ?? "development-only-change-me-at-least-32-chars",
@@ -33,6 +41,6 @@ export const auth = betterAuth({
     minPasswordLength: 8,
     autoSignIn: true,
   },
-  trustedOrigins: [baseURL],
+  trustedOrigins,
   plugins: [nextCookies()],
 });

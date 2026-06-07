@@ -1,76 +1,15 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import {
-  inventoryLocations,
   items,
-  stockMovements,
   units,
 } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import type { DashboardResponse, DashboardStockItem } from "@/lib/dashboard";
+import { emptyStockBalance, getStockBalancesForCompany, roundStock } from "@/lib/stock-balances";
 
 export const runtime = "nodejs";
-
-type StockBalance = Pick<DashboardStockItem, "physical" | "reserved" | "inCure" | "blocked" | "available">;
-type StockMovementType = (typeof stockMovements.$inferSelect)["movementType"];
-
-function emptyBalance(): StockBalance {
-  return {
-    physical: 0,
-    reserved: 0,
-    inCure: 0,
-    blocked: 0,
-    available: 0,
-  };
-}
-
-function roundStock(value: number) {
-  return Math.round(value * 1000) / 1000;
-}
-
-function addMovement(balance: StockBalance, movement: {
-  type: StockMovementType;
-  quantity: string;
-  toLocationType: string | null;
-}) {
-  const quantity = Number(movement.quantity);
-
-  switch (movement.type) {
-    case "purchase_entry":
-    case "adjustment_positive":
-    case "return":
-      balance.physical += quantity;
-      break;
-    case "production_output":
-      if (movement.toLocationType === "cure") {
-        balance.inCure += quantity;
-      } else {
-        balance.physical += quantity;
-      }
-      break;
-    case "adjustment_negative":
-    case "loss":
-    case "production_consumption":
-    case "order_shipment":
-      balance.physical -= quantity;
-      break;
-    case "reservation":
-      balance.reserved += quantity;
-      break;
-    case "reservation_release":
-      balance.reserved -= quantity;
-      break;
-    case "block":
-      balance.blocked += quantity;
-      break;
-    case "release":
-      balance.blocked -= quantity;
-      break;
-    case "transfer":
-      break;
-  }
-}
 
 export async function GET(request: Request) {
   const contextResult = await requireAppRouteContext(request);
@@ -78,7 +17,7 @@ export async function GET(request: Request) {
 
   const { context } = contextResult;
 
-  const [itemRows, movementRows] = await Promise.all([
+  const [itemRows, balances] = await Promise.all([
     db
       .select({
         id: items.id,
@@ -92,30 +31,11 @@ export async function GET(request: Request) {
       .from(items)
       .leftJoin(units, eq(items.baseUnitId, units.id))
       .where(eq(items.companyId, context.company.id)),
-    db
-      .select({
-        itemId: stockMovements.itemId,
-        type: stockMovements.movementType,
-        quantity: stockMovements.quantity,
-        toLocationType: inventoryLocations.type,
-      })
-      .from(stockMovements)
-      .leftJoin(inventoryLocations, eq(stockMovements.toLocationId, inventoryLocations.id))
-      .innerJoin(items, and(eq(stockMovements.itemId, items.id), eq(items.companyId, context.company.id)))
-      .where(eq(stockMovements.companyId, context.company.id)),
+    getStockBalancesForCompany(context.company.id),
   ]);
 
-  const balances = new Map<string, StockBalance>();
-
-  for (const movement of movementRows) {
-    const balance = balances.get(movement.itemId) ?? emptyBalance();
-    addMovement(balance, movement);
-    balance.available = balance.physical - balance.reserved - balance.inCure - balance.blocked;
-    balances.set(movement.itemId, balance);
-  }
-
   const stockItems = itemRows.map((item): DashboardStockItem => {
-    const balance = balances.get(item.id) ?? emptyBalance();
+    const balance = balances.get(item.id) ?? emptyStockBalance();
 
     return {
       id: item.id,
@@ -125,11 +45,11 @@ export async function GET(request: Request) {
       variant: item.variant,
       unit: item.unit ?? "un",
       min: Number(item.minStock),
-      physical: roundStock(balance.physical),
-      reserved: roundStock(balance.reserved),
-      inCure: roundStock(balance.inCure),
-      blocked: roundStock(balance.blocked),
-      available: roundStock(balance.physical - balance.reserved - balance.inCure - balance.blocked),
+      physical: balance.physical,
+      reserved: balance.reserved,
+      inCure: balance.inCure,
+      blocked: balance.blocked,
+      available: balance.available,
     };
   });
 

@@ -5,6 +5,9 @@ import "@/styles/shell.css";
 import "@/styles/screens.css";
 import "@/styles/extras.css";
 import "@/styles/auth.css";
+import "@/styles/manual.css";
+import "@/styles/settings.css";
+import "@/styles/operation.css";
 
 export const metadata: Metadata = {
   title: "Atelie OS",

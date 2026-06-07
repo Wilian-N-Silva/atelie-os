@@ -12,6 +12,27 @@ import { NotifCenter } from "@/components/notif-center";
 import { AuthFlow } from "@/components/auth/auth-flow";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { Dashboard } from "@/screens/dashboard";
+import { InventoryScreen } from "@/screens/inventory";
+import { StockCountScreen } from "@/screens/stock-count";
+import { ItemsScreen } from "@/screens/items";
+import { ManualScreen } from "@/screens/manual";
+import { OrdersScreen } from "@/screens/orders";
+import { ImportsScreen } from "@/screens/imports";
+import { ProductionScreen } from "@/screens/production";
+import { QualityScreen } from "@/screens/quality";
+import { ReplenishmentScreen } from "@/screens/replenishment";
+import { RecipesScreen } from "@/screens/recipes";
+import { PricingScreen } from "@/screens/pricing";
+import { LabelsScreen } from "@/screens/labels";
+import { AIContentScreen } from "@/screens/ai-content";
+import { SettingsScreen } from "@/screens/settings";
+import { OperationScreen } from "@/screens/operation";
+import { AuditLogsScreen } from "@/screens/audit-logs";
+import { PurchasesScreen } from "@/screens/purchases";
+import { FinanceScreen } from "@/screens/finance";
+import { ReportsScreen } from "@/screens/reports";
+import { IncidentsScreen } from "@/screens/incidents";
+import { ExportsScreen } from "@/screens/exports";
 import { Empty } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
@@ -29,32 +50,75 @@ function Placeholder({ name }: { name: string }) {
 
 /* Screens built so far. Others fall back to a placeholder. */
 type ScreenProps = { go: Go; route: Route; session: Session };
+type ScreenComponentProps = ScreenProps & { onSessionPatch: (patch: Partial<Session>) => void };
 
-const SCREENS: Record<string, React.ComponentType<ScreenProps>> = {
-  hoje: Dashboard as React.ComponentType<ScreenProps>,
+const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
+  hoje: Dashboard as React.ComponentType<ScreenComponentProps>,
+  pedidos: OrdersScreen as React.ComponentType<ScreenComponentProps>,
+  importacoes: ImportsScreen as React.ComponentType<ScreenComponentProps>,
+  producao: ProductionScreen as React.ComponentType<ScreenComponentProps>,
+  qualidade: QualityScreen as React.ComponentType<ScreenComponentProps>,
+  itens: ItemsScreen as React.ComponentType<ScreenComponentProps>,
+  receitas: RecipesScreen as React.ComponentType<ScreenComponentProps>,
+  precificacao: PricingScreen as React.ComponentType<ScreenComponentProps>,
+  estoque: InventoryScreen as React.ComponentType<ScreenComponentProps>,
+  contagem: StockCountScreen as React.ComponentType<ScreenComponentProps>,
+  reposicao: ReplenishmentScreen as React.ComponentType<ScreenComponentProps>,
+  compras: PurchasesScreen as React.ComponentType<ScreenComponentProps>,
+  financeiro: FinanceScreen as React.ComponentType<ScreenComponentProps>,
+  relatorios: ReportsScreen as React.ComponentType<ScreenComponentProps>,
+  incidentes: IncidentsScreen as React.ComponentType<ScreenComponentProps>,
+  etiquetas: LabelsScreen as React.ComponentType<ScreenComponentProps>,
+  ia: AIContentScreen as React.ComponentType<ScreenComponentProps>,
+  configuracoes: SettingsScreen as React.ComponentType<ScreenComponentProps>,
+  auditoria: AuditLogsScreen as React.ComponentType<ScreenComponentProps>,
+  exportar: ExportsScreen as React.ComponentType<ScreenComponentProps>,
+  manual: ManualScreen as React.ComponentType<ScreenComponentProps>,
 };
 
-function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => void }) {
+function Workspace({
+  session,
+  onSignOut,
+  onSessionPatch,
+}: {
+  session: Session;
+  onSignOut: () => void;
+  onSessionPatch: (patch: Partial<Session>) => void;
+}) {
   const [theme, setTheme] = React.useState("light");
   const [density, setDensity] = React.useState("comfortable");
   const [route, setRoute] = React.useState<Route>({ screen: "hoje" });
   const [cmdOpen, setCmdOpen] = React.useState(false);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [notifState, setNotifState] = React.useState<Record<string, "read" | "resolved">>({});
+  const [notifData, setNotifData] = React.useState<Notification[]>([]);
+
+  // Notifications are derived server-side from current data (no persistence).
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/app/notifications", { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { notifications: [] }))
+      .then((payload: { notifications?: Notification[] }) => { if (alive) setNotifData(payload.notifications ?? []); })
+      .catch(() => null);
+    return () => { alive = false; };
+  }, [route.screen]);
 
   // hydrate persisted UI prefs (client-only to avoid SSR mismatch)
   React.useEffect(() => {
     setTheme(localStorage.getItem("atelie-theme") || "light");
     setDensity(localStorage.getItem("atelie-density") || "comfortable");
     try { const r = JSON.parse(localStorage.getItem("atelie-route") || "null"); if (r) setRoute(r); } catch {}
-    try { setNotifState(JSON.parse(localStorage.getItem("atelie-notif") || "{}")); } catch {}
   }, []);
 
-  React.useEffect(() => { localStorage.setItem("atelie-notif", JSON.stringify(notifState)); }, [notifState]);
+  React.useEffect(() => {
+    if (session.companyBranding?.themeTokens) {
+      Theme.apply(session.companyBranding.themeTokens);
+    }
+  }, [session.companyBranding?.themeTokens]);
 
   const notifications = React.useMemo(
-    () => ([] as Notification[]).map((n) => ({ ...n, status: (notifState[n.id] ?? "unread") as "unread" | "read" | "resolved" })),
-    [notifState]
+    () => notifData.map((n) => ({ ...n, status: (notifState[n.id] ?? "unread") as "unread" | "read" | "resolved" })),
+    [notifData, notifState]
   );
   const unread = notifications.filter((n) => n.status === "unread").length;
   const markRead = (id: string) => setNotifState((s) => (s[id] === "resolved" ? s : { ...s, [id]: "read" }));
@@ -91,11 +155,10 @@ function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => 
     if (c) c.scrollTop = 0;
   };
 
-  // fullscreen Modo Operação (no shell) — placeholder until ported
   if (route.screen === "operacao") {
     return (
       <>
-        <div className="app app--noframe"><div className="main"><div className="content"><Placeholder name="Modo Operação" /></div></div></div>
+        <OperationScreen go={go} route={route} />
         {cmdOpen && <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} go={go} />}
       </>
     );
@@ -106,8 +169,8 @@ function Workspace({ session, onSignOut }: { session: Session; onSignOut: () => 
     <>
       <AppShell route={route} go={go} theme={theme} setTheme={setTheme}
         unread={unread} onOpenCmd={() => setCmdOpen(true)} onOpenNotif={() => setNotifOpen(true)}
-        user={session.user} company={session.companyName} onSignOut={onSignOut}>
-        {Screen ? <Screen go={go} route={route} session={session} /> : <Placeholder name={route.screen} />}
+        user={session.user} company={session.companyName} logoUrl={session.companyBranding?.logoUrl ?? null} onSignOut={onSignOut}>
+        {Screen ? <Screen go={go} route={route} session={session} onSessionPatch={onSessionPatch} /> : <Placeholder name={route.screen} />}
       </AppShell>
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} go={go} />
@@ -123,10 +186,9 @@ export function AppRoot() {
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
-    // apply saved theme + brand so auth/onboarding match the app skin
+    // apply saved local display preferences so auth/onboarding match the app skin
     document.documentElement.classList.toggle("dark", localStorage.getItem("atelie-theme") === "dark");
     document.documentElement.setAttribute("data-density", localStorage.getItem("atelie-density") === "compact" ? "compact" : "comfortable");
-    Theme.loadSaved();
     localStorage.removeItem("atelie-session");
     fetchAppSession()
       .then(setSession)
@@ -139,12 +201,16 @@ export function AppRoot() {
     setSession(s);
   };
 
-  const finishOnboarding = async ({ companyName, segment, teamSize, invites }: OnboardingDonePayload) => {
+  const patchSession = React.useCallback((patch: Partial<Session>) => {
+    setSession((current) => current ? { ...current, ...patch } : current);
+  }, []);
+
+  const finishOnboarding = async ({ companyName, segment, teamSize, logoUrl, invites }: OnboardingDonePayload) => {
     const res = await fetch("/api/app/onboarding", {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ companyName, segment, teamSize, invites }),
+      body: JSON.stringify({ companyName, segment, teamSize, logoUrl, invites }),
     });
 
     if (!res.ok) throw new Error("Nao foi possivel concluir a configuracao inicial.");
@@ -162,5 +228,11 @@ export function AppRoot() {
   if (!ready) return null; // avoid auth/app flash before hydration
   if (!session) return <AuthFlow onAuthed={setBackendSession} />;
   if (!session.onboarded) return <Onboarding user={session.user} onDone={finishOnboarding} />;
-  return <Workspace session={session} onSignOut={signOut} />;
+  return (
+    <Workspace
+      session={session}
+      onSignOut={signOut}
+      onSessionPatch={patchSession}
+    />
+  );
 }
