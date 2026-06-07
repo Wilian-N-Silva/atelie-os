@@ -1720,6 +1720,7 @@ export function OrdersScreen({ go, route }: { go: Go; route: Route }) {
           >
             Pick list em lote{pickableRows.length ? ` (${pickableRows.length})` : ""}
           </Button>
+          <Button variant="outline" icon="inbox" onClick={() => go("importacoes")}>Importar</Button>
           <Button variant="default" icon="plus" onClick={() => setNewOpen(true)}>Novo pedido</Button>
         </div>
       </div>

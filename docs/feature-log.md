@@ -55,3 +55,8 @@ One line per feature. Migrations are noted as `0NNN`.
 - Source-agnostic by design: reads the order's own `status` / `paymentStatus` / `tracking` fields, so manual entry, Melhor Envio, or future marketplace ingestion all feed the same customer view.
 - Melhor Envio webhook now persists posted/delivered milestones onto the order to enrich the timeline.
 - `src/lib/public-tracking.ts` holds the pure stage mapping + timeline builder (reusable by the external site).
+
+## 2026-06-07 — Navigation slimming
+- Sidebar groups are collapsible (state persisted in `atelie-nav-collapsed`); the group with the active screen stays open.
+- Moved screens off the top level into their parents to cut clutter (each keeps its route + command-palette entry): Exportar dados -> a Configuracoes tab; Contagem -> a "Contagem completa" button in Estoque; Qualidade -> a button in Producao; Importar pedidos -> an "Importar" button in Pedidos.
+- Branch note: `feature/marketplace-imports` merged `feature/remove-localstorage-persistence` to pick up the slimmer nav; the marketplace "Importar pedidos" item was consolidated into Pedidos here.

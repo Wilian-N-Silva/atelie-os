@@ -11,7 +11,6 @@ export const NAV = [
   { group: "Operação", items: [
     { id: "hoje", label: "Hoje no ateliê", icon: "hoje" },
     { id: "pedidos", label: "Pedidos", icon: "pedidos" },
-    { id: "importacoes", label: "Importar pedidos", icon: "inbox" },
     { id: "producao", label: "Produção", icon: "producao" },
   ] },
   { group: "Catálogo & estoque", items: [
