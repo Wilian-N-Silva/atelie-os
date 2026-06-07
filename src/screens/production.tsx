@@ -474,6 +474,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
           <p className="page-lede">{orders.length} ordens - fluxo configuravel em Configuracoes</p>
         </div>
         <div className="row-wrap">
+          <Button variant="outline" icon="listChecks" onClick={() => go("qualidade")}>Qualidade</Button>
           <Button
             variant="outline"
             icon="fileText"

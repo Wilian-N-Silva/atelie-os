@@ -12,14 +12,12 @@ export const NAV = [
     { id: "hoje", label: "Hoje no ateliê", icon: "hoje" },
     { id: "pedidos", label: "Pedidos", icon: "pedidos" },
     { id: "producao", label: "Produção", icon: "producao" },
-    { id: "qualidade", label: "Qualidade", icon: "listChecks" },
   ] },
   { group: "Catálogo & estoque", items: [
     { id: "itens", label: "Itens / SKUs", icon: "itens" },
     { id: "receitas", label: "Receitas", icon: "receitas" },
     { id: "precificacao", label: "Precificação", icon: "trendUp" },
     { id: "estoque", label: "Estoque", icon: "estoque" },
-    { id: "contagem", label: "Contagem", icon: "listChecks" },
     { id: "reposicao", label: "Reposição", icon: "refresh" },
     { id: "compras", label: "Compras", icon: "inbox" },
     { id: "etiquetas", label: "Etiquetas", icon: "tag" },
@@ -34,7 +32,6 @@ export const NAV = [
   ] },
   { group: "Sistema", items: [
     { id: "auditoria", label: "Auditoria", icon: "fileText" },
-    { id: "exportar", label: "Exportar dados", icon: "fileText" },
     { id: "configuracoes", label: "Configurações", icon: "settings" },
     { id: "manual", label: "Manual & ajuda", icon: "fileText" },
   ] },
@@ -70,6 +67,17 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [acctOpen, setAcctOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    try { setCollapsedGroups(new Set(JSON.parse(localStorage.getItem("atelie-nav-collapsed") || "[]"))); } catch {}
+  }, []);
+  const toggleGroup = (group: string) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(group)) next.delete(group); else next.add(group);
+    localStorage.setItem("atelie-nav-collapsed", JSON.stringify([...next]));
+    return next;
+  });
   const meta = PAGE_META[route.screen] || { title: "", sub: "" };
 
   React.useEffect(() => { setMobileOpen(false); }, [route.screen]);
@@ -108,19 +116,31 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
         </button>
 
         <nav className="sb-nav">
-          {NAV.map((grp) => (
-            <div className="sb-group" key={grp.group}>
-              <div className="sb-group-label">{grp.group}</div>
-              {grp.items.map((it) => (
-                <button key={it.id}
-                  className={cn("sb-item", route.screen === it.id && "sb-item--active")}
-                  onClick={() => go(it.id)}>
-                  <Icon name={it.icon} size={18} className="sb-item-icon" />
-                  {it.label}
+          {NAV.map((grp) => {
+            const hasActive = grp.items.some((it) => it.id === route.screen);
+            const open = hasActive || !collapsedGroups.has(grp.group);
+            return (
+              <div className="sb-group" key={grp.group}>
+                <button
+                  type="button"
+                  className="sb-group-label"
+                  onClick={() => toggleGroup(grp.group)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  <span>{grp.group}</span>
+                  <Icon name={open ? "chevronUp" : "chevronRight"} size={13} />
                 </button>
-              ))}
-            </div>
-          ))}
+                {open && grp.items.map((it) => (
+                  <button key={it.id}
+                    className={cn("sb-item", route.screen === it.id && "sb-item--active")}
+                    onClick={() => go(it.id)}>
+                    <Icon name={it.icon} size={18} className="sb-item-icon" />
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sb-foot acct-wrap">

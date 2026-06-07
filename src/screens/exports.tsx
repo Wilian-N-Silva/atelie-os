@@ -13,6 +13,25 @@ const ENTITIES: { key: string; label: string; sub: string }[] = [
   { key: "finance", label: "Financeiro", sub: "Entradas e saidas gerenciais" },
 ];
 
+export function ExportPanel() {
+  return (
+    <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+      {ENTITIES.map((entity) => (
+        <Card key={entity.key} className="task" style={{ display: "block" }}>
+          <div className="row between" style={{ marginBottom: 10 }}>
+            <div className="chip chip--brand chip--lg"><Icon name="fileText" size={19} /></div>
+          </div>
+          <div style={{ fontWeight: 650, fontSize: 15.5 }}>{entity.label}</div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>{entity.sub}</div>
+          <a className="om-btn om-btn--default om-btn--sm" href={`/api/app/export?entity=${entity.key}`} download>
+            <Icon name="fileText" size={15} /> Baixar CSV
+          </a>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function ExportsScreen(_props: { route: Route }) {
   return (
     <div className="page page--wide fade-in">
@@ -22,21 +41,7 @@ export function ExportsScreen(_props: { route: Route }) {
           <p className="page-lede">Baixe seus dados em CSV (UTF-8, separador “;”). Tokens e segredos nunca são exportados.</p>
         </div>
       </div>
-
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-        {ENTITIES.map((entity) => (
-          <Card key={entity.key} className="task" style={{ display: "block" }}>
-            <div className="row between" style={{ marginBottom: 10 }}>
-              <div className="chip chip--brand chip--lg"><Icon name="fileText" size={19} /></div>
-            </div>
-            <div style={{ fontWeight: 650, fontSize: 15.5 }}>{entity.label}</div>
-            <div className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>{entity.sub}</div>
-            <a className="om-btn om-btn--default om-btn--sm" href={`/api/app/export?entity=${entity.key}`} download>
-              <Icon name="fileText" size={15} /> Baixar CSV
-            </a>
-          </Card>
-        ))}
-      </div>
+      <ExportPanel />
     </div>
   );
 }
