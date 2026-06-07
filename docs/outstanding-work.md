@@ -97,10 +97,10 @@ Notes:
   - Tenant data context controls.
   - Saved prompt/template management.
   - Approval workflow beyond generated-history persistence.
-- [ ] Tenant-editable catalog parameters (units of measure, material/item types, etc.):
-  - These reference tables already exist in the DB but are not editable from the UI; expose them in tenant settings.
-  - Protect canonical measurement standards and conversions (e.g. 1000 g = 1 kg) so edits cannot break unit math.
-  - Keep behavior keyed off stable technical keys, not editable display labels (same invariant as workflows).
+- [~] Tenant-editable catalog parameters (units of measure, categories):
+  - [x] Settings > Catalogo (`/api/app/catalog-settings`) CRUD for units and categories. Only the display name is editable (unit `code` stays the technical key); canonical units (g/kg/ml/l/un...) are protected and entries in use by items cannot be deleted.
+  - [ ] Full unit-conversion engine (e.g. 1000 g = 1 kg with factors per kind) so recipes/stock can convert across units — a larger architectural change, deferred.
+  - [ ] Item types stay a fixed enum (structural), not tenant-editable.
 
 ---
 

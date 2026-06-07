@@ -42,9 +42,10 @@ import {
   type WorkflowStepColor,
   useWorkflows,
 } from "@/lib/workflows";
+import { CatalogTab } from "@/screens/settings-catalog";
 import type { Go, Route, Session } from "@/lib/types";
 
-type SettingsTab = "branding" | "users" | "workflows" | "labels" | "shipping";
+type SettingsTab = "branding" | "users" | "workflows" | "labels" | "shipping" | "catalog";
 type SheetEditForm = {
   name: string;
   brand: string;
@@ -68,6 +69,7 @@ const NAV: { id: SettingsTab; label: string; sub: string; icon: string }[] = [
   { id: "workflows", label: "Fluxos e Kanban", sub: "Etapas configuraveis", icon: "workflow" },
   { id: "labels", label: "Modelos de etiqueta", sub: "Folhas e tamanhos", icon: "tag" },
   { id: "shipping", label: "Envio", sub: "Melhor Envio e fallback manual", icon: "truck" },
+  { id: "catalog", label: "Catalogo", sub: "Unidades e categorias", icon: "estoque" },
 ];
 
 type ShippingSettings = {
@@ -1478,6 +1480,7 @@ export function SettingsScreen({
           {tab === "workflows" && <WorkflowsTab />}
           {tab === "labels" && <LabelsTab />}
           {tab === "shipping" && <ShippingTab />}
+          {tab === "catalog" && <CatalogTab />}
         </div>
       </div>
     </div>

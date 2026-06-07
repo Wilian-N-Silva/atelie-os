@@ -44,6 +44,7 @@ One line per feature. Migrations are noted as `0NNN`.
 - Data export (Exportar dados): screen + `GET /api/app/export?entity=` returns UTF-8 BOM `;`-CSV for items, stock, orders, customers, suppliers, finance, with pt-BR headers, no secrets, and a `report.export` audit row. CSV builder in `src/lib/csv.ts`.
 - Notifications engine: `GET /api/app/notifications` derives alerts (zero/below-min stock, lots to review, paid-not-separated orders, payables) with severity/tone/action; app-root feeds the notif center (no persistence).
 - Returns/exchanges: incidents no longer move stock on creation; resolution (`PATCH /api/app/incidents`) decides stock impact (available / blocked / loss / none) and optional refund (finance entry), then marks resolved (audit `incident.update`, `0011`). Resolve UI in the incidents screen.
+- Tenant catalog settings: Configuracoes > Catalogo + `/api/app/catalog-settings` CRUD for units and categories. Only the display name is editable (unit `code` is the stable technical key); canonical units are protected and in-use entries cannot be deleted. Full unit-conversion engine deferred.
 
 ## 2026-06-06 — Public order tracking API (foundation)
 - Public, CORS-enabled, read-only endpoint `GET /api/public/track` for the (separate) company website to consume from another origin. Lookup by opaque `track_token` (shareable link) or by order number + email/CEP (email/CEP is the auth factor). `0008` adds unique `orders.track_token`, backfilled and generated on order creation.
