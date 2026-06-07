@@ -30,6 +30,7 @@ export function CommandPalette({ open, onClose, go }: { open: boolean; onClose: 
   const nav: Hit[] = [
     { id: "n-hoje", kind: "nav", icon: "hoje", title: "Hoje no atelie", sub: "Dashboard", go: { screen: "hoje" } },
     { id: "n-pedidos", kind: "nav", icon: "pedidos", title: "Pedidos", sub: "Separacao e envio", go: { screen: "pedidos" } },
+    { id: "n-importacoes", kind: "nav", icon: "inbox", title: "Importar pedidos", sub: "Marketplaces CSV", go: { screen: "importacoes" } },
     { id: "n-op", kind: "nav", icon: "scan", title: "Modo Operacao", sub: "Bancada e scanner", go: { screen: "operacao" } },
     { id: "n-prod", kind: "nav", icon: "producao", title: "Producao", sub: "Ordens e cura", go: { screen: "producao" } },
     { id: "n-qualidade", kind: "nav", icon: "listChecks", title: "Qualidade", sub: "Revisao de lotes pos-cura", go: { screen: "qualidade" } },

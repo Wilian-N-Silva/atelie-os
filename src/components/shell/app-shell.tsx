@@ -11,6 +11,7 @@ export const NAV = [
   { group: "Operação", items: [
     { id: "hoje", label: "Hoje no ateliê", icon: "hoje" },
     { id: "pedidos", label: "Pedidos", icon: "pedidos" },
+    { id: "importacoes", label: "Importar pedidos", icon: "inbox" },
     { id: "producao", label: "Produção", icon: "producao" },
     { id: "qualidade", label: "Qualidade", icon: "listChecks" },
   ] },
@@ -43,6 +44,7 @@ export const NAV = [
 export const PAGE_META: Record<string, { title: string; sub: string }> = {
   hoje: { title: "Hoje no ateliê", sub: "Painel operacional" },
   pedidos: { title: "Pedidos", sub: "Separação · embalagem · envio" },
+  importacoes: { title: "Importar pedidos", sub: "Marketplaces · CSV e mapeamento de SKU" },
   producao: { title: "Produção", sub: "Ordens, cura e liberação" },
   qualidade: { title: "Qualidade", sub: "Revisão de lotes e liberação pós-cura" },
   itens: { title: "Itens / SKUs", sub: "Catálogo do ateliê" },

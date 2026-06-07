@@ -1,5 +1,8 @@
 # Feature Log — Atelie OS
 
+> Branch `feature/marketplace-imports` adds the marketplace ingestion foundation (below, 2026-06-07): `Importar pedidos` screen + `/api/app/imports` (CSV parse, `channel_sku_mappings`, `import_orders` staging, create internal orders from resolved imports; `0012`). Provider-agnostic — real ML/Nuvemshop/Shopee API connectors come next on the same branch.
+
+
 Concise record of delivered features. Replaces the verbose per-session logs.
 For pending work see `outstanding-work.md`; for the product spec see `prd-v2.1-atelie-os-instante-ambar.md`.
 

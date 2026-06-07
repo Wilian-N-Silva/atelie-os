@@ -131,6 +131,7 @@ export const auditActionEnum = pgEnum("audit_action", [
   "finance.create",
   "incident.create",
   "incident.update",
+  "import.run",
   "report.export",
   "shipping.update",
   "shipping.connect",
@@ -552,6 +553,49 @@ export const priceHistory = pgTable(
   },
   (table) => ({
     companyItemIdx: index("price_history_company_item_idx").on(table.companyId, table.itemId, table.createdAt),
+  }),
+);
+
+export const channelSkuMappings = pgTable(
+  "channel_sku_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    channelKey: text("channel_key").notNull(),
+    externalSku: text("external_sku").notNull(),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "set null" }),
+    externalTitle: text("external_title"),
+    ...timestamps,
+  },
+  (table) => ({
+    companyChannelSkuIdx: uniqueIndex("channel_sku_mappings_company_channel_sku_idx").on(table.companyId, table.channelKey, table.externalSku),
+  }),
+);
+
+export const importOrders = pgTable(
+  "import_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    channelKey: text("channel_key").notNull(),
+    externalOrderId: text("external_order_id").notNull(),
+    buyerName: text("buyer_name").notNull().default(""),
+    buyerEmail: text("buyer_email"),
+    status: text("status").notNull().default("pending"),
+    errorReason: text("error_reason"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdOrderId: uuid("created_order_id").references(() => orders.id, { onDelete: "set null" }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    companyExternalIdx: uniqueIndex("import_orders_company_external_idx").on(table.companyId, table.channelKey, table.externalOrderId),
+    companyStatusIdx: index("import_orders_company_status_idx").on(table.companyId, table.status),
   }),
 );
 
