@@ -9,6 +9,7 @@ export type LabelSheet = LabelSheetBase & {
   mLeft: number;
   gutX: number;
   gutY: number;
+  shape?: "rect" | "circle";
 };
 
 export type LabelSheetInput = {
@@ -26,6 +27,7 @@ export type LabelSheetInput = {
   gutX: number;
   gutY: number;
   roll?: boolean;
+  shape?: "rect" | "circle";
 };
 
 export type BarcodeType = "code128" | "code39" | "ean13" | "qr";
@@ -57,6 +59,7 @@ export function normalizeLabelSheet(sheet: LabelSheetBase & Partial<LabelSheet>)
     mLeft,
     gutX: sheet.gutX ?? defaultGutter(pageW, mLeft, sheet.cols, sheet.labelW),
     gutY: sheet.gutY ?? defaultGutter(pageH, mTop, sheet.rows, sheet.labelH),
+    shape: sheet.shape === "circle" ? "circle" : "rect",
   };
 }
 
@@ -82,6 +85,7 @@ export function createLabelSheet(input: LabelSheetInput): LabelSheet {
     gutX: input.gutX,
     gutY: input.gutY,
     roll: input.roll,
+    shape: input.shape,
   });
 }
 

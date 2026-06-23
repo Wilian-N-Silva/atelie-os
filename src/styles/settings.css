@@ -130,9 +130,35 @@
   gap: 22px; padding: 40px 24px; position: relative; overflow: hidden;
 }
 .lab-stage--mini { min-height: 230px; padding: 28px 18px; }
-.lab-stage-grid { position: absolute; inset: 0; background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px); background-size: 22px 22px; opacity: .5; border-radius: var(--radius); }
+.lab-stage-grid { position: absolute; inset: 0; background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px); background-size: 22px 22px; opacity: .5; border-radius: var(--radius); pointer-events: none; }
 .lab-paper { background: #fff; color: #111; border-radius: 4px; box-shadow: 0 6px 28px -8px hsl(240 10% 10% / .25), 0 0 0 1px hsl(240 6% 88%); position: relative; z-index: 1; display: flex; flex-direction: column; max-width: 100%; }
 .lab-paper-pad { padding: 7%; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.label-editor-element { position: absolute; z-index: 5; box-sizing: border-box; border: 1px dashed hsl(var(--info)); background: hsl(var(--info) / .08); color: #111; cursor: move; padding: 2px; display: flex; overflow: hidden; line-height: 1.1; touch-action: none; user-select: none; }
+.label-editor-element * { pointer-events: none; }
+.label-editor-element--on { border-style: solid; background: hsl(var(--info) / .16); box-shadow: 0 0 0 2px hsl(var(--info) / .2); }
+.label-editor-barcode-box { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.label-editor-barcode-preview { width: 100% !important; height: 100% !important; max-width: 100%; }
+.label-type-row { padding: 6px; align-items: center; }
+.label-type-main { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; padding: 0; display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.label-editor-wrap { display: flex; flex-direction: column; min-height: 0; }
+.label-editor-wrap--fullscreen { height: 100%; padding: 18px; }
+.label-editor-topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; flex-shrink: 0; }
+.label-editor-shell { display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px; gap: 14px; height: calc(100vh - 172px); min-height: 620px; }
+.label-editor-wrap--fullscreen .label-editor-shell { flex: 1; height: auto; min-height: 0; }
+.label-editor-sidebar, .label-editor-main, .label-editor-inspector { min-height: 0; overflow-y: auto; }
+.label-editor-sidebar { border-right: 1px solid hsl(var(--border)); padding-right: 14px; }
+.label-editor-main { display: flex; flex-direction: column; }
+.label-editor-stage { flex: 1; min-height: 0; margin-top: 10px; padding: 0; overflow: auto; align-items: stretch; justify-content: flex-start; }
+.label-editor-stage-center { position: relative; z-index: 1; width: max-content; min-width: 100%; min-height: 100%; padding: 38px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.label-editor-paper-frame { position: relative; flex: 0 0 auto; }
+.label-editor-paper-zoom { position: absolute; inset: 0 auto auto 0; transform-origin: top left; }
+.label-editor-paper-pad { position: absolute; inset: 0; box-sizing: border-box; display: block; overflow: hidden; }
+.label-editor-palette { display: grid; gap: 6px; }
+.label-editor-palette-title { font-size: 11px; font-weight: 700; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: .04em; margin-top: 8px; }
+.label-editor-icons { display: flex; flex-wrap: wrap; gap: 6px; }
+.label-editor-section-head { width: 100%; border: 0; background: transparent; color: inherit; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; }
+.label-editor-inspector { display: grid; align-content: start; gap: 12px; }
+.label-nudge { display: grid; justify-content: center; gap: 4px; padding: 6px 0; }
 .lab-name { font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
 .lab-variant { color: #555; font-weight: 500; }
 .lab-sku { font-family: 'Geist Mono', monospace; font-weight: 600; overflow-wrap: anywhere; }

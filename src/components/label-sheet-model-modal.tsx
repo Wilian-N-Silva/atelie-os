@@ -22,6 +22,47 @@ function defaultForm(): FormState {
     gutX: "2.5",
     gutY: "0",
     roll: "",
+    shape: "rect",
+  };
+}
+
+function formFromSheet(sheet: LabelSheet): FormState {
+  return {
+    name: sheet.name,
+    brand: sheet.brand ?? "Personalizado",
+    code: sheet.code,
+    pageW: String(sheet.pageW),
+    pageH: String(sheet.pageH),
+    cols: String(sheet.cols),
+    rows: String(sheet.rows),
+    labelW: String(sheet.labelW),
+    labelH: String(sheet.labelH),
+    mTop: String(sheet.mTop),
+    mLeft: String(sheet.mLeft),
+    gutX: String(sheet.gutX),
+    gutY: String(sheet.gutY),
+    roll: sheet.roll ? "true" : "",
+    shape: sheet.shape === "circle" ? "circle" : "rect",
+  };
+}
+
+function circleRollForm(): FormState {
+  return {
+    name: "Rolo circular 60x60",
+    brand: "Termica",
+    code: "ROLO-CIRC-60",
+    pageW: "60",
+    pageH: "60",
+    cols: "1",
+    rows: "1",
+    labelW: "60",
+    labelH: "60",
+    mTop: "0",
+    mLeft: "0",
+    gutX: "0",
+    gutY: "0",
+    roll: "true",
+    shape: "circle",
   };
 }
 
@@ -51,26 +92,29 @@ function formToInput(form: FormState): LabelSheetInput {
     gutX: parseNonNegative(form.gutX, 0),
     gutY: parseNonNegative(form.gutY, 0),
     roll: form.roll === "true",
+    shape: form.shape === "circle" ? "circle" : "rect",
   };
 }
 
 export function LabelSheetModelModal({
   open,
   onClose,
-  onCreate,
+  onSave,
+  initialSheet,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (sheet: LabelSheet) => void;
+  onSave: (sheet: LabelSheet) => void;
+  initialSheet?: LabelSheet | null;
 }) {
   const [form, setForm] = React.useState<FormState>(() => defaultForm());
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
-    setForm(defaultForm());
+    setForm(initialSheet ? formFromSheet(initialSheet) : defaultForm());
     setError(null);
-  }, [open]);
+  }, [initialSheet, open]);
 
   const setField = (field: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -92,7 +136,7 @@ export function LabelSheetModelModal({
       return;
     }
 
-    onCreate(createLabelSheet(input));
+    onSave(initialSheet ? { ...createLabelSheet(input), id: initialSheet.id } : createLabelSheet(input));
     onClose();
   };
 
@@ -104,7 +148,7 @@ export function LabelSheetModelModal({
       open={open}
       onClose={onClose}
       icon="tag"
-      title="Novo modelo de folha"
+      title={initialSheet ? "Editar modelo de etiqueta" : "Novo modelo de etiqueta"}
       subtitle="Defina as medidas em milimetros"
       width={760}
       footer={(
@@ -117,6 +161,11 @@ export function LabelSheetModelModal({
     >
       <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) 220px", gap: 18, alignItems: "start" }}>
         <div>
+          {!initialSheet && (
+            <div style={{ marginBottom: 12 }}>
+              <Button variant="outline" size="sm" icon="tag" onClick={() => setForm(circleRollForm())}>Usar preset rolo circular 60x60</Button>
+            </div>
+          )}
           <div className="ff-grid">
             <Field label="Nome" required><Input value={form.name} onChange={(event) => setField("name", event.target.value)} /></Field>
             <Field label="Marca"><Input value={form.brand} onChange={(event) => setField("brand", event.target.value)} /></Field>
@@ -129,6 +178,15 @@ export function LabelSheetModelModal({
                 <span className="muted" style={{ fontSize: 12.5 }}>Usar como rolo</span>
               </label>
             </Field>
+          </div>
+          <div className="ff-grid">
+            <Field label="Formato">
+              <label className="row" style={{ gap: 8, height: 36 }}>
+                <input type="checkbox" checked={form.shape === "circle"} onChange={(event) => setField("shape", event.target.checked ? "circle" : "rect")} />
+                <span className="muted" style={{ fontSize: 12.5 }}>Etiqueta circular</span>
+              </label>
+            </Field>
+            <div />
           </div>
           <div className="ff-grid-3">
             <Field label="Largura folha"><Input inputMode="decimal" value={form.pageW} onChange={(event) => setField("pageW", event.target.value)} /></Field>
@@ -154,10 +212,10 @@ export function LabelSheetModelModal({
         <div>
           <div className="block-label">Previa</div>
           <div className="sheet-mini" style={{ gridTemplateColumns: `repeat(${Math.min(input.cols, 6)}, 1fr)`, width: 170, height: 230 }}>
-            {Array.from({ length: previewCount }).map((_, index) => <span key={index} className="sheet-mini-cell" />)}
+            {Array.from({ length: previewCount }).map((_, index) => <span key={index} className="sheet-mini-cell" style={{ borderRadius: input.shape === "circle" ? "999px" : undefined }} />)}
           </div>
           <div className="section-hint">
-            {input.cols}x{input.rows} - {input.labelW}x{input.labelH}mm
+            {input.cols}x{input.rows} - {input.labelW}x{input.labelH}mm {input.shape === "circle" ? "- circular" : ""}
           </div>
         </div>
       </div>

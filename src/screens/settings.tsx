@@ -29,6 +29,7 @@ import {
   useBarcodeType,
   useLabelSheets,
 } from "@/lib/label-sheets";
+import { useLabelTemplates } from "@/lib/label-templates";
 import { Theme, type BrandTheme } from "@/lib/theme";
 import { lookupPostalCode } from "@/lib/postal-code-client";
 import {
@@ -62,6 +63,7 @@ type SheetEditForm = {
   gutX: string;
   gutY: string;
   roll: string;
+  shape: string;
 };
 
 const NAV: { id: SettingsTab; label: string; sub: string; icon: string }[] = [
@@ -612,6 +614,7 @@ function sheetToForm(sheet: LabelSheet): SheetEditForm {
     gutX: String(sheet.gutX),
     gutY: String(sheet.gutY),
     roll: sheet.roll ? "true" : "",
+    shape: sheet.shape === "circle" ? "circle" : "rect",
   };
 }
 
@@ -642,6 +645,7 @@ function formToSheet(sheet: LabelSheet, form: SheetEditForm) {
     gutX: parseNonNegative(form.gutX, sheet.gutX),
     gutY: parseNonNegative(form.gutY, sheet.gutY),
     roll: form.roll === "true",
+    shape: form.shape === "circle" ? "circle" : "rect",
   });
 }
 
@@ -669,6 +673,7 @@ function LabelSheetPreview({ sheet, barcodeType }: { sheet: LabelSheet; barcodeT
                 top: (sheet.mTop + row * (sheet.labelH + sheet.gutY)) * scale,
                 width: sheet.labelW * scale,
                 height: sheet.labelH * scale,
+                borderRadius: sheet.shape === "circle" ? "999px" : undefined,
               }}
             >
               <LabelBarcode code={code} type={barcodeType} height={barcodeHeight} scale={barcodeScale} />
@@ -772,6 +777,15 @@ function LabelSheetDetailModal({
                 </label>
               </Field>
             </div>
+            <div className="ff-grid">
+              <Field label="Formato circular">
+                <label className="row" style={{ gap: 8, height: 36 }}>
+                  <input type="checkbox" checked={form.shape === "circle"} onChange={(event) => setField("shape", event.target.checked ? "circle" : "rect")} />
+                  <span className="muted" style={{ fontSize: 12.5 }}>Etiqueta circular</span>
+                </label>
+              </Field>
+              <div />
+            </div>
             <div className="ff-grid-3">
               <Field label="Largura folha"><Input inputMode="decimal" value={form.pageW} onChange={(event) => setField("pageW", event.target.value)} /></Field>
               <Field label="Altura folha"><Input inputMode="decimal" value={form.pageH} onChange={(event) => setField("pageH", event.target.value)} /></Field>
@@ -798,6 +812,7 @@ function LabelSheetDetailModal({
             <div className="field"><span className="field-k">Folha</span><span className="field-v">{sheet.pageW}x{sheet.pageH}mm</span></div>
             <div className="field"><span className="field-k">Grade</span><span className="field-v">{sheet.cols} coluna(s) x {sheet.rows} linha(s)</span></div>
             <div className="field"><span className="field-k">Etiqueta</span><span className="field-v">{sheet.labelW}x{sheet.labelH}mm</span></div>
+            <div className="field"><span className="field-k">Formato</span><span className="field-v">{sheet.shape === "circle" ? "Circular" : "Retangular"}</span></div>
             <div className="field"><span className="field-k">Margens</span><span className="field-v">{sheet.mLeft}mm esquerda, {sheet.mTop}mm topo</span></div>
             <div className="field"><span className="field-k">Espacamento</span><span className="field-v">{sheet.gutX}mm horizontal, {sheet.gutY}mm vertical</span></div>
           </div>
@@ -807,8 +822,9 @@ function LabelSheetDetailModal({
   );
 }
 
-function LabelsTab() {
+function LabelsTab({ go }: { go: Go }) {
   const [sheets, setSheets] = useLabelSheets();
+  const [templates] = useLabelTemplates();
   const [barcodeType, setBarcodeType] = useBarcodeType();
   const [selected, setSelected] = React.useState(sheets[0]?.id ?? "");
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -855,6 +871,30 @@ function LabelsTab() {
       <Card>
         <CardHeader>
           <div>
+            <CardTitle>Tipos de etiqueta</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>{templates.length} layout(s) salvos no tenant</div>
+          </div>
+          <Button variant="outline" size="sm" icon="palette" onClick={() => go("labelEditor")}>Abrir editor</Button>
+        </CardHeader>
+        <CardContent>
+          <div className="sheet-grid-cards">
+            {templates.map((template) => (
+              <button key={template.id} type="button" className="sheet-card" onClick={() => go("labelEditor")}>
+                <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+                  <div className="chip chip--neutral"><Icon name={template.icon} size={15} /></div>
+                  <strong style={{ fontSize: 13 }}>{template.name}</strong>
+                </div>
+                <div className="muted" style={{ fontSize: 12 }}>{template.w}x{template.h}mm - {template.target}</div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{template.elements?.length ?? 0} bloco(s) no layout</div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
             <CardTitle>Folhas cadastradas</CardTitle>
             <div className="section-hint" style={{ marginTop: 2 }}>{sheets.length} modelo(s) disponiveis para o tenant</div>
           </div>
@@ -873,7 +913,7 @@ function LabelsTab() {
                 }}
               >
                 <div className="sheet-mini" style={{ gridTemplateColumns: `repeat(${Math.min(sheet.cols, 4)}, 1fr)`, width: 84, height: 110 }}>
-                  {Array.from({ length: Math.min(sheet.cols * sheet.rows, 24) }).map((_, index) => <span key={index} className="sheet-mini-cell" />)}
+                  {Array.from({ length: Math.min(sheet.cols * sheet.rows, 24) }).map((_, index) => <span key={index} className="sheet-mini-cell" style={{ borderRadius: sheet.shape === "circle" ? "999px" : undefined }} />)}
                 </div>
                 <div className="row between"><strong style={{ fontSize: 13 }}>{sheet.name}</strong><Badge tone="outline">{sheet.code}</Badge></div>
                 <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{sheet.roll ? "rolo" : `${sheet.cols}x${sheet.rows}`} - {sheet.labelW}x{sheet.labelH}mm</div>
@@ -887,7 +927,7 @@ function LabelsTab() {
       <LabelSheetModelModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreate={(sheet) => {
+        onSave={(sheet) => {
           setSheets((current) => [sheet, ...current]);
           setSelected(sheet.id);
           toast("Modelo de folha criado para o tenant.", "ok");
@@ -1480,7 +1520,7 @@ export function SettingsScreen({
           {tab === "branding" && <BrandingTab session={session} onSessionPatch={onSessionPatch} />}
           {tab === "users" && <UsersTab session={session} />}
           {tab === "workflows" && <WorkflowsTab />}
-          {tab === "labels" && <LabelsTab />}
+          {tab === "labels" && <LabelsTab go={go} />}
           {tab === "shipping" && <ShippingTab />}
           {tab === "catalog" && <CatalogTab />}
           {tab === "export" && <ExportPanel />}

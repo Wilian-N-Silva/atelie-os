@@ -23,7 +23,7 @@ import { QualityScreen } from "@/screens/quality";
 import { ReplenishmentScreen } from "@/screens/replenishment";
 import { RecipesScreen } from "@/screens/recipes";
 import { PricingScreen } from "@/screens/pricing";
-import { LabelsScreen } from "@/screens/labels";
+import { LabelTemplateEditorScreen, LabelsScreen } from "@/screens/labels";
 import { AIContentScreen } from "@/screens/ai-content";
 import { SettingsScreen } from "@/screens/settings";
 import { OperationScreen } from "@/screens/operation";
@@ -69,6 +69,7 @@ const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   relatorios: ReportsScreen as React.ComponentType<ScreenComponentProps>,
   incidentes: IncidentsScreen as React.ComponentType<ScreenComponentProps>,
   etiquetas: LabelsScreen as React.ComponentType<ScreenComponentProps>,
+  labelEditor: LabelTemplateEditorScreen as React.ComponentType<ScreenComponentProps>,
   ia: AIContentScreen as React.ComponentType<ScreenComponentProps>,
   configuracoes: SettingsScreen as React.ComponentType<ScreenComponentProps>,
   auditoria: AuditLogsScreen as React.ComponentType<ScreenComponentProps>,

@@ -4,12 +4,14 @@ import { db } from "@/db/client";
 import { auditLogs, companySettings } from "@/db/schema";
 import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
 import { normalizeLabelSheet, BARCODE_TYPE_OPTIONS, defaultLabelSheets, type BarcodeType, type LabelSheet } from "@/lib/label-sheets";
+import { DEFAULT_LABEL_TEMPLATES, createLabelTemplate, normalizeElement, type LabelField, type LabelTemplate, type LabelTarget } from "@/lib/label-templates";
 import { SETTINGS_WRITE_ROLES } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
 type StoredSettings = Record<string, unknown> & {
   labelSheets?: LabelSheet[];
+  labelTemplates?: LabelTemplate[];
   defaultBarcodeType?: BarcodeType;
 };
 
@@ -41,6 +43,7 @@ function parseSheet(value: unknown): LabelSheet | null {
     gutX: Number(sheet.gutX),
     gutY: Number(sheet.gutY),
     roll: Boolean(sheet.roll),
+    shape: sheet.shape === "circle" ? "circle" : "rect",
   });
 
   if (!normalized.name || !normalized.code) return null;
@@ -62,6 +65,44 @@ function parseSheets(value: unknown): LabelSheet[] | null {
   return sheets as LabelSheet[];
 }
 
+const TARGETS = new Set<LabelTarget>(["item", "lote", "op", "pedido", "local"]);
+const FIELDS = new Set<LabelField>([
+  "name", "variant", "sku", "code", "barcode", "lot", "prodDate", "opNum", "productName",
+  "planned", "recipe", "orderNum", "customer", "city", "channel", "locName", "locType",
+]);
+
+function parseTemplate(value: unknown): LabelTemplate | null {
+  if (!value || typeof value !== "object") return null;
+  const template = value as Partial<LabelTemplate>;
+  if (!template.id || !template.name || !template.target) return null;
+  if (!TARGETS.has(template.target)) return null;
+  const fields = Array.isArray(template.fields)
+    ? template.fields.filter((field): field is LabelField => FIELDS.has(field as LabelField))
+    : [];
+  const elements = Array.isArray(template.elements)
+    ? template.elements.map(normalizeElement).filter(Boolean) as NonNullable<LabelTemplate["elements"]>
+    : undefined;
+
+  return createLabelTemplate({
+    id: String(template.id),
+    name: String(template.name),
+    target: template.target,
+    icon: String(template.icon || "tag"),
+    w: Number(template.w),
+    h: Number(template.h),
+    desc: String(template.desc || ""),
+    fields,
+    elements,
+  });
+}
+
+function parseTemplates(value: unknown): LabelTemplate[] | null {
+  if (!Array.isArray(value)) return null;
+  const templates = value.map(parseTemplate);
+  if (templates.some((template) => !template)) return null;
+  return templates as LabelTemplate[];
+}
+
 async function ensureCompanySettings(companyId: string) {
   const existing = await db.query.companySettings.findFirst({
     where: eq(companySettings.companyId, companyId),
@@ -78,6 +119,7 @@ async function ensureCompanySettings(companyId: string) {
 function payloadFromSettings(settings: StoredSettings) {
   return {
     sheets: settings.labelSheets?.length ? settings.labelSheets : defaultLabelSheets(),
+    templates: settings.labelTemplates?.length ? settings.labelTemplates : DEFAULT_LABEL_TEMPLATES,
     defaultBarcodeType: settings.defaultBarcodeType ?? "code128",
   };
 }
@@ -87,7 +129,15 @@ export async function GET(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const row = await ensureCompanySettings(contextResult.context.company.id);
-  return NextResponse.json(payloadFromSettings(row.settings as StoredSettings));
+  const settings = row.settings as StoredSettings;
+  if (!settings.labelTemplates?.length) {
+    await db
+      .update(companySettings)
+      .set({ settings: { ...settings, labelTemplates: DEFAULT_LABEL_TEMPLATES }, updatedAt: new Date() })
+      .where(eq(companySettings.companyId, contextResult.context.company.id));
+    return NextResponse.json(payloadFromSettings({ ...settings, labelTemplates: DEFAULT_LABEL_TEMPLATES }));
+  }
+  return NextResponse.json(payloadFromSettings(settings));
 }
 
 export async function PATCH(request: Request) {
@@ -100,6 +150,7 @@ export async function PATCH(request: Request) {
 
   const body = await request.json().catch(() => null) as {
     sheets?: unknown;
+    templates?: unknown;
     defaultBarcodeType?: unknown;
   } | null;
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
@@ -112,6 +163,12 @@ export async function PATCH(request: Request) {
     const sheets = parseSheets(body.sheets);
     if (!sheets) return NextResponse.json({ error: "invalid_label_sheets" }, { status: 400 });
     nextSettings.labelSheets = sheets;
+  }
+
+  if (body.templates !== undefined) {
+    const templates = parseTemplates(body.templates);
+    if (!templates) return NextResponse.json({ error: "invalid_label_templates" }, { status: 400 });
+    nextSettings.labelTemplates = templates;
   }
 
   if (body.defaultBarcodeType !== undefined) {
@@ -133,6 +190,7 @@ export async function PATCH(request: Request) {
     entityId: context.company.id,
     metadata: {
       changedSheets: body.sheets !== undefined,
+      changedTemplates: body.templates !== undefined,
       changedDefaultBarcodeType: body.defaultBarcodeType !== undefined,
     },
   });

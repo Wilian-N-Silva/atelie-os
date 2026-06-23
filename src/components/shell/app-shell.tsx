@@ -54,6 +54,7 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   relatorios: { title: "Relatórios", sub: "Exports CSV operacionais" },
   incidentes: { title: "Incidentes", sub: "Trocas, devoluções e perdas" },
   etiquetas: { title: "Etiquetas", sub: "Editor de modelos e impressão" },
+  labelEditor: { title: "Editor de etiquetas", sub: "Tipos de etiqueta por tenant" },
   ia: { title: "Conteúdo IA", sub: "Textos na voz da marca" },
   auditoria: { title: "Auditoria", sub: "Ações críticas e rastreabilidade" },
   configuracoes: { title: "Configurações", sub: "White-label · marca, fluxos, etiquetas" },
