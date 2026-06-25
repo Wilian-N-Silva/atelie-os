@@ -25,10 +25,10 @@ This document lists the product features that are still missing or only partiall
   - [x] Connect material consumption, production output, QC, and stock release in a single production-lot traceability view.
   - [ ] Backfill historical/seed movements where trace metadata is missing.
 
-- [ ] In-app help completeness
-  - Verify every major module has contextual "Como usar esta tela?" help.
-  - Add first-steps checklist.
-  - Add glossary and keyword search.
+- [x] In-app help completeness
+  - [x] Verify every major module has contextual "Como usar esta tela?" help.
+  - [x] Add first-steps checklist.
+  - [x] Add glossary and keyword search.
 
 - [ ] Full unit-conversion engine
   - Convert compatible units in recipes and stock, for example `1000 g = 1 kg`.

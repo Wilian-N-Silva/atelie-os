@@ -63,6 +63,31 @@ export const PAGE_META: Record<string, { title: string; sub: string }> = {
   manual: { title: "Manual & ajuda", sub: "Guia de uso do sistema" },
 };
 
+const HELP_SECTION_BY_SCREEN: Record<string, string> = {
+  hoje: "hoje",
+  pedidos: "pedidos",
+  frete: "frete",
+  importacoes: "marketplace",
+  producao: "producao",
+  qualidade: "cura",
+  itens: "itens",
+  receitas: "receitas",
+  precificacao: "financeiro",
+  estoque: "conceitos",
+  contagem: "rotinas",
+  reposicao: "compras",
+  compras: "compras",
+  financeiro: "financeiro",
+  relatorios: "rotinas",
+  incidentes: "problemas",
+  etiquetas: "etiquetas",
+  labelEditor: "etiquetas",
+  ia: "ia",
+  auditoria: "rotinas",
+  configuracoes: "primeiros-passos",
+  exportar: "rotinas",
+};
+
 export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpenNotif, user, company, logoUrl, onSignOut, children }: {
   route: Route; go: Go; theme: string; setTheme: (t: string) => void; unread: number;
   onOpenCmd: () => void; onOpenNotif: () => void;
@@ -83,6 +108,7 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
     return next;
   });
   const meta = PAGE_META[route.screen] || { title: "", sub: "" };
+  const helpSection = HELP_SECTION_BY_SCREEN[route.screen];
 
   React.useEffect(() => { setMobileOpen(false); }, [route.screen]);
   React.useEffect(() => {
@@ -202,6 +228,16 @@ export function AppShell({ route, go, theme, setTheme, unread, onOpenCmd, onOpen
               <kbd>{isMac ? "⌘" : "Ctrl"}</kbd><kbd>K</kbd>
             </span>
           </button>
+          {route.screen !== "manual" && helpSection && (
+            <button
+              className="topbar-help-btn"
+              title="Abrir ajuda desta tela"
+              onClick={() => go("manual", { section: helpSection })}
+            >
+              <Icon name="helpCircle" size={16} />
+              <span>Como usar esta tela?</span>
+            </button>
+          )}
           <button className="icon-btn" title={theme === "dark" ? "Tema claro" : "Tema escuro"}
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />

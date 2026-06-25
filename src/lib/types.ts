@@ -9,6 +9,7 @@ export interface Route {
   mode?: string;
   order?: string;
   production?: string;
+  section?: string;
   test?: string;
 }
 

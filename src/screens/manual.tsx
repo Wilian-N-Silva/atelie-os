@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Button, Input, cn } from "@/components/ui";
+import type { Route } from "@/lib/types";
 import { MANUAL_GROUPS, MANUAL_SECTIONS, type ManualSection } from "@/screens/manual-content";
 
 function normalizeManualSearch(value: string) {
@@ -37,7 +38,7 @@ function sectionMatches(section: ManualSection, query: string) {
   return normalizeManualSearch(`${section.title} ${section.intro ?? ""} ${manualValueText(section.body)}`).includes(query);
 }
 
-export function ManualScreen() {
+export function ManualScreen({ route }: { route?: Route }) {
   const [activeSectionId, setActiveSectionId] = React.useState(MANUAL_SECTIONS[0]?.id ?? "");
   const [query, setQuery] = React.useState("");
   const docRef = React.useRef<HTMLDivElement>(null);
@@ -93,6 +94,15 @@ export function ManualScreen() {
     setActiveSectionId(id);
     scroller.scrollTo({ top: target, behavior: "smooth" });
   };
+
+  React.useEffect(() => {
+    if (!route?.section) return;
+    if (!MANUAL_SECTIONS.some((section) => section.id === route.section)) return;
+
+    setQuery("");
+    const id = window.setTimeout(() => jumpToSection(route.section as string), 0);
+    return () => window.clearTimeout(id);
+  }, [route?.section]);
 
   return (
     <div className="page page--wide fade-in">
