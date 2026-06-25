@@ -35,12 +35,12 @@ This document lists the product features that are still missing or only partiall
   - Keep unit `code` stable while allowing tenant display names.
   - Define conversion factors by unit kind.
 
-- [ ] More complete reports and exports
-  - Production summary export.
-  - Date-range filters for existing CSV exports.
-  - Saved report presets.
-  - Sales, production, and purchase trend summaries.
-  - Export more entities: lots, movements, recipes, production, and AI history.
+- [x] More complete reports and exports
+  - [x] Production summary export.
+  - [x] Date-range filters for existing CSV exports.
+  - [x] Saved report presets.
+  - [x] Sales, production, and purchase trend summaries.
+  - [x] Export more entities: lots, movements, recipes, production, and AI history.
 
 - [ ] AI content hardening
   - Brand-voice settings model.
