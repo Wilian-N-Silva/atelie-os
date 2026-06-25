@@ -1441,8 +1441,18 @@ export function LabelsScreen({ go: _go }: { go: Go; route: Route }) {
     return <div className="page page--wide fade-in"><Empty icon="tag" title="Sem modelos de folha" /></div>;
   }
 
+  const printPageSizeCss = `
+    @page { size: ${sheet.pageW}mm ${sheet.pageH}mm; margin: 0; }
+    @media print {
+      body[data-print-mode="labels"] .label-print-doc {
+        width: ${sheet.pageW}mm;
+      }
+    }
+  `;
+
   return (
     <div className="page page--wide lab-page fade-in">
+      <style media="print">{printPageSizeCss}</style>
       <div className="page-head">
         <div>
           <h1 className="page-h1">Etiquetas</h1>

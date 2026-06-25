@@ -256,6 +256,7 @@ export type LabelSheetBase = {
   gutX?: number;
   gutY?: number;
   roll?: boolean;
+  shape?: "rect" | "circle";
 };
 
 export const CHANNELS = {
@@ -271,6 +272,7 @@ export const LABEL_SHEETS: LabelSheetBase[] = [
   { id: "a4-3x8", name: "Folha A4 - grade 3x8", brand: "Generico", code: "A4-3x8", pageW: 210, pageH: 297, cols: 3, rows: 8, labelW: 63.5, labelH: 33.9, mTop: 9, mLeft: 7, gutX: 2.5, gutY: 0 },
   { id: "a4-4x10", name: "Pimaco A4056", brand: "Pimaco", code: "A4056", pageW: 210, pageH: 297, cols: 4, rows: 10, labelW: 48, labelH: 25, mTop: 11, mLeft: 7, gutX: 2, gutY: 1.5 },
   { id: "roll-50x30", name: "Rolo termico 50x30", brand: "Termica", code: "ROLO-50x30", pageW: 50, pageH: 30, cols: 1, rows: 1, labelW: 50, labelH: 30, mTop: 0, mLeft: 0, gutX: 0, gutY: 0, roll: true },
+  { id: "roll-circle-60x60", name: "Rolo circular 60x60", brand: "Termica", code: "ROLO-CIRC-60", pageW: 60, pageH: 60, cols: 1, rows: 1, labelW: 60, labelH: 60, mTop: 0, mLeft: 0, gutX: 0, gutY: 0, roll: true, shape: "circle" },
 ];
 
 export const LABEL_TEMPLATES = [
