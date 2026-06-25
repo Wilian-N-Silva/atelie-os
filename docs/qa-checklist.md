@@ -1,65 +1,83 @@
-# QA Checklist — feature/remove-localstorage-persistence
+# QA Checklist - beta manual QA
 
-Manual browser QA before merging to `development`. Login: `admin@example.com` / seed password.
-Mark each item PASS/FAIL and note anything off. For the full delivered list see `feature-log.md`.
+Manual browser QA before the first beta deployment. Login with the configured seed/admin user for dev, then repeat key flows with a new tenant created from scratch.
+
+For the delivered feature list see `docs/feature-log.md`; for remaining product scope see `docs/pending-features-review.md`; for launch blockers see `docs/outstanding-work.md`.
 
 ## 0. Setup
-- [ ] `docker compose up -d postgres` · `npm run db:migrate` · `npm run db:seed` · `npm run dev`
-- [ ] `.env`: `NEXT_PUBLIC_APP_URL`/`BETTER_AUTH_URL` = `http://localhost:3000` (else 401 on login)
+
+- [ ] `docker compose up -d postgres` / `npm run db:migrate` / `npm run db:seed` / existing dev server is running.
+- [ ] `.env`: app URL and auth URL point to the same local origin.
 - [ ] Login works; dashboard loads.
+- [ ] New tenant can be created and selected.
 
-## 1. Pedidos / rastreio
-- [ ] Clicar num pedido abre **tela dedicada** (não painel sob a lista); botão "Pedidos" volta.
-- [ ] Fluxo de envio Melhor Envio (sandbox): cotar → carrinho → comprar/gerar/imprimir.
-- [ ] `orders.metadata.shippingLabel` recebe `tracking` após gerar/webhook.
+## 1. Tenant isolation
 
-## 2. Receitas + protocolo de teste
-- [ ] Criar receita; "Novo teste" gera card com código de barras.
-- [ ] "Etiqueta" imprime só o código de barras.
-- [ ] Modo Operação: bipar/selecionar a etiqueta de teste abre os 5 critérios; salvar.
-- [ ] "Aprovar versão" só habilita com ≥1 teste aprovado.
+- [ ] New tenant does not see seed tenant labels, themes, team members, workflow edits, units, locations, or settings.
+- [ ] Editing labels/themes/team in one tenant does not affect another tenant after reload and sign-out/sign-in.
+- [ ] Team endpoint only lists users for the active tenant.
+- [ ] Switching active company updates server-rendered settings and API reads.
 
-## 3. Kits
-- [ ] Criar item tipo **kit**; em Configurações do item escolher modo (Montado/Virtual).
-- [ ] Receita do kit aceita **produtos acabados** como componentes (ex.: 3 velas + caixa).
-- [ ] Montado: planejar OP do kit consome componentes e gera o kit.
-- [ ] Virtual: disponibilidade do kit = limite dos componentes; pedido com kit virtual, ao reservar/enviar, baixa os **componentes**; pick list e Modo Operação mostram os componentes.
+## 2. Standalone/self-hosted mode
 
-## 4. Precificação
-- [ ] Tela Precificação lista produtos vendáveis com custo/sugerido/praticado/margem.
-- [ ] Drawer: ajustar margem/mão de obra/extras → preço sugerido atualiza; alerta de margem baixa.
-- [ ] Salvar preço → reflete em `currentPrice` e aparece no histórico.
+- [ ] With standalone flags enabled, sign-up UI is hidden and sign-up API attempts are blocked.
+- [ ] Onboarding is skipped/blocked where appropriate.
+- [ ] Login screen shows the configured client copy/brand.
+- [ ] A client subdomain style app URL resolves the expected company context.
 
-## 5. Contagem de estoque
-- [ ] "Nova contagem" cria com esperado = físico de cada item.
-- [ ] Digitar contado → divergência exibida; "Salvar" persiste.
-- [ ] "Aplicar ajustes" gera movimentos só nas divergências; estoque reflete; status "Ajustada".
+## 3. Labels and barcodes
 
-## 6. Qualidade (pós-cura)
-- [ ] Tela Qualidade lista lotes em cura/revisão.
-- [ ] Aprovar → lote vira disponível (transfere cura→vendável).
-- [ ] Bloquear → continua indisponível. Perda → movimento de perda na quantidade.
+- [ ] Create and edit sheet models, including A4 and circular/thermal definitions.
+- [ ] Change default barcode type and confirm preview/print output.
+- [ ] Print item, lot, OP, order, and location labels.
+- [ ] Scanner reads printed codes without adding unexpected digits or losing leading zeroes.
+- [ ] Operation mode resolves scanned prefixes/ranges to the correct kind: order, production, recipe test, item/SKU, lot, or location.
+- [ ] Invalid/ambiguous scans show a useful error and do not mutate data.
 
-## 7. Exportação CSV
-- [ ] Configurações? Não — tela "Exportar dados": baixar CSV de itens/estoque/pedidos/clientes/fornecedores/financeiro.
-- [ ] CSV abre no Excel com acentos corretos (UTF-8/BOM, separador `;`).
+## 4. Orders and shipping
 
-## 8. Notificações
-- [ ] Sino mostra alertas derivados (estoque baixo/zerado, lotes a revisar, pedidos pagos a separar, contas a pagar).
-- [ ] Clicar no alerta leva à tela correta.
+- [ ] Creating an order with custom price and overstock warning works.
+- [ ] Payment confirmation updates status and audit.
+- [ ] Pick list handoff into Operation mode works.
+- [ ] Melhor Envio sandbox: quote -> cart -> checkout/generate -> preview/print.
+- [ ] Manual tracking and external label attachments work for imported/manual orders.
+- [ ] Public tracking works by token and by company + order + email/CEP; invalid lookup returns not found.
 
-## 9. Incidentes / devoluções
-- [ ] Registrar incidente (não move estoque na criação).
-- [ ] "Resolver": escolher impacto (disponível/bloqueado/perda/nenhum) + reembolso → movimento correto + lançamento no financeiro; status "resolved".
+## 5. Production, lots, and quality
 
-## 10. Configurações > Catálogo
-- [ ] Criar/renomear unidade e categoria.
-- [ ] Unidade padrão (g/kg/...) e itens em uso **não** podem ser excluídos.
+- [ ] Recipe version creation and approval flow work.
+- [ ] Recipe-test label scan opens the five test criteria in Operation mode.
+- [ ] Production planning consumes selected material lots.
+- [ ] Produced lot stores real cost and trace metadata.
+- [ ] Quality review supports partial approve/reject/loss with required reasons.
+- [ ] Released quantity reaches sellable stock; rejected/loss quantity does not.
+- [ ] Production drawer trace view shows consumed lots, output lot, QC outcome, released/loss quantities, and real cost.
 
-## 11. Rastreio público (site separado)
-- [ ] `http://localhost:3000/rastreio?token=demorastreio00000000000000000001` mostra pagamento + timeline + transportadora.
-- [ ] Consulta por empresa + nº `#9999` + e-mail funciona; token inválido = não encontrado.
+## 6. Inventory and counts
 
-## Regressão rápida
-- [ ] `npm run lint` · `npm run test` · `npm run build` verdes.
-- [ ] Dados sobrevivem a recarregar e novo login.
+- [ ] Per-location count snapshots expected stock correctly.
+- [ ] Count adjustment requires/records loss reason where applicable.
+- [ ] Movement history and audit entries are created for manual and automated movements.
+- [ ] Empty states are acceptable for no active locations, no blocked location, and no catalog items.
+
+## 7. Pricing, reports, AI, and notifications
+
+- [ ] Pricing uses channel fee rules and labor model; low-margin alert is correct.
+- [ ] Exports include expanded entities and date filters.
+- [ ] Saved report presets and trend summaries load.
+- [ ] AI brand voice, tenant context controls, saved templates, and approval flow work.
+- [ ] Notification rules include stalled orders, disconnected integrations, pending imports, low margin, and mute/disable behavior.
+
+## 8. Permissions and audit
+
+- [ ] Owner/admin can manage settings, workflows, labels, team, and integrations.
+- [ ] Operator can perform expected order/production/incident workflows but cannot change admin settings.
+- [ ] Finance role can access intended finance areas without broader admin writes.
+- [ ] Readonly role cannot mutate data.
+- [ ] Critical writes produce audit rows with tenant and actor.
+
+## 9. Regression
+
+- [ ] `npm run lint`, `npx tsc --noEmit`, and `npm test` are green before handoff.
+- [ ] Data survives reload, sign-out/sign-in, and second browser session.
+- [ ] Browser print output contains only intended print pages.

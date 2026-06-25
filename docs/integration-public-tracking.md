@@ -1,4 +1,4 @@
-b# Public Order Tracking API
+# Public Order Tracking API
 
 Read-only, unauthenticated, CORS-enabled API for an external site (the separate
 company website) to show a customer where their order is. It exposes only a

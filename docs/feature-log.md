@@ -72,3 +72,13 @@ One line per feature. Migrations are noted as `0NNN`.
 - Nuvemshop OAuth foundation: `/api/app/integrations/nuvemshop/oauth/start` + callback, signed state, encrypted tokens in `integration_credentials` under provider `nuvemshop`, and audited connect attempts.
 - Connection status endpoint: `/api/app/integrations/nuvemshop/status` reads credential state and validates the token against Nuvemshop `GET /v1/{store_id}/store` with the required `User-Agent` header.
 - Public webhook stub: `/api/webhooks/nuvemshop` responds quickly with `200`; real event/order processing remains pending.
+
+## 2026-06-25 - Beta feature closure and tenant hardening
+- Packaging profiles and standalone freight calculator delivered: package CRUD, quote outside the order flow, and copyable WhatsApp message.
+- Production lot traceability expanded: material-lot selection, produced-lot real cost, inventory-lot records, quality outcome, partial release/loss, and trace rows in production.
+- Pending MVP/partial features closed: contextual help/search/checklist, unit conversion, expanded reports/exports, AI settings/templates/approval, notification rules/mutes, pricing channel/labor rules, per-location stock counts, returns/replacements, and marketplace CSV follow-ups.
+- Label printing/editor follow-ups closed: tenant label templates, default barcode type, circular thermal sheet definitions, server-side normalization, and persistence across sessions.
+- Public tracking hardened with rate limiting and company-scoped manual lookup.
+- Production readiness infrastructure added: Resend email, R2 storage abstraction, route permission enforcement, real-tenant bootstrap defaults, and production seed guard.
+- Tenant isolation hardened for labels, themes, and team access; active company context is stored explicitly and server routes scope tenant settings.
+- Standalone/self-hosted mode added: public app config, sign-up/onboarding blocking, custom login copy, and env flags for client-owned subdomain deployments.
