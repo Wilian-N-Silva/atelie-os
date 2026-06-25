@@ -42,11 +42,11 @@ This document lists the product features that are still missing or only partiall
   - [x] Sales, production, and purchase trend summaries.
   - [x] Export more entities: lots, movements, recipes, production, and AI history.
 
-- [ ] AI content hardening
-  - Brand-voice settings model.
-  - Tenant data context controls.
-  - Saved prompt/template management.
-  - Approval workflow beyond generated-history persistence.
+- [x] AI content hardening
+  - [x] Brand-voice settings model.
+  - [x] Tenant data context controls.
+  - [x] Saved prompt/template management.
+  - [x] Approval workflow beyond generated-history persistence.
 
 - [x] Notifications phase 2
   - [x] Add rules for stalled orders, disconnected integrations, pending imports, and low margin.
