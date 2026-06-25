@@ -96,15 +96,16 @@ function Workspace({
   const [notifState, setNotifState] = React.useState<Record<string, "read" | "resolved">>({});
   const [notifData, setNotifData] = React.useState<Notification[]>([]);
 
-  // Notifications are derived server-side from current data (no persistence).
-  React.useEffect(() => {
+  const refreshNotifications = React.useCallback(() => {
     let alive = true;
     fetch("/api/app/notifications", { cache: "no-store", credentials: "include" })
       .then((res) => (res.ok ? res.json() : { notifications: [] }))
       .then((payload: { notifications?: Notification[] }) => { if (alive) setNotifData(payload.notifications ?? []); })
       .catch(() => null);
     return () => { alive = false; };
-  }, [route.screen]);
+  }, []);
+
+  React.useEffect(() => refreshNotifications(), [refreshNotifications, route.screen]);
 
   // hydrate persisted UI prefs (client-only to avoid SSR mismatch)
   React.useEffect(() => {
@@ -131,6 +132,15 @@ function Workspace({
     notifications.forEach((n) => { if (next[n.id] !== "resolved") next[n.id] = "read"; });
     return next;
   });
+  const updateNotificationRule = async (ruleId: string, action: "mute" | "disable") => {
+    await fetch("/api/app/notifications", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ruleId, action, days: 7 }),
+    }).catch(() => null);
+    refreshNotifications();
+  };
 
   // global ⌘K / Ctrl+K
   React.useEffect(() => {
@@ -179,7 +189,7 @@ function Workspace({
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} go={go} />
       {notifOpen && <NotifCenter notifications={notifications} unread={unread}
         markRead={markRead} markResolved={markResolved} markAllRead={markAllRead}
-        go={go} onClose={() => setNotifOpen(false)} />}
+        go={go} onClose={() => setNotifOpen(false)} onRuleAction={updateNotificationRule} />}
     </>
   );
 }

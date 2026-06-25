@@ -48,9 +48,9 @@ This document lists the product features that are still missing or only partiall
   - Saved prompt/template management.
   - Approval workflow beyond generated-history persistence.
 
-- [ ] Notifications phase 2
-  - Add rules for stalled orders, disconnected integrations, pending imports, and low margin.
-  - Add per-rule mute/disable options.
+- [x] Notifications phase 2
+  - [x] Add rules for stalled orders, disconnected integrations, pending imports, and low margin.
+  - [x] Add per-rule mute/disable options.
 
 ---
 

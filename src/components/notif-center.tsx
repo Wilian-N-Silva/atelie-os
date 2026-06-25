@@ -4,7 +4,7 @@
    ============================================================ */
 import * as React from "react";
 import { cn, Icon, Badge, Empty } from "@/components/ui";
-import type { Go } from "@/lib/types";
+import type { Go, Route } from "@/lib/types";
 
 export interface Notification {
   id: string;
@@ -14,17 +14,18 @@ export interface Notification {
   tone: "ok" | "warn" | "info" | "bad" | "cure" | "neutral";
   title: string;
   desc: string;
-  action: { screen: string; filter?: string };
+  action: Partial<Route> & { screen: string };
   actionLabel: string;
+  ruleId?: string;
   critical?: boolean;
 }
 
 type NotifWithStatus = Notification & { status: "unread" | "read" | "resolved" };
 
-export function NotifCenter({ notifications, unread, markRead, markResolved, markAllRead, go, onClose }: {
+export function NotifCenter({ notifications, unread, markRead, markResolved, markAllRead, go, onClose, onRuleAction }: {
   notifications: NotifWithStatus[]; unread: number;
   markRead: (id: string) => void; markResolved: (id: string) => void; markAllRead: () => void;
-  go: Go; onClose: () => void;
+  go: Go; onClose: () => void; onRuleAction?: (ruleId: string, action: "mute" | "disable") => Promise<void> | void;
 }) {
   const [tab, setTab] = React.useState("todas");
   React.useEffect(() => {
@@ -75,6 +76,12 @@ export function NotifCenter({ notifications, unread, markRead, markResolved, mar
                   {n.status !== "resolved"
                     ? <button className="notif-resolve" onClick={(e) => { e.stopPropagation(); markResolved(n.id); }}>Resolver</button>
                     : <span className="notif-resolve" style={{ color: "hsl(var(--ok))" }}><Icon name="check" size={13} style={{ verticalAlign: "-2px" }} /> resolvida</span>}
+                  {n.ruleId && onRuleAction && (
+                    <>
+                      <button className="notif-resolve" onClick={(e) => { e.stopPropagation(); void onRuleAction(n.ruleId as string, "mute"); }}>Silenciar 7d</button>
+                      <button className="notif-resolve" onClick={(e) => { e.stopPropagation(); void onRuleAction(n.ruleId as string, "disable"); }}>Desativar regra</button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
