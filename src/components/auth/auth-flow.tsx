@@ -13,12 +13,14 @@ import type { Session } from "@/lib/types";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type AuthView = "login" | "signup" | "magic" | "forgot";
 type Go = (v: AuthView) => void;
+type AuthConfig = NonNullable<Session["deployment"]>;
 
 interface ScreenProps {
   email: string;
   setEmail: (v: string) => void;
   onAuthed: (s: Session) => void;
   go: Go;
+  config: AuthConfig;
 }
 
 async function postAuth(endpoint: "sign-in/email" | "sign-up/email", body: Record<string, unknown>) {
@@ -79,25 +81,28 @@ function AuthErr({ children }: { children?: React.ReactNode }) {
   return <div className="au-error"><Icon name="alertCircle" size={15} style={{ marginTop: 1 }} /><div>{children}</div></div>;
 }
 
-function AuthAside() {
+function AuthAside({ config }: { config: AuthConfig }) {
   return (
     <aside className="au-aside">
       <div className="au-aside-grid" />
       <div className="au-brand">
         <div className="au-mark"><Icon name="flame" size={19} strokeWidth={2.2} /></div>
         <div>
-          <div className="au-brand-name">Ateliê OS</div>
-          <div className="au-brand-sub">Backoffice artesanal</div>
+          <div className="au-brand-name">{config.brandName}</div>
+          <div className="au-brand-sub">{config.deploymentMode === "standalone" ? "Ambiente dedicado" : "Backoffice artesanal"}</div>
         </div>
       </div>
 
       <div className="au-aside-mid">
-        <div className="au-headline">O sistema operacional do seu ateliê.</div>
-        <div className="au-sub">Catálogo, estoque, produção, cura, pedidos e etiquetas — tudo em um lugar, no ritmo da sua bancada.</div>
+        <div className="au-headline">{config.loginHeadline}</div>
+        <div className="au-sub">{config.loginSubheading}</div>
         <div className="au-feats">
           <div className="au-feat">
             <div className="au-feat-ico"><Icon name="layers" size={15} /></div>
-            <div><div className="au-feat-t">Multiempresa, white-label</div><div className="au-feat-d">Cada ateliê com sua marca, sua equipe e seus acessos.</div></div>
+            <div>
+              <div className="au-feat-t">{config.deploymentMode === "standalone" ? "Ambiente dedicado" : "Multiempresa, white-label"}</div>
+              <div className="au-feat-d">{config.deploymentMode === "standalone" ? "Dados, marca, equipe e acessos isolados para este cliente." : "Cada ateliê com sua marca, sua equipe e seus acessos."}</div>
+            </div>
           </div>
           <div className="au-feat">
             <div className="au-feat-ico"><Icon name="scan" size={15} /></div>
@@ -111,23 +116,23 @@ function AuthAside() {
       </div>
 
       <div className="au-aside-foot">
-        <span className="mono">v2.1</span><span>·</span><span>© 2026 Ateliê OS</span>
+        <span className="mono">v2.1</span><span>·</span><span>© 2026 {config.brandName}</span>
       </div>
     </aside>
   );
 }
 
-function MobileBrand() {
+function MobileBrand({ config }: { config: AuthConfig }) {
   return (
     <div className="au-mobile-brand">
       <div className="au-mobile-mark"><Icon name="flame" size={17} strokeWidth={2.2} /></div>
-      <div><div style={{ fontSize: 14, fontWeight: 650 }}>Ateliê OS</div></div>
+      <div><div style={{ fontSize: 14, fontWeight: 650 }}>{config.brandName}</div></div>
     </div>
   );
 }
 
 /* ---------------- Login ---------------- */
-function LoginScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
+function LoginScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
   const [pw, setPw] = React.useState("");
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -148,10 +153,10 @@ function LoginScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
 
   return (
     <div className="au-card">
-      <MobileBrand />
+      <MobileBrand config={config} />
       <div className="au-eyebrow">Bem-vinda de volta</div>
-      <h1 className="au-title">Entrar no Ateliê OS</h1>
-      <p className="au-lede">Acesse o backoffice do seu ateliê para continuar de onde parou.</p>
+      <h1 className="au-title">Entrar no {config.brandName}</h1>
+      <p className="au-lede">{config.loginSubheading}</p>
 
       <form className="au-form" onSubmit={submit}>
         <AuthErr>{err}</AuthErr>
@@ -165,23 +170,27 @@ function LoginScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
         </Button>
       </form>
 
-      <div className="au-div">ou continue com</div>
-      <div className="au-oauth">
-        <button className="au-oauth-btn" onClick={() => toast("Google ainda nao esta configurado neste ambiente.", "info")}>
-          <GoogleG className="au-g" /> Continuar com Google
-        </button>
-        <button className="au-oauth-btn" onClick={() => go("magic")}>
-          <Icon name="wand" size={16} /> Entrar com link mágico
-        </button>
-      </div>
+      {config.deploymentMode !== "standalone" && (
+        <>
+          <div className="au-div">ou continue com</div>
+          <div className="au-oauth">
+            <button className="au-oauth-btn" onClick={() => toast("Google ainda nao esta configurado neste ambiente.", "info")}>
+              <GoogleG className="au-g" /> Continuar com Google
+            </button>
+            <button className="au-oauth-btn" onClick={() => go("magic")}>
+              <Icon name="wand" size={16} /> Entrar com link mágico
+            </button>
+          </div>
+        </>
+      )}
 
-      <div className="au-foot">Ainda não tem conta? <button className="au-link" onClick={() => go("signup")}>Criar conta</button></div>
+      {config.allowSignup && <div className="au-foot">Ainda não tem conta? <button className="au-link" onClick={() => go("signup")}>Criar conta</button></div>}
     </div>
   );
 }
 
 /* ---------------- Signup (criar ateliê / aceitar convite) ---------------- */
-function SignupScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
+function SignupScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
   const [mode, setMode] = React.useState<"create" | "invite">("create");
   const [name, setName] = React.useState("");
   const [pw, setPw] = React.useState("");
@@ -222,7 +231,7 @@ function SignupScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
 
   return (
     <div className="au-card">
-      <MobileBrand />
+      <MobileBrand config={config} />
       <div className="au-eyebrow">Comece agora</div>
       <h1 className="au-title">Criar sua conta</h1>
       <p className="au-lede">Monte um novo ateliê do zero ou entre em um ateliê que te convidou.</p>
@@ -281,7 +290,7 @@ function SignupScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
 }
 
 /* ---------------- Magic link ---------------- */
-function MagicScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
+function MagicScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
   const [step, setStep] = React.useState<"email" | "code">("email");
   const [err, setErr] = React.useState<string | null>(null);
   const [code, setCode] = React.useState(["", "", "", "", "", ""]);
@@ -313,7 +322,7 @@ function MagicScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
   if (step === "email") {
     return (
       <div className="au-card">
-        <MobileBrand />
+        <MobileBrand config={config} />
         <button className="au-link au-link--muted" onClick={() => go("login")} style={{ marginBottom: 18 }}>← Voltar para o login</button>
         <h1 className="au-title">Entrar com link mágico</h1>
         <p className="au-lede">Enviamos um código de 6 dígitos para o seu e-mail. Sem senha para lembrar.</p>
@@ -331,7 +340,7 @@ function MagicScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
   }
   return (
     <div className="au-card">
-      <MobileBrand />
+      <MobileBrand config={config} />
       <div className="au-sent-ico"><Icon name="inbox" size={24} /></div>
       <h1 className="au-title">Digite o código</h1>
       <p className="au-lede">Enviamos um código para <span className="au-sent-mail">{email}</span>. Ele expira em 10 minutos.</p>
@@ -352,7 +361,7 @@ function MagicScreen({ email, setEmail, onAuthed, go }: ScreenProps) {
 }
 
 /* ---------------- Forgot / reset ---------------- */
-function ForgotScreen({ email, setEmail, go }: ScreenProps) {
+function ForgotScreen({ email, setEmail, go, config }: ScreenProps) {
   const [step, setStep] = React.useState<"email" | "sent" | "reset">("email");
   const [err, setErr] = React.useState<string | null>(null);
   const [pw, setPw] = React.useState(""); const [pw2, setPw2] = React.useState("");
@@ -372,7 +381,7 @@ function ForgotScreen({ email, setEmail, go }: ScreenProps) {
   if (step === "email") {
     return (
       <div className="au-card">
-        <MobileBrand />
+        <MobileBrand config={config} />
         <button className="au-link au-link--muted" onClick={() => go("login")} style={{ marginBottom: 18 }}>← Voltar para o login</button>
         <h1 className="au-title">Recuperar senha</h1>
         <p className="au-lede">Informe o e-mail da sua conta e enviaremos um link para criar uma nova senha.</p>
@@ -390,7 +399,7 @@ function ForgotScreen({ email, setEmail, go }: ScreenProps) {
   if (step === "sent") {
     return (
       <div className="au-card">
-        <MobileBrand />
+        <MobileBrand config={config} />
         <div className="au-sent-ico"><Icon name="inbox" size={24} /></div>
         <h1 className="au-title">Verifique seu e-mail</h1>
         <p className="au-lede">Enviamos um link de recuperação para <span className="au-sent-mail">{email}</span>. Abra o link para definir uma nova senha.</p>
@@ -404,7 +413,7 @@ function ForgotScreen({ email, setEmail, go }: ScreenProps) {
   }
   return (
     <div className="au-card">
-      <MobileBrand />
+      <MobileBrand config={config} />
       <h1 className="au-title">Criar nova senha</h1>
       <p className="au-lede">Escolha uma nova senha para <span className="au-sent-mail">{email}</span>.</p>
       <form className="au-form" onSubmit={reset}>
@@ -418,18 +427,18 @@ function ForgotScreen({ email, setEmail, go }: ScreenProps) {
 }
 
 /* ---------------- Flow controller ---------------- */
-export function AuthFlow({ onAuthed }: { onAuthed: (s: Session) => void }) {
+export function AuthFlow({ onAuthed, config }: { onAuthed: (s: Session) => void; config: AuthConfig }) {
   const [view, setView] = React.useState<AuthView>("login");
   const [email, setEmail] = React.useState("");
-  const go: Go = (v) => setView(v);
-  const props: ScreenProps = { email, setEmail, onAuthed, go };
+  const go: Go = (v) => setView(config.allowSignup || v !== "signup" ? v : "login");
+  const props: ScreenProps = { email, setEmail, onAuthed, go, config };
 
   return (
     <div className="au-wrap">
-      <AuthAside />
+      <AuthAside config={config} />
       <div className="au-main">
         {view === "login" && <LoginScreen {...props} />}
-        {view === "signup" && <SignupScreen {...props} />}
+        {view === "signup" && config.allowSignup && <SignupScreen {...props} />}
         {view === "magic" && <MagicScreen {...props} />}
         {view === "forgot" && <ForgotScreen {...props} />}
       </div>

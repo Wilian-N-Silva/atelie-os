@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { companies, companyMembers, type MemberRole } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { standaloneCompanySlug } from "@/lib/deployment";
+
+export const ACTIVE_COMPANY_COOKIE = "atelie_active_company_id";
 
 export type AuthenticatedUser = {
   id: string;
@@ -57,7 +60,13 @@ export async function requireAuthenticatedUser(request: Request): Promise<Authen
   };
 }
 
-export async function getActiveCompanyForUser(userId: string) {
+function cookieValue(request: Request | null | undefined, name: string) {
+  const cookie = request?.headers.get("cookie") ?? "";
+  const found = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+  return found ? decodeURIComponent(found.slice(name.length + 1)) : null;
+}
+
+async function membershipForCompany(userId: string, companyId: string) {
   const [membership] = await db
     .select({
       role: companyMembers.role,
@@ -70,11 +79,63 @@ export async function getActiveCompanyForUser(userId: string) {
     .where(
       and(
         eq(companyMembers.userId, userId),
+        eq(companies.id, companyId),
         eq(companyMembers.status, "active"),
         eq(companies.status, "active"),
       ),
     )
     .limit(1);
+  return membership ?? null;
+}
+
+export async function getActiveCompanyForUser(userId: string, request?: Request) {
+  const requestedCompanyId = cookieValue(request, ACTIVE_COMPANY_COOKIE);
+  const standaloneSlug = standaloneCompanySlug();
+
+  let membership = requestedCompanyId ? await membershipForCompany(userId, requestedCompanyId) : null;
+
+  if (!membership && standaloneSlug) {
+    const [standalone] = await db
+      .select({
+        role: companyMembers.role,
+        companyId: companies.id,
+        companyName: companies.name,
+        companySlug: companies.slug,
+      })
+      .from(companyMembers)
+      .innerJoin(companies, eq(companyMembers.companyId, companies.id))
+      .where(
+        and(
+          eq(companyMembers.userId, userId),
+          eq(companyMembers.status, "active"),
+          eq(companies.status, "active"),
+          eq(companies.slug, standaloneSlug),
+        ),
+      )
+      .limit(1);
+    membership = standalone ?? null;
+  }
+
+  if (!membership) {
+    const [fallback] = await db
+      .select({
+        role: companyMembers.role,
+        companyId: companies.id,
+        companyName: companies.name,
+        companySlug: companies.slug,
+      })
+      .from(companyMembers)
+      .innerJoin(companies, eq(companyMembers.companyId, companies.id))
+      .where(
+        and(
+          eq(companyMembers.userId, userId),
+          eq(companyMembers.status, "active"),
+          eq(companies.status, "active"),
+        ),
+      )
+      .limit(1);
+    membership = fallback ?? null;
+  }
 
   if (!membership) return null;
 
@@ -92,7 +153,7 @@ export async function requireAppRouteContext(request: Request): Promise<AppRoute
   const authResult = await requireAuthenticatedUser(request);
   if ("response" in authResult) return authResult;
 
-  const activeCompany = await getActiveCompanyForUser(authResult.user.id);
+  const activeCompany = await getActiveCompanyForUser(authResult.user.id, request);
 
   if (!activeCompany) {
     return { response: appRouteError("forbidden", 403) };

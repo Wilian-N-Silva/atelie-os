@@ -52,6 +52,21 @@ function Placeholder({ name }: { name: string }) {
 /* Screens built so far. Others fall back to a placeholder. */
 type ScreenProps = { go: Go; route: Route; session: Session };
 type ScreenComponentProps = ScreenProps & { onSessionPatch: (patch: Partial<Session>) => void };
+type PublicAppConfig = NonNullable<Session["deployment"]>;
+
+const DEFAULT_PUBLIC_CONFIG: PublicAppConfig = {
+  deploymentMode: "saas",
+  allowSignup: true,
+  brandName: "Atelie OS",
+  loginHeadline: "Acesse seu backoffice",
+  loginSubheading: "Entre para gerenciar operacao, estoque, pedidos e producao.",
+};
+
+async function fetchPublicConfig(): Promise<PublicAppConfig> {
+  const res = await fetch("/api/app/public-config", { cache: "no-store" });
+  if (!res.ok) return DEFAULT_PUBLIC_CONFIG;
+  return { ...DEFAULT_PUBLIC_CONFIG, ...(await res.json()) };
+}
 
 const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   hoje: Dashboard as React.ComponentType<ScreenComponentProps>,
@@ -196,6 +211,7 @@ function Workspace({
 
 export function AppRoot() {
   const [session, setSession] = React.useState<Session | null>(null);
+  const [publicConfig, setPublicConfig] = React.useState<PublicAppConfig>(DEFAULT_PUBLIC_CONFIG);
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
@@ -203,8 +219,11 @@ export function AppRoot() {
     document.documentElement.classList.toggle("dark", localStorage.getItem("atelie-theme") === "dark");
     document.documentElement.setAttribute("data-density", localStorage.getItem("atelie-density") === "compact" ? "compact" : "comfortable");
     localStorage.removeItem("atelie-session");
-    fetchAppSession()
-      .then(setSession)
+    Promise.all([fetchPublicConfig(), fetchAppSession().catch(() => null)])
+      .then(([config, nextSession]) => {
+        setPublicConfig(nextSession?.deployment ?? config);
+        setSession(nextSession);
+      })
       .catch(() => setSession(null))
       .finally(() => setReady(true));
   }, []);
@@ -239,7 +258,7 @@ export function AppRoot() {
   };
 
   if (!ready) return null; // avoid auth/app flash before hydration
-  if (!session) return <AuthFlow onAuthed={setBackendSession} />;
+  if (!session) return <AuthFlow onAuthed={setBackendSession} config={publicConfig} />;
   if (!session.onboarded) return <Onboarding user={session.user} onDone={finishOnboarding} />;
   return (
     <Workspace

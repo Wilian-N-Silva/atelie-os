@@ -378,21 +378,96 @@ function BrandingTab({
   );
 }
 
+type TeamUser = {
+  id: string;
+  name?: string;
+  email: string;
+  role: "owner" | "admin" | "operator";
+  status: string;
+};
+
+type TeamPayload = {
+  members: TeamUser[];
+  invites: TeamUser[];
+};
+
 function UsersTab({ session }: { session: Session }) {
+  const [team, setTeam] = React.useState<TeamPayload>({ members: [], invites: [] });
+  const [email, setEmail] = React.useState("");
+  const [role, setRole] = React.useState<"admin" | "operator">("operator");
+  const [saving, setSaving] = React.useState(false);
+  const canInvite = session.user.role === "owner" || session.user.role === "admin";
+
+  const loadTeam = React.useCallback(() => {
+    fetch("/api/app/team", { cache: "no-store", credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((payload: TeamPayload | null) => {
+        if (payload) setTeam(payload);
+      })
+      .catch(() => null);
+  }, []);
+
+  React.useEffect(() => loadTeam(), [loadTeam]);
+
+  const invite = async () => {
+    if (!email.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/app/team", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, role }),
+      });
+      if (!res.ok) throw new Error("team_invite_failed");
+      setTeam(await res.json() as TeamPayload);
+      setEmail("");
+      toast("Convite registrado.", "ok");
+    } catch {
+      toast("Nao foi possivel registrar o convite.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const users = [
-    { name: session.user.name, email: session.user.email, role: session.user.role, status: "ativo" },
-    { name: "Camila", email: "camila@example.com", role: "admin", status: "convite pendente" },
-    { name: "Operacao", email: "operacao@example.com", role: "operator", status: "ativo" },
+    ...team.members.map((member) => ({ ...member, name: member.name || member.email, status: member.status === "active" ? "ativo" : member.status })),
+    ...team.invites.map((item) => ({ ...item, name: item.email, status: "convite pendente" })),
   ];
 
   return (
     <Card style={{ overflow: "hidden" }}>
-      <CardHeader><CardTitle>Equipe</CardTitle><Button variant="default" size="sm" icon="plus" onClick={() => toast("Convite registrado nesta sessao.", "info")}>Convidar usuario</Button></CardHeader>
+      <CardHeader><CardTitle>Equipe</CardTitle></CardHeader>
+      {canInvite && (
+        <CardContent>
+          <div className="ff-grid" style={{ gridTemplateColumns: "minmax(220px, 1fr) 180px auto", alignItems: "end" }}>
+            <Field label="E-mail do convite">
+              <Input icon="user" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="pessoa@cliente.com" />
+            </Field>
+            <Field label="Papel">
+              <Select
+                value={role}
+                onChange={(value) => setRole(value === "admin" ? "admin" : "operator")}
+                options={[
+                  { value: "operator", label: "Operador(a)" },
+                  { value: "admin", label: "Administrador(a)" },
+                ]}
+              />
+            </Field>
+            <Button variant="default" size="sm" icon="plus" disabled={saving || !email.trim()} onClick={invite}>
+              {saving ? "Convidando..." : "Convidar"}
+            </Button>
+          </div>
+        </CardContent>
+      )}
       <table className="om-table">
         <thead><tr><th>Usuario</th><th>Papel</th><th>Status</th><th className="om-td-right">Acoes</th></tr></thead>
         <tbody>
+          {users.length === 0 && (
+            <tr><td colSpan={4}><div className="cell-sub">Nenhum membro neste tenant.</div></td></tr>
+          )}
           {users.map((user) => (
-            <tr key={user.email}>
+            <tr key={`${user.status}-${user.email}`}>
               <td><div className="item-cell"><Avatar name={user.name} size={32} /><div><div className="cell-title">{user.name}</div><div className="cell-sub">{user.email}</div></div></div></td>
               <td><Badge tone={user.role === "owner" ? "ok" : user.role === "admin" ? "info" : "neutral"}>{user.role}</Badge></td>
               <td><Badge tone={user.status === "ativo" ? "ok" : "warn"} dot>{user.status}</Badge></td>

@@ -251,19 +251,6 @@ export async function createCompanyForUser(input: {
   invites?: OnboardingInvite[];
   logoUrl?: string | null;
 }) {
-  const existingMembership = await db.query.companyMembers.findFirst({
-    where: and(eq(companyMembers.userId, input.userId), eq(companyMembers.status, "active")),
-    columns: { companyId: true },
-  });
-
-  if (existingMembership) {
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, existingMembership.companyId),
-      columns: { name: true },
-    });
-    return { companyId: existingMembership.companyId, companyName: company?.name ?? input.companyName };
-  }
-
   const slug = await uniqueCompanySlug(input.companyName);
   const [company] = await db
     .insert(companies)
@@ -273,7 +260,7 @@ export async function createCompanyForUser(input: {
       segment: input.segment ?? null,
       teamSize: input.teamSize ?? null,
     })
-    .returning({ id: companies.id, name: companies.name });
+    .returning({ id: companies.id, name: companies.name, slug: companies.slug });
 
   if (!company) {
     throw new Error("Company creation did not return a row.");
@@ -342,5 +329,5 @@ export async function createCompanyForUser(input: {
     metadata: { source: "onboarding" },
   });
 
-  return { companyId: company.id, companyName: company.name };
+  return { companyId: company.id, companyName: company.name, companySlug: company.slug };
 }

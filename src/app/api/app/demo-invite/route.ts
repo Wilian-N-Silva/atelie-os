@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { companyMembers, companies } from "@/db/schema";
 import { db } from "@/db/client";
 import { createCompanyForUser } from "@/db/bootstrap";
-import { requireAuthenticatedUser } from "@/lib/app-route-context";
+import { ACTIVE_COMPANY_COOKIE, requireAuthenticatedUser } from "@/lib/app-route-context";
+import { publicAppConfig } from "@/lib/deployment";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
 
   const existingCompany = await db.query.companies.findFirst({
     where: eq(companies.slug, "atelie-de-exemplo"),
-    columns: { id: true, name: true },
+    columns: { id: true, name: true, slug: true },
   });
 
   const company = existingCompany ?? (await createCompanyForUser({
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     companyName: "Atelie de exemplo",
     segment: "velas",
     teamSize: "small",
-  }).then((created) => ({ id: created.companyId, name: created.companyName })));
+  }).then((created) => ({ id: created.companyId, name: created.companyName, slug: created.companySlug })));
 
   if (!company) {
     return NextResponse.json({ error: "company_not_found" }, { status: 500 });
@@ -43,13 +44,28 @@ export async function POST(request: Request) {
     .where(and(eq(companyMembers.companyId, company.id), eq(companyMembers.userId, authResult.user.id)))
     .limit(1);
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     user: {
       name: authResult.user.name,
       email: authResult.user.email,
       role: membership?.role ?? "operator",
     },
+    company: {
+      id: company.id,
+      name: company.name,
+      slug: company.slug,
+    },
     companyName: company.name,
+    companyBranding: null,
     onboarded: true,
+    deployment: publicAppConfig(),
   });
+  res.cookies.set(ACTIVE_COMPANY_COOKIE, company.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  return res;
 }

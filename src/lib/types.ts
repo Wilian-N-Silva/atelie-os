@@ -23,10 +23,22 @@ export interface SessionUser {
 
 export interface Session {
   user: SessionUser;
+  company: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
   companyName: string | null;
   companyBranding?: {
     logoUrl: string | null;
     themeTokens: BrandTheme | null;
   } | null;
   onboarded: boolean;
+  deployment?: {
+    deploymentMode: "saas" | "standalone";
+    allowSignup: boolean;
+    brandName: string;
+    loginHeadline: string;
+    loginSubheading: string;
+  };
 }

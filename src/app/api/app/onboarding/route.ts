@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createCompanyForUser } from "@/db/bootstrap";
-import { requireAuthenticatedUser } from "@/lib/app-route-context";
+import { ACTIVE_COMPANY_COOKIE, requireAuthenticatedUser } from "@/lib/app-route-context";
+import { isStandaloneDeployment } from "@/lib/deployment";
 import type { OnboardingInvite } from "@/lib/seed-defaults";
 
 export const runtime = "nodejs";
@@ -17,6 +18,10 @@ function parseLogoUrl(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  if (isStandaloneDeployment()) {
+    return NextResponse.json({ error: "onboarding_disabled" }, { status: 403 });
+  }
+
   const authResult = await requireAuthenticatedUser(request);
   if ("response" in authResult) return authResult.response;
 
@@ -43,5 +48,13 @@ export async function POST(request: Request) {
     invites: body?.invites ?? [],
   });
 
-  return NextResponse.json({ companyName: company.companyName });
+  const res = NextResponse.json({ companyName: company.companyName, companyId: company.companyId });
+  res.cookies.set(ACTIVE_COMPANY_COOKIE, company.companyId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  return res;
 }
