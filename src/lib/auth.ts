@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/db/client";
 import { account, session, user, verification } from "@/db/schema";
+import { sendPasswordResetEmail } from "@/lib/email-server";
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
 
@@ -40,6 +41,9 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
     autoSignIn: true,
+    sendResetPassword: async ({ user: resetUser, url }) => {
+      await sendPasswordResetEmail({ to: resetUser.email, url });
+    },
   },
   trustedOrigins,
   plugins: [nextCookies()],

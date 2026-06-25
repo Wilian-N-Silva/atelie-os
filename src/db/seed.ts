@@ -33,6 +33,10 @@ const OWNER_NAME = process.env.SEED_OWNER_NAME?.trim() || OWNER_EMAIL;
 const OWNER_PASSWORD = getSeedOwnerPassword();
 const COMPANY_NAME = process.env.SEED_COMPANY_NAME?.trim() || "Atelie OS";
 
+if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "true") {
+  throw new Error("Refusing to run demo seed in production. Set ALLOW_DEMO_SEED=true only for an intentional demo tenant.");
+}
+
 function getSeedOwnerPassword() {
   const password = process.env.SEED_OWNER_PASSWORD?.trim();
 

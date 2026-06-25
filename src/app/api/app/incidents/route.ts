@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLogs, financeEntries, incidents, inventoryLocations, items, orders, stockMovements } from "@/db/schema";
-import { requireAppRouteContext } from "@/lib/app-route-context";
+import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
+import { INCIDENT_WRITE_ROLES } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,8 @@ export async function POST(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, INCIDENT_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const type = cleanString(body?.type, 40);
   const reason = cleanString(body?.reason, 500);
@@ -153,6 +156,8 @@ export async function PATCH(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, INCIDENT_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const incidentId = cleanString(body?.incidentId, 80);
   const stockImpact: StockImpact = STOCK_IMPACTS.includes(body?.stockImpact as StockImpact) ? (body!.stockImpact as StockImpact) : "none";

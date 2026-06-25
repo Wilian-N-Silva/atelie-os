@@ -29,6 +29,7 @@ import {
   FIRST_STEPS,
   type OnboardingInvite,
 } from "@/lib/seed-defaults";
+import { sendTeamInviteEmail } from "@/lib/email-server";
 import { slugify } from "@/lib/slug";
 
 export async function uniqueCompanySlug(name: string) {
@@ -322,6 +323,14 @@ export async function createCompanyForUser(input: {
         metadata: { role: invite.role },
       })),
     );
+
+    await Promise.all(validInvites.map((invite) => sendTeamInviteEmail({
+      to: invite.email.toLowerCase(),
+      companyName: company.name,
+      role: invite.role,
+    }).catch((error) => {
+      console.warn("[email:invite_failed]", invite.email, error);
+    })));
   }
 
   await db.insert(auditLogs).values({

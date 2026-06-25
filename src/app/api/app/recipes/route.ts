@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLogs, items, recipeComponents, recipeVersions, recipes } from "@/db/schema";
-import { requireAppRouteContext } from "@/lib/app-route-context";
+import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
 import type { Recipe } from "@/lib/domain";
+import { RECIPE_WRITE_ROLES } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -187,6 +188,8 @@ export async function POST(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, RECIPE_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as {
     mode?: unknown;
     baseVersionId?: unknown;
@@ -270,6 +273,8 @@ export async function PATCH(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, RECIPE_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as { versionId?: unknown; status?: unknown } | null;
   const versionId = cleanString(body?.versionId, 80);
   const status = body?.status === "ativa" ? "ativa" : body?.status === "rascunho" ? "rascunho" : null;

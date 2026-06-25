@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLogs, productionOrders, recipeVersions, recipes } from "@/db/schema";
-import { requireAppRouteContext } from "@/lib/app-route-context";
+import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
 import type { ProductionOrder } from "@/lib/domain";
 import { cleanMaterialLotAllocations, materialLotAllocationsFromMetadata } from "@/lib/material-lots";
+import { PRODUCTION_WRITE_ROLES } from "@/lib/permissions";
 import { applyProductionWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, PRODUCTION_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as { production?: unknown } | null;
   if (!body?.production || typeof body.production !== "object") {
     return NextResponse.json({ error: "invalid_production" }, { status: 400 });
@@ -160,6 +163,8 @@ export async function PATCH(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, PRODUCTION_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as { productionId?: unknown; patch?: unknown } | null;
   const productionId = cleanString(body?.productionId, 80);
   if (!productionId || !body?.patch || typeof body.patch !== "object") {

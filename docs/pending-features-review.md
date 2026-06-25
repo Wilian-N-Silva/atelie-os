@@ -149,22 +149,24 @@ This document lists the product features that are still missing or only partiall
 
 ## Production Readiness Features
 
-- [ ] Email via Resend
-  - Password reset.
-  - Team invites.
-  - Server-only API key configuration.
+- [x] Email via Resend
+  - [x] Password reset.
+  - [x] Team invites.
+  - [x] Server-only API key configuration.
 
-- [ ] File storage via Cloudflare R2
-  - Storage abstraction for external label PDFs, attachments, generated documents, proofs, and import files.
-  - S3-compatible server-side client.
+- [x] File storage via Cloudflare R2
+  - [x] Storage abstraction for external label PDFs, attachments, generated documents, proofs, and import files.
+  - [x] S3-compatible server-side client.
 
-- [ ] Permissions enforcement
-  - Apply role-gating across purchases, finance, incidents, recipes, production, settings, workflows, labels, and admin writes.
-  - Review whether inventory needs a finer permission matrix.
+- [x] Permissions enforcement
+  - [x] Apply role-gating across purchases, finance, incidents, recipes, production, settings, workflows, labels, and admin writes.
+  - [x] Review whether inventory needs a finer permission matrix.
+  - Inventory writes remain restricted to owner/admin for beta; orders, production, and incidents allow operator writes where the workflow needs it.
 
-- [ ] Real-tenant onboarding
-  - Let a new company configure units, locations, items, workflows, label types, and shipping data without relying on seeds.
-  - Remove or neutralize named fake data from production-oriented seeds if needed.
+- [x] Real-tenant onboarding
+  - [x] Let a new company configure units, locations, items, workflows, label types, and shipping data without relying on seeds.
+  - [x] Remove or neutralize named fake data from production-oriented seeds if needed.
+  - New tenants receive neutral defaults through company bootstrap, while demo seed data is blocked in production unless explicitly allowed.
 
 ---
 

@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLogs, channelSkuMappings, customers, importOrders, items, orderItems, orders } from "@/db/schema";
-import { requireAppRouteContext } from "@/lib/app-route-context";
+import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
 import { parseOrdersCsv, type ImportLine } from "@/lib/import-orders";
 import { generateOrderTrackToken } from "@/lib/order-track-token";
+import { IMPORT_WRITE_ROLES } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -107,6 +108,8 @@ export async function POST(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, IMPORT_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as { channelKey?: unknown; csv?: unknown } | null;
   const channelKey = cleanString(body?.channelKey, 40) || "marketplace";
   const csv = typeof body?.csv === "string" ? body.csv : "";
@@ -286,6 +289,8 @@ export async function PATCH(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
+  const roleError = requireAppRole(context, IMPORT_WRITE_ROLES);
+  if (roleError) return roleError;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const action = cleanString(body?.action, 20);
 
