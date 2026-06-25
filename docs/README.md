@@ -1,34 +1,44 @@
-# Documentation Index
+# Documentation
 
 Updated 2026-06-25.
 
-Use this file to decide which document is authoritative and which files can be
-archived or deleted after confirmation.
+This folder follows a simple documentation split:
 
-## Keep as active
+- Product intent and status
+- Operational QA and launch readiness
+- Integration/API contracts
+- Long-form reference material
 
-- `git-workflow.md` - branch policy. Current and useful.
-- `prd-v2.1-atelie-os-instante-ambar.md` - product source spec. Keep as historical/current product reference, even when implementation is ahead.
-- `pending-features-review.md` - feature gap tracker. Current source of truth for MVP/partial feature closure and integration roadmap.
-- `outstanding-work.md` - current beta launch backlog: QA gates, launch blockers, hardening, and integrations.
-- `qa-checklist.md` - manual QA checklist for the current beta branch.
-- `feature-log.md` - chronological implementation log.
-- `integration-melhor-envio.md` - provider runbook for Melhor Envio.
-- `integration-public-tracking.md` - external-site contract for public tracking.
-- `manual-base-atelie-os-instante-ambar.md` - long-form base manual/reference draft.
+## Source Of Truth
 
-## Duplicated or partly superseded
+- `feature-map.md` - single product map for feature status, delivered history, beta gates, production readiness, integration priority, and deferred scope.
+- `prd-v2.1-atelie-os-instante-ambar.md` - product specification and acceptance reference. Keep even when implementation is ahead.
+- `qa-checklist.md` - manual QA procedure for the current beta branch.
+- `git-workflow.md` - branch policy.
+- `manual-base-atelie-os-instante-ambar.md` - long-form manual/reference draft.
 
-- `outstanding-work.md` previously duplicated completed MVP gaps that are now tracked in `pending-features-review.md`. It has been trimmed back to active beta work.
-- `feature-log.md` overlaps with commit history, but it is still useful as a product-readable delivery log.
-- `manual-base-atelie-os-instante-ambar.md` overlaps the PRD and in-app help. Keep it while the user manual is still being assembled.
+## Integrations
 
-## Candidate for deletion or archive
+Integration priority and product status live in `feature-map.md`.
+Provider/API details stay in dedicated runbooks:
 
-- `protocolo.md` - small old quality-test note. The same concept is now represented in the PRD, recipe-test flow, feature log, and in-app/help material. Archive/delete after confirming no one uses it as a standalone shop-floor checklist.
+- `integration-melhor-envio.md` - Melhor Envio OAuth, tenant token handling, quote/label/tracking operations, sandbox notes.
+- `integration-public-tracking.md` - public tracking API contract for a separate storefront/site.
 
-## Next documentation cleanup
+Future provider runbooks should be added only when implementation starts or an
+external contract needs exact setup instructions. Keep roadmap-only providers in
+`feature-map.md`.
 
-- Refresh root `HANDOFF.md`.
-- Re-check root `CLAUDE.md` against the actual stack and workflow.
-- Keep provider docs updated only when behavior or external API contracts change.
+## Removed Or Merged
+
+- `pending-features-review.md` - merged into `feature-map.md`.
+- `outstanding-work.md` - merged into `feature-map.md` and `qa-checklist.md`.
+- `feature-log.md` - merged into the delivered history section of `feature-map.md`.
+- `protocolo.md` - removed; the fixed recipe-test criteria now live in code, PRD/manual context, and feature history.
+
+## Maintenance Rules
+
+- Add feature status changes to `feature-map.md`.
+- Add manual validation steps to `qa-checklist.md`.
+- Add provider-specific setup/API details to an integration runbook.
+- Do not create a new planning doc when an existing source of truth can be extended.

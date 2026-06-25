@@ -4,7 +4,7 @@
  * Pure and source-agnostic: it maps an order's internal fields (status,
  * payment, carrier tracking) to a sanitized, customer-friendly view. The same
  * fields can be fed by manual entry, Melhor Envio, or a future marketplace
- * integration (see outstanding-work.md section I) without changing this code or
+ * integration without changing this code or
  * the public endpoint. No PII, costs, tokens, or internal labels are exposed.
  */
 

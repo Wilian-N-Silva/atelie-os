@@ -2,7 +2,7 @@
 
 Manual browser QA before the first beta deployment. Login with the configured seed/admin user for dev, then repeat key flows with a new tenant created from scratch.
 
-For the delivered feature list see `docs/feature-log.md`; for remaining product scope see `docs/pending-features-review.md`; for launch blockers see `docs/outstanding-work.md`.
+For feature status, launch gates, and integration priority, see `docs/feature-map.md`.
 
 ## 0. Setup
 

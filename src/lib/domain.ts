@@ -176,7 +176,7 @@ export type MaterialLotAllocation = {
 
 export type RecipeTestResult = "pendente" | "aprovado" | "ajustar" | "reprovado";
 
-/** Fixed quality protocol (docs/protocolo.md). Keyed by stable technical key, not the label. */
+/** Fixed recipe-test quality protocol. Keyed by stable technical key, not the label. */
 export const RECIPE_TEST_CRITERIA = [
   { key: "aroma_frio", label: "Aroma frio", howTo: "Cheiro percebido ao abrir o pote/caixa.", approveWhen: "Perceptível sem precisar aproximar demais." },
   { key: "aroma_quente", label: "Aroma quente", howTo: "Vela acesa por 1h30 em quarto ou sala.", approveWhen: "Aroma presente no cômodo, sem ficar enjoativo." },
