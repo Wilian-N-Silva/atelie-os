@@ -3,7 +3,14 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLogs, inventoryLocations, productionOrders, stockMovements } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
-import { QC_CHECKLIST, isQualityDecision, statusForDecision, type QcChecklistItem } from "@/lib/quality";
+import {
+  QC_CHECKLIST,
+  isQualityDecision,
+  qualityQuantities,
+  qualityRequiresNote,
+  statusForDecision,
+  type QcChecklistItem,
+} from "@/lib/quality";
 import { applyProductionWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
@@ -72,18 +79,23 @@ export async function POST(request: Request) {
 
   const checklist = cleanChecklist(body?.checklist);
   const note = cleanString(body?.note, 1000);
+  if (qualityRequiresNote(decision) && !note) {
+    return NextResponse.json({ error: "quality_note_required" }, { status: 400 });
+  }
   const nextStatus = statusForDecision(decision);
   const planned = Number(production.planned);
   const lossQtyRaw = Number(body?.lossQty);
-  const lossQty = decision === "loss"
-    ? (Number.isFinite(lossQtyRaw) && lossQtyRaw > 0 ? Math.min(lossQtyRaw, planned) : planned)
-    : 0;
+  const { lossQty, releaseQty } = qualityQuantities(decision, planned, lossQtyRaw);
+  if (decision === "partial" && lossQty <= 0) {
+    return NextResponse.json({ error: "partial_loss_qty_required" }, { status: 400 });
+  }
 
   const quality = {
     decision,
     note,
     checklist,
-    lossQty: decision === "loss" ? lossQty : 0,
+    releaseQty,
+    lossQty,
     reviewedByUserId: context.user.id,
     reviewedAt: new Date().toISOString(),
   };
@@ -104,7 +116,7 @@ export async function POST(request: Request) {
       nextStatus,
     });
 
-    if (decision === "loss" && lossQty > 0 && production.productItemId) {
+    if (lossQty > 0 && production.productItemId) {
       const cure = await tx.query.inventoryLocations.findFirst({
         where: and(eq(inventoryLocations.companyId, context.company.id), eq(inventoryLocations.type, "cure"), eq(inventoryLocations.isActive, true)),
         columns: { id: true },
@@ -119,7 +131,7 @@ export async function POST(request: Request) {
         sourceType: "quality.loss",
         sourceId: `${productionId}:loss`,
         createdByUserId: context.user.id,
-        metadata: { productionId, lot: production.lot, lossQty },
+        metadata: { productionId, lot: production.lot, lossQty, decision },
       });
     }
 
@@ -129,7 +141,7 @@ export async function POST(request: Request) {
       action: "production.update",
       entityType: "production_order",
       entityId: productionId,
-      metadata: { operation: "quality_review", decision, previousStatus: production.status, nextStatus, lossQty: quality.lossQty },
+      metadata: { operation: "quality_review", decision, previousStatus: production.status, nextStatus, releaseQty, lossQty: quality.lossQty },
     });
   });
 

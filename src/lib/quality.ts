@@ -20,19 +20,42 @@ export const QC_CHECKLIST = [
 
 export type QcChecklistItem = { key: string; label: string; checked: boolean };
 
-export type QualityDecision = "approve" | "approve_note" | "block" | "loss";
+export type QualityDecision = "approve" | "approve_note" | "partial" | "block" | "loss";
 
 export function emptyQcChecklist(): QcChecklistItem[] {
   return QC_CHECKLIST.map((item) => ({ key: item.key, label: item.label, checked: false }));
 }
 
 export function isQualityDecision(value: unknown): value is QualityDecision {
-  return value === "approve" || value === "approve_note" || value === "block" || value === "loss";
+  return value === "approve" || value === "approve_note" || value === "partial" || value === "block" || value === "loss";
 }
 
 /** Internal production status a quality decision moves the lot to. */
 export function statusForDecision(decision: QualityDecision): string {
   if (decision === "block") return "bloqueada";
   if (decision === "loss") return "finalizada";
-  return "liberada"; // approve / approve_note -> release into sellable stock
+  return "liberada"; // approve / approve_note / partial -> release approved stock
+}
+
+export function qualityQuantities(decision: QualityDecision, planned: number, rawLossQty: number) {
+  const total = Number.isFinite(planned) && planned > 0 ? planned : 0;
+  const enteredLoss = Number.isFinite(rawLossQty) && rawLossQty > 0 ? rawLossQty : 0;
+  const lossQty = decision === "loss"
+    ? total
+    : decision === "partial"
+      ? Math.min(enteredLoss, Math.max(0, total - 0.001))
+      : 0;
+  const releaseQty = decision === "approve" || decision === "approve_note"
+    ? total
+    : decision === "partial"
+      ? Math.max(0, total - lossQty)
+      : 0;
+  return {
+    lossQty: Math.round(lossQty * 1000) / 1000,
+    releaseQty: Math.round(releaseQty * 1000) / 1000,
+  };
+}
+
+export function qualityRequiresNote(decision: QualityDecision) {
+  return decision === "approve_note" || decision === "partial" || decision === "block" || decision === "loss";
 }

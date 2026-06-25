@@ -20,9 +20,10 @@ This document lists the product features that are still missing or only partiall
   - Copyable shipping quote/message for WhatsApp.
 
 - [ ] Lot traceability
-  - Track which consumed material lots produced each output lot.
-  - Store produced-lot real cost.
-  - Connect material consumption, production output, QC, and stock release in a single traceability view.
+  - [ ] Track which consumed material lots produced each output lot through an explicit material-lot selection step.
+  - [x] Store and surface produced-lot real cost from production consumption movements.
+  - [x] Connect material consumption, production output, QC, and stock release in a single production-lot traceability view.
+  - [ ] Backfill historical/seed movements where trace metadata is missing.
 
 - [ ] In-app help completeness
   - Verify every major module has contextual "Como usar esta tela?" help.
@@ -65,9 +66,10 @@ This document lists the product features that are still missing or only partiall
 
 - [ ] Quality control and lots phase 2
   - Real `inventory_lots` model.
-  - Partial lot approval/rejection.
-  - Required loss/approval reasons.
+  - [x] Partial lot approval/rejection.
+  - [x] Required loss/approval reasons.
   - Stronger block/release stock link to QC status.
+  - First slices delivered: production drawer now shows lot trace, real cost, QC outcome, output/release/loss quantities, and consumed-material rows; quality review supports partial approval and reason enforcement.
 
 - [ ] Returns and exchanges phase 2
   - Enforce that shipped orders cannot be cancelled directly.

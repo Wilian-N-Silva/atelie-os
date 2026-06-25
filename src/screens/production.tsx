@@ -26,6 +26,8 @@ import {
 } from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
 import { createProduction, loadProduction, updateProduction } from "@/lib/production-client";
+import { loadLotTrace } from "@/lib/lot-trace-client";
+import type { LotTrace } from "@/lib/lot-trace";
 import { loadRecipes } from "@/lib/recipes-client";
 import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
 import { buildStatusMap, statusIcon, statusInfo, type StatusInfo } from "@/lib/workflow-status";
@@ -210,12 +212,82 @@ function productionCurePatch(order: ProductionOrder, recipe: Recipe | undefined)
   };
 }
 
+function formatQty(value: number) {
+  return value.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+}
+
+function LotTracePanel({ trace, loading }: { trace: LotTrace | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <div style={{ padding: "10px 0 4px", color: "hsl(var(--muted-foreground))", fontSize: 12.5 }}>
+        Carregando rastreabilidade do lote...
+      </div>
+    );
+  }
+
+  if (!trace) {
+    return (
+      <div className="prod-plan-callout prod-plan-callout--warn" style={{ marginBottom: 18 }}>
+        <Icon name="alertCircle" size={17} />
+        <div>
+          <strong>Rastreabilidade ainda sem movimentos</strong>
+          <span>Ela aparece depois que a OP consome materiais, gera lote, passa pela qualidade ou libera estoque.</span>
+        </div>
+      </div>
+    );
+  }
+
+  const consumed = trace.movements.filter((movement) => movement.type === "production_consumption");
+  const qualityLabel = trace.quality?.decision
+    ? String(trace.quality.decision).replace("_", " ")
+    : "sem revisao";
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="block-label">Rastreabilidade do lote</div>
+      <div className="grid cols-2" style={{ gap: 8, marginBottom: 10 }}>
+        <Card><CardContent style={{ padding: 12 }}><Stat label="Custo real" value={BRL(trace.realCost)} sub={trace.unitCost == null ? "aguardando consumo" : `${BRL(trace.unitCost)} / un`} /></CardContent></Card>
+        <Card><CardContent style={{ padding: 12 }}><Stat label="Lote produzido" value={trace.lot ?? "-"} sub={`${formatQty(trace.outputQty)} produzidas`} /></CardContent></Card>
+        <Card><CardContent style={{ padding: 12 }}><Stat label="Liberado" value={`${formatQty(trace.releasedQty)} un`} sub={trace.lossQty ? `${formatQty(trace.lossQty)} perda` : "sem perda registrada"} /></CardContent></Card>
+        <Card><CardContent style={{ padding: 12 }}><Stat label="Qualidade" value={qualityLabel} sub={trace.quality?.reviewedAt ? new Date(trace.quality.reviewedAt).toLocaleDateString("pt-BR") : undefined} /></CardContent></Card>
+      </div>
+      <table className="minitable">
+        <tbody>
+          {consumed.map((movement) => (
+            <tr key={movement.id}>
+              <td>
+                <div style={{ fontWeight: 550 }}>{movement.itemName}</div>
+                <div className="cell-sub sku">{movement.sku} - lote {movement.lot ?? "sem lote informado"}</div>
+              </td>
+              <td className="r muted">{formatQty(movement.quantity)}</td>
+              <td className="r">{movement.lineCost == null ? "-" : BRL(movement.lineCost)}</td>
+            </tr>
+          ))}
+          {consumed.length === 0 && <tr><td className="muted">Nenhum consumo automatizado registrado ainda.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint, onUpdate }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void; onUpdate: (productionId: string, patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>) => Promise<void> }) {
   const status = statusInfo(statusMap, order.status);
   const recipe = recipeFor(order, recipes);
   const rows = materialRows(order, recipes, find);
   const anyShort = rows.some((row) => row.short);
   const [saving, setSaving] = React.useState(false);
+  const [trace, setTrace] = React.useState<LotTrace | null>(null);
+  const [traceLoading, setTraceLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    setTraceLoading(true);
+    loadLotTrace(order.id)
+      .then((next) => { if (alive) setTrace(next); })
+      .catch(() => { if (alive) setTrace(null); })
+      .finally(() => { if (alive) setTraceLoading(false); });
+    return () => { alive = false; };
+  }, [order.id]);
 
   const runUpdate = async (patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>, message: string) => {
     setSaving(true);
@@ -282,6 +354,7 @@ function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrin
           <div className="field"><span className="field-k">Responsavel</span><span className="field-v">{order.resp}</span></div>
           <div className="field"><span className="field-k">Data planejada</span><span className="field-v">{formatPlannedDate(order.date)}</span></div>
           <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimatedCost(order, recipes, find))}</span></div>
+          <LotTracePanel trace={trace} loading={traceLoading} />
         </div>
 
         <div className="drawer-foot">

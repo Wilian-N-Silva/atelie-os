@@ -12,6 +12,7 @@ import {
   workflows,
 } from "@/db/schema";
 import { expandStockTargets } from "@/lib/kit-composition";
+import { movementLineCost } from "@/lib/lot-trace";
 
 type AutomationEntity = "order" | "production";
 type StockMovementInsert = typeof stockMovements.$inferInsert;
@@ -40,6 +41,16 @@ const PRODUCTION_RELEASE_AUTOMATIONS = ["release_stock_availability", "released"
 
 function quantityString(value: number) {
   return String(Math.round(value * 1000) / 1000);
+}
+
+function productionReleaseQuantity(production: typeof productionOrders.$inferSelect) {
+  const metadata = production.metadata ?? {};
+  const quality = metadata.quality && typeof metadata.quality === "object"
+    ? metadata.quality as Record<string, unknown>
+    : null;
+  const releaseQty = Number(quality?.releaseQty);
+  if (Number.isFinite(releaseQty) && releaseQty >= 0) return releaseQty;
+  return Number(production.planned);
 }
 
 function automationIn(automation: string | null | undefined, options: string[]) {
@@ -297,6 +308,12 @@ export async function applyProductionWorkflowAutomations(input: {
       const quantity = baseQty * multiplier * (1 + (Number.isFinite(lossPct) ? lossPct : 0) / 100);
       if (!Number.isFinite(quantity) || quantity <= 0) continue;
       const locationId = await defaultLocationId(tx, companyId, component.itemId);
+      const item = await tx.query.items.findFirst({
+        where: and(eq(items.companyId, companyId), eq(items.id, component.itemId)),
+        columns: { averageCost: true, estimatedCost: true },
+      });
+      const unitCost = Number(item?.averageCost ?? item?.estimatedCost);
+      const normalizedUnitCost = Number.isFinite(unitCost) && unitCost >= 0 ? unitCost : null;
       const didInsert = await insertMovementOnce(tx, {
         companyId,
         itemId: component.itemId,
@@ -307,7 +324,16 @@ export async function applyProductionWorkflowAutomations(input: {
         sourceType: "production.consumption",
         sourceId: `${productionId}:${component.itemId}`,
         createdByUserId: actorUserId,
-        metadata: { productionId, sku: component.sku, planned, yieldQty },
+        metadata: {
+          productionId,
+          sku: component.sku,
+          planned,
+          yieldQty,
+          lot: production.lot,
+          materialLot: null,
+          unitCost: normalizedUnitCost,
+          lineCost: movementLineCost(quantity, normalizedUnitCost),
+        },
       });
       if (didInsert) inserted += 1;
     }
@@ -336,7 +362,7 @@ export async function applyProductionWorkflowAutomations(input: {
   if (shouldRelease && production.productItemId) {
     const cureLocationId = await defaultLocationId(tx, companyId, production.productItemId, "cure");
     const sellableLocationId = await defaultLocationId(tx, companyId, production.productItemId);
-    const planned = Number(production.planned);
+    const planned = productionReleaseQuantity(production);
     if (Number.isFinite(planned) && planned > 0 && cureLocationId && sellableLocationId && cureLocationId !== sellableLocationId) {
       const didInsert = await insertMovementOnce(tx, {
         companyId,
@@ -349,7 +375,7 @@ export async function applyProductionWorkflowAutomations(input: {
         sourceType: "production.release",
         sourceId: `${productionId}:${production.productItemId}`,
         createdByUserId: actorUserId,
-        metadata: { productionId, sku: production.productSku, lot: production.lot },
+        metadata: { productionId, sku: production.productSku, lot: production.lot, releaseQty: planned },
       });
       if (didInsert) inserted += 1;
     }
