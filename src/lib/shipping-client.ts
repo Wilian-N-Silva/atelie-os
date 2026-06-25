@@ -17,6 +17,17 @@ export type ShippingQuoteResponse = {
   status?: number;
 };
 
+export type PackageProfile = {
+  id: string;
+  name: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightG: number;
+  cost: number;
+  capacity: number;
+};
+
 export type ShippingAddressInput = {
   documentType?: "cpf" | "cnpj";
   name: string;

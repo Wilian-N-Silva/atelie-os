@@ -106,6 +106,18 @@ type ShippingSettings = {
   fiscalInvoiceDefault: string;
   defaultShippingAddressId: string;
   shippingAddresses: ShippingAddressSettings[];
+  packageProfiles: PackageProfileSettings[];
+};
+
+type PackageProfileSettings = {
+  id: string;
+  name: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightG: number;
+  cost: number;
+  capacity: number;
 };
 
 type ShippingAddressSettings = {
@@ -618,6 +630,19 @@ function sheetToForm(sheet: LabelSheet): SheetEditForm {
   };
 }
 
+function emptyPackageProfile(name = "Caixa pequena"): PackageProfileSettings {
+  return {
+    id: `pkg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+    lengthCm: 16,
+    widthCm: 11,
+    heightCm: 8,
+    weightG: 500,
+    cost: 0,
+    capacity: 1,
+  };
+}
+
 function parsePositive(value: string, fallback = 0) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -979,6 +1004,7 @@ function ShippingTab() {
     fiscalInvoiceDefault: "",
     defaultShippingAddressId: "",
     shippingAddresses: [emptyShippingAddress()],
+    packageProfiles: [emptyPackageProfile()],
   });
   const [destinationZip, setDestinationZip] = React.useState("");
   const [weightG, setWeightG] = React.useState("500");
@@ -1028,6 +1054,27 @@ function ShippingTab() {
     });
   };
 
+  const setPackageProfile = (id: string, patch: Partial<PackageProfileSettings>) => {
+    setSettings((current) => ({
+      ...current,
+      packageProfiles: current.packageProfiles.map((profile) => profile.id === id ? { ...profile, ...patch } : profile),
+    }));
+  };
+
+  const addPackageProfile = () => {
+    setSettings((current) => ({
+      ...current,
+      packageProfiles: [...current.packageProfiles, emptyPackageProfile(`Pacote ${current.packageProfiles.length + 1}`)],
+    }));
+  };
+
+  const removePackageProfile = (id: string) => {
+    setSettings((current) => {
+      const next = current.packageProfiles.filter((profile) => profile.id !== id);
+      return { ...current, packageProfiles: next.length ? next : [emptyPackageProfile()] };
+    });
+  };
+
   const lookupAddressCep = async (id: string) => {
     const address = settings.shippingAddresses.find((item) => item.id === id);
     if (!address) return;
@@ -1049,9 +1096,11 @@ function ShippingTab() {
   const sync = React.useCallback((payload: { shipping?: ShippingSettings } | null) => {
     if (!payload?.shipping) return;
     const addresses = payload.shipping.shippingAddresses?.length ? payload.shipping.shippingAddresses : [emptyShippingAddress()];
+    const packageProfiles = payload.shipping.packageProfiles?.length ? payload.shipping.packageProfiles : [emptyPackageProfile()];
     setSettings({
       ...payload.shipping,
       shippingAddresses: addresses,
+      packageProfiles,
       defaultShippingAddressId: payload.shipping.defaultShippingAddressId || addresses[0]?.id || "",
     });
   }, []);
@@ -1109,6 +1158,15 @@ function ShippingTab() {
           fiscalRegime: settings.fiscalRegime,
           fiscalInvoiceDefault: settings.fiscalInvoiceDefault,
           defaultShippingAddressId: settings.defaultShippingAddressId,
+          packageProfiles: settings.packageProfiles.map((profile) => ({
+            ...profile,
+            lengthCm: Number(profile.lengthCm) || 0,
+            widthCm: Number(profile.widthCm) || 0,
+            heightCm: Number(profile.heightCm) || 0,
+            weightG: Number(profile.weightG) || 0,
+            cost: Number(profile.cost) || 0,
+            capacity: Number(profile.capacity) || 1,
+          })),
           shippingAddresses: settings.shippingAddresses.map((address) => ({
             ...address,
             phone: onlyDigits(address.phone, 16),
@@ -1331,6 +1389,52 @@ function ShippingTab() {
                 </button>
               );
             })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Modelos de pacote</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>{settings.packageProfiles.length} modelo(s) para cotação e embalagem.</div>
+          </div>
+          <Button variant="outline" size="sm" icon="plus" onClick={addPackageProfile}>Adicionar pacote</Button>
+        </CardHeader>
+        <CardContent>
+          <div style={{ display: "grid", gap: 12 }}>
+            {settings.packageProfiles.map((profile) => (
+              <div key={profile.id} className="shipping-step shipping-step--compact">
+                <div className="row between" style={{ gap: 10, alignItems: "flex-start" }}>
+                  <Field label="Nome">
+                    <Input value={profile.name} onChange={(event) => setPackageProfile(profile.id, { name: event.target.value })} />
+                  </Field>
+                  <Button variant="ghost" size="sm" icon="trash" onClick={() => removePackageProfile(profile.id)}>Remover</Button>
+                </div>
+                <div className="ff-grid-3">
+                  <Field label="Comprimento (cm)">
+                    <Input value={String(profile.lengthCm)} inputMode="decimal" onChange={(event) => setPackageProfile(profile.id, { lengthCm: Number(event.target.value.replace(",", ".")) || 0 })} />
+                  </Field>
+                  <Field label="Largura (cm)">
+                    <Input value={String(profile.widthCm)} inputMode="decimal" onChange={(event) => setPackageProfile(profile.id, { widthCm: Number(event.target.value.replace(",", ".")) || 0 })} />
+                  </Field>
+                  <Field label="Altura (cm)">
+                    <Input value={String(profile.heightCm)} inputMode="decimal" onChange={(event) => setPackageProfile(profile.id, { heightCm: Number(event.target.value.replace(",", ".")) || 0 })} />
+                  </Field>
+                </div>
+                <div className="ff-grid-3">
+                  <Field label="Peso padrão (g)">
+                    <Input value={String(profile.weightG)} inputMode="numeric" onChange={(event) => setPackageProfile(profile.id, { weightG: Number(event.target.value.replace(/\D/g, "")) || 0 })} />
+                  </Field>
+                  <Field label="Custo embalagem">
+                    <Input value={String(profile.cost)} inputMode="decimal" onChange={(event) => setPackageProfile(profile.id, { cost: Number(event.target.value.replace(",", ".")) || 0 })} />
+                  </Field>
+                  <Field label="Capacidade">
+                    <Input value={String(profile.capacity)} inputMode="numeric" onChange={(event) => setPackageProfile(profile.id, { capacity: Number(event.target.value.replace(/\D/g, "")) || 1 })} />
+                  </Field>
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

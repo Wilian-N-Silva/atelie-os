@@ -14,10 +14,10 @@ This document lists the product features that are still missing or only partiall
 
 ## MVP Feature Gaps
 
-- [ ] Packaging models and standalone freight calculator
-  - CRUD for package profiles with dimensions, weight, packaging cost, and capacity.
-  - Standalone freight calculator outside the order flow.
-  - Copyable shipping quote/message for WhatsApp.
+- [x] Packaging models and standalone freight calculator
+  - [x] CRUD for package profiles with dimensions, weight, packaging cost, and capacity.
+  - [x] Standalone freight calculator outside the order flow.
+  - [x] Copyable shipping quote/message for WhatsApp.
 
 - [ ] Lot traceability
   - [x] Track which consumed material lots produced each output lot through an explicit material-lot selection step.

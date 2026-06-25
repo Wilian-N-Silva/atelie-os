@@ -38,6 +38,18 @@ type ShippingSettings = {
   fiscalInvoiceDefault?: string;
   defaultShippingAddressId?: string;
   shippingAddresses?: ShippingAddressSettings[];
+  packageProfiles?: PackageProfileSettings[];
+};
+
+type PackageProfileSettings = {
+  id: string;
+  name: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightG: number;
+  cost: number;
+  capacity: number;
 };
 
 type ShippingAddressSettings = {
@@ -70,6 +82,11 @@ function cleanDigits(value: unknown, max: number) {
 function cleanNumber(value: unknown, fallback = 0) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value.replace(",", ".")) : NaN;
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function cleanPositiveNumber(value: unknown, fallback: number) {
+  const number = cleanNumber(value, fallback);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 1000) / 1000 : fallback;
 }
 
 function cleanSettings(value: unknown): ShippingSettings {
@@ -107,6 +124,29 @@ function cleanShippingAddress(value: unknown, index: number): ShippingAddressSet
     stateAbbr: cleanString(input.stateAbbr, 2).toUpperCase(),
     postalCode,
   };
+}
+
+function cleanPackageProfile(value: unknown, index: number): PackageProfileSettings | null {
+  if (!value || typeof value !== "object") return null;
+  const input = value as Record<string, unknown>;
+  const id = cleanString(input.id, 80) || `pkg-${Date.now()}-${index}`;
+  const name = cleanString(input.name, 80) || `Pacote ${index + 1}`;
+  const lengthCm = cleanPositiveNumber(input.lengthCm, 16);
+  const widthCm = cleanPositiveNumber(input.widthCm, 11);
+  const heightCm = cleanPositiveNumber(input.heightCm, 4);
+  const weightG = Math.round(cleanPositiveNumber(input.weightG, 500));
+  const cost = Math.max(0, Math.round(cleanNumber(input.cost, 0) * 100) / 100);
+  const capacity = Math.max(1, Math.round(cleanPositiveNumber(input.capacity, 1)));
+  return { id, name, lengthCm, widthCm, heightCm, weightG, cost, capacity };
+}
+
+function packageProfiles(all: ShippingSettings) {
+  const list = Array.isArray(all.packageProfiles)
+    ? all.packageProfiles.map((item, index) => cleanPackageProfile(item, index)).filter((item): item is PackageProfileSettings => !!item)
+    : [];
+  return list.length ? list : [
+    { id: "default-small", name: "Caixa pequena", lengthCm: 16, widthCm: 11, heightCm: 8, weightG: 500, cost: 0, capacity: 1 },
+  ];
 }
 
 function legacyShippingAddress(all: ShippingSettings): ShippingAddressSettings | null {
@@ -200,6 +240,7 @@ async function getSettings(companyId: string) {
   const all = cleanSettings(row?.settings?.shipping);
   const credential = await readMelhorEnvioCredential(companyId);
   const addresses = shippingAddresses(all);
+  const profiles = packageProfiles(all);
   const defaultAddress = addresses.find((address) => address.id === all.defaultShippingAddressId) ?? addresses[0] ?? null;
   return {
     melhorEnvioEnabled: !!all.melhorEnvioEnabled,
@@ -231,6 +272,7 @@ async function getSettings(companyId: string) {
     fiscalInvoiceDefault: all.fiscalInvoiceDefault ?? "",
     defaultShippingAddressId: defaultAddress?.id ?? "",
     shippingAddresses: addresses,
+    packageProfiles: profiles,
   };
 }
 
@@ -256,9 +298,13 @@ export async function PATCH(request: Request) {
 
   const currentShipping = cleanSettings(current.settings.shipping);
   const addressesInput = Array.isArray(body?.shippingAddresses) ? body.shippingAddresses : [];
+  const packageProfilesInput = Array.isArray(body?.packageProfiles) ? body.packageProfiles : [];
   const nextAddresses = addressesInput
     .map((item, index) => cleanShippingAddress(item, index))
     .filter((item): item is ShippingAddressSettings => !!item);
+  const nextPackageProfiles = packageProfilesInput
+    .map((item, index) => cleanPackageProfile(item, index))
+    .filter((item): item is PackageProfileSettings => !!item);
   const defaultAddress = nextAddresses.find((address) => address.id === cleanString(body?.defaultShippingAddressId, 80)) ?? nextAddresses[0] ?? null;
   const storeDocumentType = cleanDocumentType(body?.storeDocumentType);
   const nextShipping: ShippingSettings = {
@@ -286,6 +332,7 @@ export async function PATCH(request: Request) {
     fiscalInvoiceDefault: cleanString(body?.fiscalInvoiceDefault, 80),
     defaultShippingAddressId: defaultAddress?.id ?? "",
     shippingAddresses: nextAddresses,
+    packageProfiles: nextPackageProfiles.length ? nextPackageProfiles : packageProfiles(currentShipping),
   };
   if (nextShipping.melhorEnvioEnabled && (!defaultAddress || !isCompleteShippingAddress(defaultAddress))) {
     return NextResponse.json({

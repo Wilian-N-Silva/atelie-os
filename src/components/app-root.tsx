@@ -17,6 +17,7 @@ import { StockCountScreen } from "@/screens/stock-count";
 import { ItemsScreen } from "@/screens/items";
 import { ManualScreen } from "@/screens/manual";
 import { OrdersScreen } from "@/screens/orders";
+import { FreightCalculatorScreen } from "@/screens/freight-calculator";
 import { ImportsScreen } from "@/screens/imports";
 import { ProductionScreen } from "@/screens/production";
 import { QualityScreen } from "@/screens/quality";
@@ -55,6 +56,7 @@ type ScreenComponentProps = ScreenProps & { onSessionPatch: (patch: Partial<Sess
 const SCREENS: Record<string, React.ComponentType<ScreenComponentProps>> = {
   hoje: Dashboard as React.ComponentType<ScreenComponentProps>,
   pedidos: OrdersScreen as React.ComponentType<ScreenComponentProps>,
+  frete: FreightCalculatorScreen as React.ComponentType<ScreenComponentProps>,
   importacoes: ImportsScreen as React.ComponentType<ScreenComponentProps>,
   producao: ProductionScreen as React.ComponentType<ScreenComponentProps>,
   qualidade: QualityScreen as React.ComponentType<ScreenComponentProps>,
