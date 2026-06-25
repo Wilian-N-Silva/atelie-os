@@ -437,19 +437,18 @@ async function seedDemoProduction(companyId: string, ownerId: string) {
   const skuToItemId = new Map(itemRows.map((item) => [item.sku, item.id]));
 
   for (const sample of seedProduction) {
+    const productItemId = skuToItemId.get(sample.productSku) ?? null;
     const existing = await db.query.productionOrders.findFirst({
       where: and(eq(productionOrders.companyId, companyId), eq(productionOrders.code, sample.code)),
       columns: { id: true },
     });
-    if (existing) continue;
-
-    const [order] = await db
+    const order = existing ?? (await db
       .insert(productionOrders)
       .values({
         companyId,
         code: sample.code,
         number: sample.number,
-        productItemId: skuToItemId.get(sample.productSku) ?? null,
+        productItemId,
         productSku: sample.productSku,
         productName: sample.productName,
         recipeName: sample.recipeName,
@@ -465,16 +464,38 @@ async function seedDemoProduction(companyId: string, ownerId: string) {
         source: "seed.demo_production",
         createdByUserId: ownerId,
       })
-      .returning({ id: productionOrders.id });
+      .returning({ id: productionOrders.id }))[0];
 
-    await db.insert(auditLogs).values({
-      companyId,
-      actorUserId: ownerId,
-      action: "production.create",
-      entityType: "production_order",
-      entityId: order.id,
-      metadata: { code: sample.code, number: sample.number, source: "seed.demo_production" },
-    });
+    if (!existing) {
+      await db.insert(auditLogs).values({
+        companyId,
+        actorUserId: ownerId,
+        action: "production.create",
+        entityType: "production_order",
+        entityId: order.id,
+        metadata: { code: sample.code, number: sample.number, source: "seed.demo_production" },
+      });
+    }
+
+    if (sample.lot && productItemId) {
+      await db.update(stockMovements)
+        .set({
+          metadata: {
+            productionId: order.id,
+            sku: sample.productSku,
+            lot: sample.lot,
+            backfilledAt: new Date().toISOString(),
+            backfillSource: "seed.demo_production",
+          },
+        })
+        .where(and(
+          eq(stockMovements.companyId, companyId),
+          eq(stockMovements.itemId, productItemId),
+          eq(stockMovements.sourceType, "seed.initial.cure"),
+          eq(stockMovements.sourceId, sample.productSku),
+          eq(stockMovements.quantity, sample.planned.toString()),
+        ));
+    }
   }
 }
 

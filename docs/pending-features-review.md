@@ -19,11 +19,11 @@ This document lists the product features that are still missing or only partiall
   - [x] Standalone freight calculator outside the order flow.
   - [x] Copyable shipping quote/message for WhatsApp.
 
-- [ ] Lot traceability
+- [x] Lot traceability
   - [x] Track which consumed material lots produced each output lot through an explicit material-lot selection step.
   - [x] Store and surface produced-lot real cost from production consumption movements.
   - [x] Connect material consumption, production output, QC, and stock release in a single production-lot traceability view.
-  - [ ] Backfill historical/seed movements where trace metadata is missing.
+  - [x] Backfill historical/seed movements where trace metadata is missing.
 
 - [x] In-app help completeness
   - [x] Verify every major module has contextual "Como usar esta tela?" help.

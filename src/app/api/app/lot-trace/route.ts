@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { items, productionOrders, stockMovements } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
@@ -69,14 +69,45 @@ export async function GET(request: Request) {
     .innerJoin(items, eq(stockMovements.itemId, items.id))
     .where(and(
       eq(stockMovements.companyId, contextResult.context.company.id),
-      sql`${stockMovements.metadata}->>'productionId' = ${productionId}`,
+      or(
+        sql`${stockMovements.metadata}->>'productionId' = ${productionId}`,
+        eq(stockMovements.sourceId, productionId),
+        sql`${stockMovements.sourceId} like ${`${productionId}:%`}`,
+      ),
     ))
     .orderBy(desc(stockMovements.occurredAt));
+
+  const backfilledMetadata = new Map<string, Record<string, unknown>>();
+  await Promise.all(rows.map(async (row) => {
+    const metadata = row.metadata ?? {};
+    if (metadata.productionId === production.id) {
+      backfilledMetadata.set(row.id, metadata);
+      return;
+    }
+    const quantity = Number(row.quantity);
+    const fallbackCost = numberOrNull(row.averageCost) ?? numberOrNull(row.estimatedCost);
+    const unitCost = numberOrNull(metadata.unitCost) ?? fallbackCost;
+    const type = movementType(row.sourceType, row.movementType);
+    const nextMetadata = {
+      ...metadata,
+      productionId: production.id,
+      sku: metadataString(metadata, "sku") ?? row.sku,
+      lot: metadataString(metadata, "lot") ?? production.lot ?? null,
+      unitCost,
+      lineCost: type === "production_consumption" ? movementLineCost(quantity, unitCost) : numberOrNull(metadata.lineCost),
+      backfilledAt: new Date().toISOString(),
+      backfillSource: "lot_trace_api",
+    };
+    backfilledMetadata.set(row.id, nextMetadata);
+    await db.update(stockMovements)
+      .set({ metadata: nextMetadata })
+      .where(eq(stockMovements.id, row.id));
+  }));
 
   const movements: LotTraceMovement[] = rows.flatMap((row) => {
     const type = movementType(row.sourceType, row.movementType);
     if (!type) return [];
-    const metadata = row.metadata ?? {};
+    const metadata = backfilledMetadata.get(row.id) ?? row.metadata ?? {};
     const quantity = Number(row.quantity);
     const fallbackCost = numberOrNull(row.averageCost) ?? numberOrNull(row.estimatedCost);
     const unitCost = numberOrNull(metadata.unitCost) ?? fallbackCost;
