@@ -36,6 +36,7 @@ import {
 import { useItemDirectory } from "@/lib/item-directory";
 import { createRecipe, createRecipeVersion, loadRecipes, setRecipeStatus } from "@/lib/recipes-client";
 import { createRecipeTest, loadRecipeTests, submitRecipeTest } from "@/lib/recipe-tests-client";
+import { compatibleUnitCodes, convertQuantityOrSame } from "@/lib/unit-conversion";
 import type { Go, Route } from "@/lib/types";
 
 const TEST_RESULT_TONE: Record<RecipeTestResult, "ok" | "bad" | "warn" | "neutral"> = {
@@ -58,13 +59,15 @@ type RecipeComponentForm = {
   key: string;
   sku: string;
   qty: string;
+  unit: string;
   loss: string;
 };
 
 function recipeCost(recipe: Recipe, find: FindItem) {
   return recipe.components.reduce((sum, component) => {
     const item = find(component.sku);
-    return sum + (item?.costAvg ?? 0) * component.qty * (1 + component.loss / 100);
+    const baseQty = convertQuantityOrSame(component.qty, component.unit, item?.unit);
+    return sum + (item?.costAvg ?? 0) * baseQty * (1 + component.loss / 100);
   }, 0);
 }
 
@@ -81,7 +84,7 @@ function recipeComponentFromSku(sku: string, index: number): RecipeComponentForm
     "TMP-PIN-052": { qty: "1", loss: "0" },
   };
   const fallback = defaults[sku] ?? { qty: "1", loss: "2" };
-  return { key: `${sku}-${index}-${Date.now()}`, sku, qty: fallback.qty, loss: fallback.loss };
+  return { key: `${sku}-${index}-${Date.now()}`, sku, qty: fallback.qty, unit: "", loss: fallback.loss };
 }
 
 function defaultRecipeComponents(materials: ItemSummary[]): RecipeComponentForm[] {
@@ -96,6 +99,7 @@ function componentsFromRecipe(recipe: Recipe): RecipeComponentForm[] {
     key: `${component.sku}-${index}-${recipe.id}`,
     sku: component.sku,
     qty: String(component.qty),
+    unit: component.unit,
     loss: String(component.loss),
   }));
 }
@@ -249,8 +253,9 @@ function RecipeDrawer({
 }) {
   const components = recipe.components.map((component) => {
     const item = find(component.sku);
-    const cost = (item?.costAvg ?? 0) * component.qty * (1 + component.loss / 100);
-    return { ...component, cost, available: item?.available ?? 0 };
+    const baseQty = convertQuantityOrSame(component.qty, component.unit, item?.unit);
+    const cost = (item?.costAvg ?? 0) * baseQty * (1 + component.loss / 100);
+    return { ...component, baseQty, cost, available: item?.available ?? 0, stockUnit: item?.unit ?? component.unit };
   });
   const total = recipeCost(recipe, find);
   const approvedTest = tests.some((test) => test.status === "aprovado");
@@ -285,7 +290,7 @@ function RecipeDrawer({
             <tbody>
               {components.map((component, index) => (
                 <tr key={`${component.sku}-${index}`}>
-                  <td><div className="cell-title">{component.name}</div><div className="cell-sub sku">{component.sku} - {component.available} disp.</div></td>
+                  <td><div className="cell-title">{component.name}</div><div className="cell-sub sku">{component.sku} - {component.available} {component.stockUnit} disp.</div></td>
                   <td className="om-td-right">{component.qty} {component.unit}</td>
                   <td className="om-td-right muted">{component.loss}%</td>
                   <td className="om-td-right" style={{ fontWeight: 550 }}>{BRL(component.cost)}</td>
@@ -409,15 +414,21 @@ function RecipeFormModal({
     const item = find(component.sku);
     const qty = parseRecipeNumber(component.qty);
     const loss = parseRecipeNumber(component.loss);
-    const cost = (item?.costAvg ?? 0) * qty * (1 + loss / 100);
+    const unit = component.unit || item?.unit || "un";
+    const stockUnit = item?.unit ?? unit;
+    const baseQty = convertQuantityOrSame(qty, unit, stockUnit);
+    const cost = (item?.costAvg ?? 0) * baseQty * (1 + loss / 100);
     return {
       ...component,
       item,
       qtyNumber: qty,
+      baseQty,
       lossNumber: loss,
       cost,
       available: item?.available ?? 0,
-      unit: item?.unit ?? "un",
+      unit,
+      stockUnit,
+      compatibleUnits: compatibleUnitCodes(stockUnit),
       name: item?.name ?? component.sku,
     };
   });
@@ -548,11 +559,14 @@ function RecipeFormModal({
                     <td style={{ minWidth: 260 }}>
                       <Select
                         value={component.sku}
-                        onChange={(value) => setComponent(component.key, { sku: value })}
+                        onChange={(value) => {
+                          const item = find(value);
+                          setComponent(component.key, { sku: value, unit: item?.unit ?? "" });
+                        }}
                         options={componentOptions.map((item) => ({ value: item.sku, label: `${item.name} ${item.variant}` }))}
                       />
                       <div className="cell-sub" style={{ marginTop: 4 }}>
-                        <span className="sku">{component.sku}</span> - {BRL(component.item?.costAvg ?? 0)}/{component.unit}
+                        <span className="sku">{component.sku}</span> - {BRL(component.item?.costAvg ?? 0)}/{component.stockUnit}
                       </div>
                     </td>
                     <td>
@@ -563,7 +577,11 @@ function RecipeFormModal({
                           onChange={(event) => setComponent(component.key, { qty: event.target.value })}
                           style={{ width: 78 }}
                         />
-                        <span className="muted" style={{ fontSize: 12.5 }}>{component.unit}</span>
+                        <Select
+                          value={component.unit}
+                          onChange={(value) => setComponent(component.key, { unit: value })}
+                          options={component.compatibleUnits.map((unit) => ({ value: unit, label: unit }))}
+                        />
                       </div>
                     </td>
                     <td>
@@ -578,8 +596,8 @@ function RecipeFormModal({
                       </div>
                     </td>
                     <td className="om-td-right">
-                      <Badge tone={component.available >= component.qtyNumber ? "ok" : "warn"}>
-                        {component.available} {component.unit}
+                      <Badge tone={component.available >= component.baseQty ? "ok" : "warn"}>
+                        {component.available} {component.stockUnit}
                       </Badge>
                     </td>
                     <td className="om-td-right" style={{ fontWeight: 650 }}>{BRL(component.cost)}</td>
@@ -619,7 +637,7 @@ function RecipeFormModal({
             {resolvedComponents.map((component) => (
               <div className="row between" key={`${component.key}-availability`} style={{ fontSize: 12.5, marginTop: 7, gap: 10 }}>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{component.name}</span>
-                <Badge tone={component.available >= component.qtyNumber ? "ok" : "warn"}>{component.available} {component.unit}</Badge>
+                <Badge tone={component.available >= component.baseQty ? "ok" : "warn"}>{component.available} {component.stockUnit}</Badge>
               </div>
             ))}
           </div>

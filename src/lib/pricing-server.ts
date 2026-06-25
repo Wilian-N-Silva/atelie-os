@@ -1,7 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, items, priceHistory, recipeComponents, recipeVersions, recipes } from "@/db/schema";
+import { auditLogs, items, priceHistory, recipeComponents, recipeVersions, recipes, units } from "@/db/schema";
 import { clampFraction, computePricing, type PricingResult } from "@/lib/pricing";
+import { convertQuantityOrSame } from "@/lib/unit-conversion";
 
 const DEFAULT_MIN_MARGIN = 0.5;
 
@@ -34,21 +35,28 @@ function readPricingConfig(metadata: Record<string, unknown> | null | undefined)
   return { minMargin, laborCost, extraCost };
 }
 
-/** Map of itemId -> preferred unit cost (real average, else estimate). */
 async function itemCostMap(companyId: string) {
   const rows = await db
-    .select({ id: items.id, sku: items.sku, averageCost: items.averageCost, estimatedCost: items.estimatedCost })
+    .select({ id: items.id, sku: items.sku, unit: items.baseUnitId, averageCost: items.averageCost, estimatedCost: items.estimatedCost })
     .from(items)
     .where(eq(items.companyId, companyId));
-  const bySku = new Map<string, number>();
+  const unitRows = await db.query.units.findMany({
+    where: eq(units.companyId, companyId),
+    columns: { id: true, code: true },
+  });
+  const unitById = new Map(unitRows.map((unit) => [unit.id, unit.code]));
+  const bySku = new Map<string, { cost: number; unit: string }>();
   for (const row of rows) {
-    bySku.set(row.sku, toNumber(row.averageCost) ?? toNumber(row.estimatedCost) ?? 0);
+    bySku.set(row.sku, {
+      cost: toNumber(row.averageCost) ?? toNumber(row.estimatedCost) ?? 0,
+      unit: row.unit ? unitById.get(row.unit) ?? "un" : "un",
+    });
   }
   return bySku;
 }
 
 /** Map of product SKU -> active-recipe material+packaging cost per unit. */
-async function recipeCostBySku(companyId: string, costBySku: Map<string, number>) {
+async function recipeCostBySku(companyId: string, costBySku: Map<string, { cost: number; unit: string }>) {
   const recipeRows = await db
     .select({ id: recipes.id, productSku: recipes.productSku })
     .from(recipes)
@@ -68,6 +76,7 @@ async function recipeCostBySku(companyId: string, costBySku: Map<string, number>
       recipeVersionId: recipeComponents.recipeVersionId,
       sku: recipeComponents.sku,
       quantity: recipeComponents.quantity,
+      unit: recipeComponents.unit,
       loss: recipeComponents.loss,
     })
     .from(recipeComponents)
@@ -75,10 +84,12 @@ async function recipeCostBySku(companyId: string, costBySku: Map<string, number>
 
   const costByVersion = new Map<string, number>();
   for (const component of components) {
-    const unitCost = costBySku.get(component.sku) ?? 0;
+    const itemCost = costBySku.get(component.sku);
+    const unitCost = itemCost?.cost ?? 0;
     const qty = toNumber(component.quantity) ?? 0;
+    const convertedQty = convertQuantityOrSame(qty, component.unit, itemCost?.unit);
     const loss = toNumber(component.loss) ?? 0;
-    const add = unitCost * qty * (1 + loss / 100);
+    const add = unitCost * convertedQty * (1 + loss / 100);
     costByVersion.set(component.recipeVersionId, (costByVersion.get(component.recipeVersionId) ?? 0) + add);
   }
 

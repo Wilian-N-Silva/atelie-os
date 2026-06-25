@@ -8,12 +8,14 @@ import {
   recipeComponents,
   recipeVersions,
   stockMovements,
+  units,
   workflowSteps,
   workflows,
 } from "@/db/schema";
 import { expandStockTargets } from "@/lib/kit-composition";
 import { movementLineCost } from "@/lib/lot-trace";
 import { materialLotAllocationsFromMetadata } from "@/lib/material-lots";
+import { convertQuantityOrSame } from "@/lib/unit-conversion";
 
 type AutomationEntity = "order" | "production";
 type StockMovementInsert = typeof stockMovements.$inferInsert;
@@ -27,6 +29,7 @@ type AutomationTx = {
     recipeComponents: typeof import("@/db/client").db.query.recipeComponents;
     recipeVersions: typeof import("@/db/client").db.query.recipeVersions;
     stockMovements: typeof import("@/db/client").db.query.stockMovements;
+    units: typeof import("@/db/client").db.query.units;
     workflowSteps: typeof import("@/db/client").db.query.workflowSteps;
     workflows: typeof import("@/db/client").db.query.workflows;
   };
@@ -320,7 +323,7 @@ export async function applyProductionWorkflowAutomations(input: {
     });
     const components = await tx.query.recipeComponents.findMany({
       where: eq(recipeComponents.recipeVersionId, production.recipeVersionId),
-      columns: { itemId: true, quantity: true, loss: true, sku: true },
+      columns: { itemId: true, quantity: true, unit: true, loss: true, sku: true },
     });
     const planned = Number(production.planned);
     const yieldQty = Number(version?.yieldQty ?? 1) || 1;
@@ -330,13 +333,20 @@ export async function applyProductionWorkflowAutomations(input: {
       if (!component.itemId) continue;
       const baseQty = Number(component.quantity);
       const lossPct = Number(component.loss);
-      const quantity = baseQty * multiplier * (1 + (Number.isFinite(lossPct) ? lossPct : 0) / 100);
-      if (!Number.isFinite(quantity) || quantity <= 0) continue;
       const locationId = await defaultLocationId(tx, companyId, component.itemId);
       const item = await tx.query.items.findFirst({
         where: and(eq(items.companyId, companyId), eq(items.id, component.itemId)),
-        columns: { averageCost: true, estimatedCost: true },
+        columns: { averageCost: true, estimatedCost: true, baseUnitId: true },
       });
+      const itemUnit = item?.baseUnitId
+        ? await tx.query.units.findFirst({
+          where: eq(units.id, item.baseUnitId),
+          columns: { code: true },
+        })
+        : null;
+      const convertedBaseQty = convertQuantityOrSame(baseQty, component.unit, itemUnit?.code);
+      const quantity = convertedBaseQty * multiplier * (1 + (Number.isFinite(lossPct) ? lossPct : 0) / 100);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
       const unitCost = Number(item?.averageCost ?? item?.estimatedCost);
       const normalizedUnitCost = Number.isFinite(unitCost) && unitCost >= 0 ? unitCost : null;
       for (const target of productionConsumptionTargets({
@@ -362,6 +372,8 @@ export async function applyProductionWorkflowAutomations(input: {
             sku: component.sku,
             planned,
             yieldQty,
+            recipeUnit: component.unit,
+            stockUnit: itemUnit?.code ?? component.unit,
             lot: production.lot,
             materialLot: target.lot,
             unitCost: normalizedUnitCost,

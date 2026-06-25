@@ -30,10 +30,10 @@ This document lists the product features that are still missing or only partiall
   - [x] Add first-steps checklist.
   - [x] Add glossary and keyword search.
 
-- [ ] Full unit-conversion engine
-  - Convert compatible units in recipes and stock, for example `1000 g = 1 kg`.
-  - Keep unit `code` stable while allowing tenant display names.
-  - Define conversion factors by unit kind.
+- [x] Full unit-conversion engine
+  - [x] Convert compatible units in recipes and stock, for example `1000 g = 1 kg`.
+  - [x] Keep unit `code` stable while allowing tenant display names.
+  - [x] Define conversion factors by unit kind.
 
 - [x] More complete reports and exports
   - [x] Production summary export.

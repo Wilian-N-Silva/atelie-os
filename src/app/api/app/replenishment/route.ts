@@ -9,6 +9,7 @@ import {
   shouldShowReplenishment,
   type ReplenishmentSuggestion,
 } from "@/lib/replenishment";
+import { convertQuantityOrSame } from "@/lib/unit-conversion";
 
 export const runtime = "nodejs";
 
@@ -56,7 +57,7 @@ async function openProductionDemand(companyId: string) {
     });
     const components = await db.query.recipeComponents.findMany({
       where: eq(recipeComponents.recipeVersionId, production.recipeVersionId as string),
-      columns: { itemId: true, quantity: true, loss: true },
+      columns: { itemId: true, quantity: true, unit: true, loss: true },
     });
     const planned = Number(production.planned);
     const yieldQty = Number(version?.yieldQty ?? 1) || 1;
@@ -65,7 +66,20 @@ async function openProductionDemand(companyId: string) {
     for (const component of components) {
       const baseQty = Number(component.quantity);
       const lossPct = Number(component.loss);
-      const quantity = baseQty * multiplier * (1 + (Number.isFinite(lossPct) ? lossPct : 0) / 100);
+      const item = component.itemId
+        ? await db.query.items.findFirst({
+          where: eq(items.id, component.itemId),
+          columns: { baseUnitId: true },
+        })
+        : null;
+      const itemUnit = item?.baseUnitId
+        ? await db.query.units.findFirst({
+          where: eq(units.id, item.baseUnitId),
+          columns: { code: true },
+        })
+        : null;
+      const convertedBaseQty = convertQuantityOrSame(baseQty, component.unit, itemUnit?.code);
+      const quantity = convertedBaseQty * multiplier * (1 + (Number.isFinite(lossPct) ? lossPct : 0) / 100);
       addDemand(demand, component.itemId, quantity);
     }
   }
