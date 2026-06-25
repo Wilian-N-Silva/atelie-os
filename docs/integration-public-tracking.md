@@ -30,10 +30,10 @@ Pick one:
    ```
    The token comes from the order (`order.trackToken`). Build customer links on the site as `https://seusite.com/rastreio/<track_token>` and have the page call this endpoint with that token.
 
-2. **Manual lookup.** Order number plus the email OR postal code used on the order (the email/CEP is the authorization factor):
+2. **Manual lookup.** Company slug plus order number and the email OR postal code used on the order (the email/CEP is the authorization factor):
    ```
-   GET /api/public/track?order=<number>&email=<email>
-   GET /api/public/track?order=<number>&cep=<8 digits>
+   GET /api/public/track?company=<company_slug>&order=<number>&email=<email>
+   GET /api/public/track?company=<company_slug>&order=<number>&cep=<8 digits>
    ```
 
 ## Response `200`
@@ -74,6 +74,8 @@ Fields:
 
 ## Errors
 
+- `429 { "error": "rate_limited" }` - too many lookup attempts from the same client IP; retry after the `Retry-After` header.
+
 - `400 { "error": "missing_params" }` — no `token` and no valid `order` + `email`/`cep` pair.
 - `404 { "error": "not_found" }` — generic on purpose (it does not reveal whether an order exists).
 
@@ -84,9 +86,9 @@ Vanilla fetch:
 ```js
 const BASE = "https://app.suaempresa.com";
 
-async function track({ token, order, email, cep }) {
+async function track({ token, company, order, email, cep }) {
   const qs = new URLSearchParams(
-    token ? { token } : cep ? { order, cep } : { order, email },
+    token ? { token } : cep ? { company, order, cep } : { company, order, email },
   );
   const res = await fetch(`${BASE}/api/public/track?${qs}`);
   if (res.status === 404) return null;       // not found
@@ -105,5 +107,5 @@ const data = await track({ token });
 ## Notes / limits
 
 - Treat the `track_token` as a capability: anyone with the link can see that order's tracking. It is unguessable and carries no PII.
-- Pending hardening (see `outstanding-work.md` section I): request rate-limiting, and company-scoping for the `order`+`email`/`cep` lookup once a public company identifier (slug) exists for multi-tenant.
+- Public lookups are rate-limited per client IP. Token lookup is globally unique; manual `order` + `email`/`cep` lookup is scoped by the public company slug.
 - An internal preview renderer lives at `{BASE_URL}/rastreio` (reference only; the real customer page is on the separate site).

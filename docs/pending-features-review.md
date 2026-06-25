@@ -140,10 +140,10 @@ This document lists the product features that are still missing or only partiall
   - Company-scoped tokens, audit logging, and rate limiting.
   - Webhooks for order/status changes.
 
-- [ ] Public tracking follow-ups
-  - Rate limiting and abuse protection.
-  - Company scoping for order number + email/CEP lookup once public company slugs exist.
-  - Optional richer status-history table if more detailed event timestamps are needed.
+- [x] Public tracking follow-ups
+  - [x] Rate limiting and abuse protection.
+  - [x] Company scoping for order number + email/CEP lookup once public company slugs exist.
+  - Optional richer status-history table can wait until marketplace/carrier event timestamps need more detail.
 
 ---
 

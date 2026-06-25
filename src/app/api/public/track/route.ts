@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { orders } from "@/db/schema";
+import { companies, orders } from "@/db/schema";
+import { checkRateLimit, publicRequestKey } from "@/lib/public-rate-limit";
 import { buildPublicTracking, type PublicPaymentStatus } from "@/lib/public-tracking";
 
 export const runtime = "nodejs";
@@ -15,8 +16,8 @@ const CORS_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
 };
 
-function json(body: unknown, status = 200) {
-  return NextResponse.json(body, { status, headers: CORS_HEADERS });
+function json(body: unknown, status = 200, headers?: Record<string, string>) {
+  return NextResponse.json(body, { status, headers: { ...CORS_HEADERS, ...headers } });
 }
 
 function cleanParam(value: string | null, max: number) {
@@ -28,8 +29,14 @@ export function OPTIONS() {
 }
 
 export async function GET(request: Request) {
+  const rate = checkRateLimit(publicRequestKey(request, "public-track"), { limit: 60, windowMs: 60_000 });
+  if (!rate.allowed) {
+    return json({ error: "rate_limited" }, 429, { "retry-after": String(rate.retryAfterSeconds) });
+  }
+
   const url = new URL(request.url);
   const token = cleanParam(url.searchParams.get("token"), 64);
+  const companySlug = cleanParam(url.searchParams.get("company") ?? url.searchParams.get("slug") ?? url.searchParams.get("companySlug"), 80).toLowerCase();
   const number = cleanParam(url.searchParams.get("order"), 40);
   const email = cleanParam(url.searchParams.get("email"), 160).toLowerCase();
   const cep = cleanParam(url.searchParams.get("cep"), 16).replace(/\D/g, "").slice(0, 8);
@@ -46,13 +53,17 @@ export async function GET(request: Request) {
   let row;
   if (token) {
     [row] = await db.select(columns).from(orders).where(eq(orders.trackToken, token)).limit(1);
-  } else if (number && (email || cep)) {
-    // The order number is company-scoped, so the email/CEP is the authorization
-    // factor that makes the lookup safe and effectively unique.
+  } else if (companySlug && number && (email || cep)) {
+    // The order number is company-scoped; the public company slug narrows the
+    // tenant and the email/CEP is the customer authorization factor.
     const identity = email
       ? sql`lower(${orders.metadata} ->> 'customerEmail') = ${email}`
       : sql`(${orders.metadata} -> 'customerAddress' ->> 'postalCode') = ${cep}`;
-    [row] = await db.select(columns).from(orders).where(and(eq(orders.number, number), identity)).limit(1);
+    [row] = await db.select(columns)
+      .from(orders)
+      .innerJoin(companies, eq(orders.companyId, companies.id))
+      .where(and(eq(companies.slug, companySlug), eq(orders.number, number), identity))
+      .limit(1);
   } else {
     return json({ error: "missing_params" }, 400);
   }
