@@ -857,7 +857,7 @@ function LabelsTab({ go }: { go: Go }) {
                 />
               </Field>
               <div className="section-hint">
-                Use Code 128 para etiquetas compactas. Se a impressora ou leitor tiver dificuldade, teste Code 39, EAN-13 para codigos numericos ou QR Code.
+                Use Code 128 para codigos internos de 12 digitos. EAN-13 adiciona um digito verificador em codigos externos e pode ser lido sem o zero inicial.
               </div>
             </div>
             <div className="settings-barcode-preview">

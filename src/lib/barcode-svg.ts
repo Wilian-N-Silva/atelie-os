@@ -31,8 +31,18 @@ function barcodeId(type: BarcodeType) {
   return "code128";
 }
 
+function isInternalNumericCode(code: string) {
+  return /^0\d{11}$/.test(String(code || "").replace(/\D/g, ""));
+}
+
+function printableType(code: string, type: BarcodeType): BarcodeType {
+  if (type === "ean13" && isInternalNumericCode(code)) return "code128";
+  return type;
+}
+
 function renderSvg(options: RenderBarcodeSvgOptions, fallback = true): { svg: string; text: string } {
-  const { code, type, heightMm, widthMm, scale = 3 } = options;
+  const { code, heightMm, widthMm, scale = 3 } = options;
+  const type = printableType(code, options.type);
   const text = type === "qr" ? String(code || "0") : barcodeText(code, type);
   const sizeMm = Math.max(8, Math.min(widthMm ?? heightMm, heightMm));
   const renderOptions = type === "qr"

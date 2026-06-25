@@ -26,11 +26,21 @@ test("bwip-js normalizes EAN-13 with checksum", () => {
   assert.match(rendered.svg, /^<svg /);
 });
 
-test("bwip-js preserves leading zero and computes EAN-13 checksum", () => {
+test("bwip-js preserves internal codes when EAN-13 is selected", () => {
   const rendered = renderBarcodeSvg({ code: "010300001287", type: "ean13", heightMm: 14 });
 
-  assert.equal(rendered.text, "0103000012872");
+  assert.equal(rendered.text, "010300001287");
   assert.match(rendered.svg, /^<svg /);
+});
+
+test("bwip-js keeps internal codes exact when EAN-13 is selected", () => {
+  const caixa = renderBarcodeSvg({ code: "010200000042", type: "ean13", heightMm: 14 });
+  const essencia = renderBarcodeSvg({ code: "010100000049", type: "ean13", heightMm: 14 });
+
+  assert.equal(caixa.text, "010200000042");
+  assert.equal(essencia.text, "010100000049");
+  assert.match(caixa.svg, /^<svg /);
+  assert.match(essencia.svg, /^<svg /);
 });
 
 test("bwip-js sanitizes Code 39 text before rendering", () => {

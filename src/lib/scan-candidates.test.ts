@@ -16,6 +16,14 @@ test("scan candidates restore leading zero for UPC-style scanner output", () => 
   assert.ok(values.has("010300001287"));
 });
 
+test("scan candidates match old EAN/UPC prints back to internal codes", () => {
+  const caixa = scanCandidates("102000000421");
+  const essencia = scanCandidates("101000000493");
+
+  assert.ok(caixa.has("010200000042"));
+  assert.ok(essencia.has("010100000049"));
+});
+
 test("scan candidates unwrap code payloads and Code 39 guard asterisks", () => {
   const values = scanCandidates("codigo=*SKU-01*");
 

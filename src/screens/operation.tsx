@@ -27,6 +27,7 @@ import { useItemDirectory } from "@/lib/item-directory";
 import { useWorkflows } from "@/lib/workflows";
 import { buildStatusMap, statusInfo } from "@/lib/workflow-status";
 import { normalizeScanValue, scanCandidates } from "@/lib/scan-candidates";
+import { scanCodeKinds } from "@/lib/internal-code";
 import type { Go, Route } from "@/lib/types";
 
 const TEST_RESULT_LABEL: Record<RecipeTestResult, string> = {
@@ -242,6 +243,16 @@ function findProductionByScan(orders: ProductionOrder[], raw: string) {
     const num = normalizeScanValue(order.num);
     return values.has(order.id.toLowerCase()) || values.has(num) || values.has(order.code);
   });
+}
+
+function findItemByScan(items: ItemSummary[], raw: string) {
+  const values = scanCandidates(raw);
+  const value = normalizeScanValue(raw);
+  return items.find((item) =>
+    values.has(item.code)
+      || values.has(item.sku.toLowerCase())
+      || normalizeScanValue(`${item.name}${item.variant}`).includes(value),
+  );
 }
 
 type FindItem = (sku: string) => ItemSummary | undefined;
@@ -483,10 +494,33 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     flash("ok");
   };
 
+  const showItemHit = (itemHit: ItemSummary) => {
+    setFeedback({
+      kind: "ok",
+      name: `${itemHit.name}${itemHit.variant ? ` ${itemHit.variant}` : ""}`,
+      sub: `${itemHit.sku} - ${itemHit.code} - ${itemHit.available} ${itemHit.unit} disponivel`,
+      fix: "Item/SKU reconhecido. Abra um pedido ou OP para usar esta leitura na operacao.",
+    });
+    pushLog({ kind: "neutral", label: `Item consultado: ${itemHit.sku}` });
+    flash("ok");
+  };
+
   const readDocumentCode = (raw: string) => {
     const value = raw.trim();
     if (!value) return;
     setInput("");
+    const kinds = scanCodeKinds(value);
+    if (kinds.has("item")) {
+      const itemHit = findItemByScan(dir.items, value);
+      if (itemHit) {
+        showItemHit(itemHit);
+        return;
+      }
+      setFeedback({ kind: "bad", name: "Item nao encontrado", sub: `"${raw}" tem prefixo de item, mas nao existe no catalogo`, fix: "Confira a etiqueta ou cadastre o item antes de operar." });
+      pushLog({ kind: "bad", label: "Item desconhecido" });
+      flash("bad");
+      return;
+    }
     const orderHit = findOrderByScan(orders, value);
     if (orderHit) {
       selectOrder(orderHit, "scan");
@@ -507,8 +541,13 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
       flash("ok");
       return;
     }
-    setFeedback({ kind: "bad", name: "Documento nao encontrado", sub: `"${raw}" nao corresponde a pedido, OP ou teste`, fix: "Bipe o codigo da pick list ou etiqueta de teste, ou selecione manualmente." });
-    pushLog({ kind: "bad", label: "Documento desconhecido" });
+    const itemHit = findItemByScan(dir.items, value);
+    if (itemHit) {
+      showItemHit(itemHit);
+      return;
+    }
+    setFeedback({ kind: "bad", name: "Codigo nao encontrado", sub: `"${raw}" nao corresponde a pedido, OP, teste ou item`, fix: "Bipe a pick list, etiqueta de teste ou etiqueta de item, ou selecione manualmente." });
+    pushLog({ kind: "bad", label: "Codigo desconhecido" });
     flash("bad");
   };
 
@@ -676,6 +715,18 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
     go(order ? "pedidos" : "hoje", order ? { open: order.id } : {});
   };
 
+  const startItemResults = React.useMemo(() => {
+    if (targetKind) return [];
+    const query = normalizeScanValue(input);
+    if (!query) return dir.items.slice(0, 6);
+    const values = scanCandidates(input);
+    return dir.items.filter((item) =>
+      values.has(item.code)
+        || values.has(item.sku.toLowerCase())
+        || normalizeScanValue(`${item.name}${item.variant}`).includes(query),
+    ).slice(0, 8);
+  }, [dir.items, input, targetKind]);
+
   const selectedTest = recipeTests.find((test) => test.id === selectedTestId) ?? null;
   if (selectedTest) {
     return (
@@ -697,15 +748,15 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
           <button className="op-exit" onClick={exit}><Icon name="x" size={18} /> Sair</button>
           <div className="op-doc">
             <span className="op-doc-mode">Modo Operacao</span>
-            <span className="op-doc-title">Aguardando leitura de pedido ou OP</span>
+            <span className="op-doc-title">Aguardando leitura de pedido, OP ou item</span>
           </div>
         </div>
 
         <div className="op-start">
           <div className="op-start-main">
             <div className="op-start-kicker"><Icon name="scan" size={17} /> Entrada pela pick list</div>
-            <h1 className="op-start-title">Bipe o codigo do pedido ou da OP</h1>
-            <p className="op-start-copy">Pedidos abrem separacao, conferencia e embalagem. OPs abrem separacao de materiais e checklist de producao.</p>
+            <h1 className="op-start-title">Bipe o codigo do pedido, OP ou SKU</h1>
+            <p className="op-start-copy">Pedidos abrem separacao, conferencia e embalagem. OPs abrem materiais e producao. Itens/SKUs mostram o cadastro encontrado.</p>
             <div className={cn("op-scanfield", `op-scanfield--${scanState}`)}>
               {scanState === "focus" && <div className="op-scanline-anim" />}
               <Icon name={scanState === "ok" ? "check" : scanState === "bad" ? "alert" : "scan"} size={28} className="op-scanicon" />
@@ -713,7 +764,7 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
                 ref={inputRef}
                 className="op-scaninput"
                 value={input}
-                placeholder="Bipe codigo do pedido ou da OP..."
+                placeholder="Bipe pedido, OP, item ou SKU..."
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") readDocumentCode(input); }}
               />
@@ -762,6 +813,23 @@ export function OperationScreen({ go, route }: { go: Go; route: Route }) {
                   </button>
                 );
               })}
+            </div>
+
+            <div className="op-coltitle" style={{ marginTop: 18 }}><span>Itens / SKUs</span><span>{input.trim() ? startItemResults.length : dir.items.length}</span></div>
+            <div className="op-order-list">
+              {startItemResults.map((item) => (
+                <button key={item.id} className="op-order-card" onClick={() => showItemHit(item)}>
+                  <div className="op-order-main">
+                    <div className="op-order-num">{item.sku}</div>
+                    <div className="op-order-sub">{item.name}{item.variant ? ` - ${item.variant}` : ""}</div>
+                    <div className="op-order-status">{item.code} - {item.available} {item.unit} disponivel</div>
+                  </div>
+                  <Barcode code={item.code} size="sm" />
+                </button>
+              ))}
+              {input.trim() && startItemResults.length === 0 && (
+                <div style={{ color: "var(--op-mut)", fontSize: 13, padding: "10px 2px" }}>Nenhum item ou SKU encontrado.</div>
+              )}
             </div>
 
             {testsToFill.length > 0 && (
