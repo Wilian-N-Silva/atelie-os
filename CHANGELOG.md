@@ -2,6 +2,24 @@
 
 All notable changes to Atelie OS are documented here.
 
+## 0.1.1 - 2026-06-25
+
+Beta patch for first-client transactional email.
+
+### Added
+
+- Real password reset flow through Better Auth and Resend.
+- Real magic link sign-in through Better Auth and Resend.
+- Tokenized team invites with hashed invite token storage and invite acceptance.
+- Resend environment documentation.
+
+### Changed
+
+- Standalone mode still blocks public signup, but allows signup with a valid invite token.
+- Updated visible beta version labels to 0.1.1.
+- Moved sales-channel pricing rules into a modal with one channel per row.
+- Removed the demo invite acceptance flow.
+
 ## 0.1.0 - 2026-06-25
 
 Beta release for the first user.

@@ -189,6 +189,7 @@ export const pendingInvites = pgTable(
       .references(() => companies.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("operator"),
+    tokenHash: text("token_hash"),
     invitedByUserId: text("invited_by_user_id").references(() => user.id, { onDelete: "set null" }),
     status: memberStatusEnum("status").notNull().default("invited"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -196,6 +197,7 @@ export const pendingInvites = pgTable(
   },
   (table) => ({
     companyEmailIdx: uniqueIndex("pending_invites_company_email_idx").on(table.companyId, table.email),
+    tokenHashIdx: uniqueIndex("pending_invites_token_hash_idx").on(table.tokenHash),
   }),
 );
 

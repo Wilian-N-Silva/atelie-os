@@ -1,9 +1,10 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import { magicLink } from "better-auth/plugins/magic-link";
 import { db } from "@/db/client";
 import { account, session, user, verification } from "@/db/schema";
-import { sendPasswordResetEmail } from "@/lib/email-server";
+import { sendMagicLinkEmail, sendPasswordResetEmail } from "@/lib/email-server";
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
 
@@ -46,5 +47,13 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins,
-  plugins: [nextCookies()],
+  plugins: [
+    magicLink({
+      disableSignUp: true,
+      sendMagicLink: async ({ email, url }) => {
+        await sendMagicLinkEmail({ to: email, url });
+      },
+    }),
+    nextCookies(),
+  ],
 });

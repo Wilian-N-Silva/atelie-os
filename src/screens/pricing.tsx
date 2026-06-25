@@ -9,6 +9,7 @@ import {
   Field,
   Icon,
   Input,
+  Modal,
   Select,
   Stat,
   toast,
@@ -169,6 +170,7 @@ export function PricingScreen({ go }: { go: Go; route: Route }) {
   const [products, setProducts] = React.useState<PricingProduct[]>([]);
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
+  const [channelSettingsOpen, setChannelSettingsOpen] = React.useState(false);
   const [savingSettings, setSavingSettings] = React.useState(false);
   const settings = products[0]?.settings;
 
@@ -242,11 +244,10 @@ export function PricingScreen({ go }: { go: Go; route: Route }) {
           <div style={{ padding: 14 }}>
             <div className="row between" style={{ marginBottom: 12, gap: 12 }}>
               <div>
-                <div className="block-label" style={{ margin: 0 }}>Regras de margem por canal</div>
-                <div className="section-hint" style={{ marginTop: 2 }}>Taxas salvas entram no preço sugerido e no histórico.</div>
+                <div className="block-label" style={{ margin: 0 }}>Regras de precificação</div>
+                <div className="section-hint" style={{ marginTop: 2 }}>Valor/hora e taxas de canal entram no preço sugerido e no histórico.</div>
               </div>
               <div className="row" style={{ gap: 8 }}>
-                <Button variant="outline" icon="plus" onClick={addChannelRule}>Canal</Button>
                 <Button variant="default" icon="check" disabled={savingSettings} onClick={persistSettings}>Salvar regras</Button>
               </div>
             </div>
@@ -259,19 +260,60 @@ export function PricingScreen({ go }: { go: Go; route: Route }) {
                   placeholder="0,00"
                 />
               </Field>
-              {settings.channelFeeRules.map((rule) => (
-                <React.Fragment key={rule.key}>
-                  <Field label="Canal">
-                    <Input value={rule.label} onChange={(event) => updateChannelRule(rule.key, { label: event.target.value })} />
-                  </Field>
-                  <Field label="Taxa (%)">
-                    <Input inputMode="decimal" value={String(Math.round(rule.feePct * 100))} onChange={(event) => updateChannelRule(rule.key, { feePct: (Number(event.target.value.replace(/\D/g, "")) || 0) / 100 })} />
-                  </Field>
-                </React.Fragment>
-              ))}
+              <div>
+                <div className="ff-label">Canais de venda</div>
+                <Button variant="outline" icon="settings" onClick={() => setChannelSettingsOpen(true)}>
+                  Editar {settings.channelFeeRules.length} canais
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
+      )}
+
+      {settings && (
+        <Modal
+          open={channelSettingsOpen}
+          onClose={() => setChannelSettingsOpen(false)}
+          icon="tag"
+          title="Canais de venda"
+          subtitle="Configure um canal por linha para manter as taxas separadas."
+          width={760}
+          footer={(
+            <>
+              <Button variant="outline" icon="plus" onClick={addChannelRule}>Adicionar canal</Button>
+              <Button variant="default" icon="check" disabled={savingSettings} onClick={persistSettings}>Salvar regras</Button>
+            </>
+          )}
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {settings.channelFeeRules.map((rule) => (
+              <div
+                key={rule.key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) 140px",
+                  gap: 10,
+                  alignItems: "end",
+                  padding: 10,
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: 8,
+                }}
+              >
+                <Field label="Canal">
+                  <Input value={rule.label} onChange={(event) => updateChannelRule(rule.key, { label: event.target.value })} />
+                </Field>
+                <Field label="Taxa (%)">
+                  <Input
+                    inputMode="decimal"
+                    value={String(Math.round(rule.feePct * 100))}
+                    onChange={(event) => updateChannelRule(rule.key, { feePct: (Number(event.target.value.replace(/\D/g, "")) || 0) / 100 })}
+                  />
+                </Field>
+              </div>
+            ))}
+          </div>
+        </Modal>
       )}
 
       <Card style={{ overflow: "hidden" }}>

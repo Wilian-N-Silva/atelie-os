@@ -30,6 +30,7 @@ import {
   type OnboardingInvite,
 } from "@/lib/seed-defaults";
 import { sendTeamInviteEmail } from "@/lib/email-server";
+import { createInviteToken } from "@/lib/invite-tokens";
 import { slugify } from "@/lib/slug";
 
 export async function uniqueCompanySlug(name: string) {
@@ -288,6 +289,11 @@ export async function createCompanyForUser(input: {
   );
 
   if (validInvites.length) {
+    const inviteTokens = new Map(validInvites.map((invite) => {
+      const token = createInviteToken();
+      return [invite.email.toLowerCase(), token] as const;
+    }));
+
     await db
       .insert(pendingInvites)
       .values(
@@ -295,6 +301,8 @@ export async function createCompanyForUser(input: {
           companyId: company.id,
           email: invite.email.toLowerCase(),
           role: invite.role,
+          tokenHash: inviteTokens.get(invite.email.toLowerCase())!.tokenHash,
+          expiresAt: inviteTokens.get(invite.email.toLowerCase())!.expiresAt,
           invitedByUserId: input.userId,
         })),
       )
@@ -315,6 +323,7 @@ export async function createCompanyForUser(input: {
       to: invite.email.toLowerCase(),
       companyName: company.name,
       role: invite.role,
+      token: inviteTokens.get(invite.email.toLowerCase())?.token,
     }).catch((error) => {
       console.warn("[email:invite_failed]", invite.email, error);
     })));

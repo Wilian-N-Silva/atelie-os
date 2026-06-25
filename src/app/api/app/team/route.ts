@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { auditLogs, companyMembers, pendingInvites, user, type MemberRole } from "@/db/schema";
 import { requireAppRole, requireAppRouteContext } from "@/lib/app-route-context";
 import { sendTeamInviteEmail } from "@/lib/email-server";
+import { createInviteToken } from "@/lib/invite-tokens";
 import { SETTINGS_WRITE_ROLES } from "@/lib/permissions";
 
 export const runtime = "nodejs";
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { email?: unknown; role?: unknown } | null;
   const email = cleanEmail(body?.email);
   const role = cleanRole(body?.role);
+  const inviteToken = createInviteToken();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "invalid_email" }, { status: 400 });
   }
@@ -74,11 +76,13 @@ export async function POST(request: Request) {
       companyId: context.company.id,
       email,
       role,
+      tokenHash: inviteToken.tokenHash,
+      expiresAt: inviteToken.expiresAt,
       invitedByUserId: context.user.id,
     })
     .onConflictDoUpdate({
       target: [pendingInvites.companyId, pendingInvites.email],
-      set: { role, status: "invited", invitedByUserId: context.user.id, updatedAt: new Date() },
+      set: { role, status: "invited", tokenHash: inviteToken.tokenHash, expiresAt: inviteToken.expiresAt, invitedByUserId: context.user.id, updatedAt: new Date() },
     });
 
   await db.insert(auditLogs).values({
@@ -95,6 +99,7 @@ export async function POST(request: Request) {
     companyName: context.company.name,
     role,
     invitedBy: context.user.name,
+    token: inviteToken.token,
   }).catch((error) => {
     console.warn("[email:invite_failed]", email, error);
   });

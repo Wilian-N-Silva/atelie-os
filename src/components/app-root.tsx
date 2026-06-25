@@ -213,6 +213,7 @@ export function AppRoot() {
   const [session, setSession] = React.useState<Session | null>(null);
   const [publicConfig, setPublicConfig] = React.useState<PublicAppConfig>(DEFAULT_PUBLIC_CONFIG);
   const [ready, setReady] = React.useState(false);
+  const [acceptingInvite, setAcceptingInvite] = React.useState(false);
 
   React.useEffect(() => {
     // apply saved local display preferences so auth/onboarding match the app skin
@@ -237,6 +238,27 @@ export function AppRoot() {
     setSession((current) => current ? { ...current, ...patch } : current);
   }, []);
 
+  React.useEffect(() => {
+    if (!ready || !session || acceptingInvite) return;
+    const token = new URLSearchParams(window.location.search).get("invite");
+    if (!token) return;
+
+    setAcceptingInvite(true);
+    fetch(`/api/invites/${encodeURIComponent(token)}`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then((res) => res.ok ? res.json() : Promise.reject(new Error("invite_accept_failed")))
+      .then((nextSession: Session) => {
+        window.history.replaceState({}, "", "/");
+        setBackendSession(nextSession);
+      })
+      .catch(() => {
+        window.history.replaceState({}, "", "/");
+      })
+      .finally(() => setAcceptingInvite(false));
+  }, [acceptingInvite, ready, session]);
+
   const finishOnboarding = async ({ companyName, segment, teamSize, logoUrl, invites }: OnboardingDonePayload) => {
     const res = await fetch("/api/app/onboarding", {
       method: "POST",
@@ -259,6 +281,7 @@ export function AppRoot() {
 
   if (!ready) return null; // avoid auth/app flash before hydration
   if (!session) return <AuthFlow onAuthed={setBackendSession} config={publicConfig} />;
+  if (acceptingInvite) return null;
   if (!session.onboarded) return <Onboarding user={session.user} onDone={finishOnboarding} />;
   return (
     <Workspace

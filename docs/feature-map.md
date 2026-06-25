@@ -61,13 +61,13 @@ Status legend:
 | 2026-06-07 | Mercado Livre | OAuth foundation, status endpoint, webhook stub, and manual recent-order sync into import staging. |
 | 2026-06-07 | Nuvemshop | OAuth foundation, status endpoint, and webhook stub. |
 | 2026-06-25 | MVP closure | Packaging profiles, standalone freight calculator, lot traceability, help, unit conversion, reports, AI hardening, notification rules, pricing phase 2, stock count phase 2, returns phase 2, CSV import follow-ups. |
-| 2026-06-25 | Beta readiness | Label persistence, public tracking hardening, Resend/R2 infrastructure, permission enforcement, real-tenant bootstrap, tenant isolation, standalone/self-hosted mode. |
+| 2026-06-25 | Beta readiness | Label persistence, public tracking hardening, transactional email infrastructure, permission enforcement, real-tenant bootstrap, tenant isolation, standalone/self-hosted mode. |
 
 ## Production Readiness
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Email via Resend | Done | Password reset and team invites use server-only API key configuration. |
+| Email via Resend | Needs QA | Password reset, magic link sign-in, and team invites are wired to server-side Resend sending; validate with the first-client sender/domain. |
 | File storage via Cloudflare R2 | Done | Storage abstraction for external labels, attachments, generated documents, proofs, and import files. |
 | Permission enforcement | Needs QA | Route policy exists; beta QA must verify practical role behavior. |
 | Real-tenant onboarding | Needs QA | New tenants receive neutral defaults and production seed guard prevents accidental demo data. |

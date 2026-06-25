@@ -1,19 +1,20 @@
 "use client";
-/* ============================================================
-   auth-flow.tsx — multi-tenant authentication.
-   Screens: login · signup (criar / convite) · link mágico ·
-   recuperar senha. Ported from the design prototype's auth.jsx.
-   onAuthed(session) advances the Root session gate.
-   ============================================================ */
+
 import * as React from "react";
-import { cn, Icon, Input, Button, Avatar, toast, ROLE_LABELS } from "@/components/ui";
+import { Avatar, Button, Icon, Input, ROLE_LABELS, toast } from "@/components/ui";
 import { fetchAppSession } from "@/lib/app-session";
 import type { Session } from "@/lib/types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 type AuthView = "login" | "signup" | "magic" | "forgot";
 type Go = (v: AuthView) => void;
 type AuthConfig = NonNullable<Session["deployment"]>;
+type InvitePreview = {
+  email: string;
+  role: "admin" | "operator";
+  company: { name: string; slug: string };
+};
 
 interface ScreenProps {
   email: string;
@@ -21,6 +22,10 @@ interface ScreenProps {
   onAuthed: (s: Session) => void;
   go: Go;
   config: AuthConfig;
+  inviteToken: string | null;
+  invite: InvitePreview | null;
+  inviteError: string | null;
+  resetToken: string | null;
 }
 
 async function postAuth(endpoint: "sign-in/email" | "sign-up/email", body: Record<string, unknown>) {
@@ -41,6 +46,20 @@ async function loadSessionAfterAuth(onAuthed: (s: Session) => void) {
   const session = await fetchAppSession();
   if (!session) throw new Error("Sessao nao encontrada apos autenticar.");
   onAuthed(session);
+}
+
+async function acceptInvite(token: string) {
+  const res = await fetch(`/api/invites/${encodeURIComponent(token)}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error === "invite_email_mismatch"
+      ? "Entre com o mesmo e-mail que recebeu o convite."
+      : "Nao foi possivel aceitar o convite.");
+  }
+  return await res.json() as Session;
 }
 
 function GoogleG({ className }: { className?: string }) {
@@ -101,12 +120,12 @@ function AuthAside({ config }: { config: AuthConfig }) {
             <div className="au-feat-ico"><Icon name="layers" size={15} /></div>
             <div>
               <div className="au-feat-t">{config.deploymentMode === "standalone" ? "Ambiente dedicado" : "Multiempresa, white-label"}</div>
-              <div className="au-feat-d">{config.deploymentMode === "standalone" ? "Dados, marca, equipe e acessos isolados para este cliente." : "Cada ateliê com sua marca, sua equipe e seus acessos."}</div>
+              <div className="au-feat-d">{config.deploymentMode === "standalone" ? "Dados, marca, equipe e acessos isolados para este cliente." : "Cada atelie com sua marca, sua equipe e seus acessos."}</div>
             </div>
           </div>
           <div className="au-feat">
             <div className="au-feat-ico"><Icon name="scan" size={15} /></div>
-            <div><div className="au-feat-t">Operação por scanner ou manual</div><div className="au-feat-d">Separe, confira e embale na velocidade da bancada.</div></div>
+            <div><div className="au-feat-t">Operacao por scanner ou manual</div><div className="au-feat-d">Separe, confira e embale na velocidade da bancada.</div></div>
           </div>
           <div className="au-feat">
             <div className="au-feat-ico"><Icon name="droplet" size={15} /></div>
@@ -116,7 +135,7 @@ function AuthAside({ config }: { config: AuthConfig }) {
       </div>
 
       <div className="au-aside-foot">
-        <span className="mono">v2.1</span><span>·</span><span>© 2026 {config.brandName}</span>
+        <span className="mono">0.1.1 beta</span><span>·</span><span>© 2026 {config.brandName}</span>
       </div>
     </aside>
   );
@@ -131,20 +150,20 @@ function MobileBrand({ config }: { config: AuthConfig }) {
   );
 }
 
-/* ---------------- Login ---------------- */
-function LoginScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
+function LoginScreen({ email, setEmail, onAuthed, go, config, inviteToken, invite, inviteError }: ScreenProps) {
   const [pw, setPw] = React.useState("");
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail válido.");
+    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail valido.");
     if (pw.length < 8) return setErr("A senha deve ter ao menos 8 caracteres.");
     setErr(null); setBusy(true);
     try {
       await postAuth("sign-in/email", { email, password: pw, rememberMe: true });
-      await loadSessionAfterAuth(onAuthed);
+      if (inviteToken) onAuthed(await acceptInvite(inviteToken));
+      else await loadSessionAfterAuth(onAuthed);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Nao foi possivel entrar.");
       setBusy(false);
@@ -156,17 +175,17 @@ function LoginScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
       <MobileBrand config={config} />
       <div className="au-eyebrow">Bem-vinda de volta</div>
       <h1 className="au-title">Entrar no {config.brandName}</h1>
-      <p className="au-lede">{config.loginSubheading}</p>
+      <p className="au-lede">{invite ? `Entre com ${invite.email} para aceitar o convite de ${invite.company.name}.` : config.loginSubheading}</p>
 
       <form className="au-form" onSubmit={submit}>
-        <AuthErr>{err}</AuthErr>
+        <AuthErr>{err || inviteError}</AuthErr>
         <div>
           <div className="au-field-label"><span>E-mail</span></div>
           <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@atelie.com.br" autoComplete="email" />
         </div>
         <PwField label="Senha" value={pw} onChange={setPw} placeholder="••••••••" autoComplete="current-password" forgot onForgot={() => go("forgot")} />
         <Button type="submit" variant="default" size="lg" className="au-submit" disabled={busy} iconRight={busy ? null : "arrowRight"}>
-          {busy ? "Entrando…" : "Entrar"}
+          {busy ? "Entrando..." : "Entrar"}
         </Button>
       </form>
 
@@ -178,51 +197,41 @@ function LoginScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
               <GoogleG className="au-g" /> Continuar com Google
             </button>
             <button className="au-oauth-btn" onClick={() => go("magic")}>
-              <Icon name="wand" size={16} /> Entrar com link mágico
+              <Icon name="wand" size={16} /> Entrar com link magico
             </button>
           </div>
         </>
       )}
 
-      {config.allowSignup && <div className="au-foot">Ainda não tem conta? <button className="au-link" onClick={() => go("signup")}>Criar conta</button></div>}
+      {config.allowSignup && <div className="au-foot">Ainda nao tem conta? <button className="au-link" onClick={() => go("signup")}>Criar conta</button></div>}
     </div>
   );
 }
 
-/* ---------------- Signup (criar ateliê / aceitar convite) ---------------- */
-function SignupScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
-  const [mode, setMode] = React.useState<"create" | "invite">("create");
+function SignupScreen({ email, setEmail, onAuthed, go, config, inviteToken, invite, inviteError }: ScreenProps) {
+  const [mode, setMode] = React.useState<"create" | "invite">(invite ? "invite" : "create");
   const [name, setName] = React.useState("");
   const [pw, setPw] = React.useState("");
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  const invite = { company: "Atelie de exemplo", by: "Administrador", role: "operator" as const, email: "convite@example.com" };
-  React.useEffect(() => { if (mode === "invite") setEmail(invite.email); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (invite) {
+      setMode("invite");
+      setEmail(invite.email);
+    }
+  }, [invite, setEmail]);
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!name.trim()) return setErr("Informe seu nome.");
-    if (mode === "create" && !EMAIL_RE.test(email)) return setErr("Digite um e-mail válido.");
+    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail valido.");
     if (pw.length < 8) return setErr("A senha deve ter ao menos 8 caracteres.");
     setErr(null); setBusy(true);
     try {
-      await postAuth("sign-up/email", {
-        email,
-        password: pw,
-        name: name.trim(),
-      });
-
-      if (mode === "create") {
-        await loadSessionAfterAuth(onAuthed);
-      } else {
-        const res = await fetch("/api/app/demo-invite", {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Nao foi possivel aceitar o convite.");
-        onAuthed((await res.json()) as Session);
-      }
+      await postAuth("sign-up/email", { email, password: pw, name: name.trim(), inviteToken: inviteToken ?? undefined });
+      if (mode === "invite" && inviteToken) onAuthed(await acceptInvite(inviteToken));
+      else await loadSessionAfterAuth(onAuthed);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Nao foi possivel criar a conta.");
       setBusy(false);
@@ -233,30 +242,32 @@ function SignupScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
     <div className="au-card">
       <MobileBrand config={config} />
       <div className="au-eyebrow">Comece agora</div>
-      <h1 className="au-title">Criar sua conta</h1>
-      <p className="au-lede">Monte um novo ateliê do zero ou entre em um ateliê que te convidou.</p>
+      <h1 className="au-title">{invite ? "Aceitar convite" : "Criar sua conta"}</h1>
+      <p className="au-lede">{invite ? `Crie sua senha para entrar em ${invite.company.name}.` : "Monte um novo atelie do zero ou entre em um atelie que te convidou."}</p>
 
-      <div className="au-seg">
-        <button className={cn("au-seg-btn", mode === "create" && "au-seg-btn--on")} onClick={() => { setMode("create"); setErr(null); setEmail(""); }}>
-          <Icon name="plus" size={15} /> Novo ateliê
-        </button>
-        <button className={cn("au-seg-btn", mode === "invite" && "au-seg-btn--on")} onClick={() => { setMode("invite"); setErr(null); }}>
-          <Icon name="inbox" size={15} /> Tenho um convite
-        </button>
-      </div>
+      {!invite && (
+        <div className="au-seg">
+          <button className={`au-seg-btn ${mode === "create" ? "au-seg-btn--on" : ""}`} onClick={() => { setMode("create"); setErr(null); setEmail(""); }}>
+            <Icon name="plus" size={15} /> Novo atelie
+          </button>
+          <button className={`au-seg-btn ${mode === "invite" ? "au-seg-btn--on" : ""}`} onClick={() => { setMode("invite"); setErr("Abra o link recebido por e-mail para aceitar um convite."); }}>
+            <Icon name="inbox" size={15} /> Tenho um convite
+          </button>
+        </div>
+      )}
 
-      {mode === "invite" && (
+      {mode === "invite" && invite && (
         <div className="au-invite">
-          <Avatar name={invite.by} size={40} />
+          <Avatar name={invite.company.name} size={40} />
           <div className="au-invite-meta">
-            <div className="au-invite-co">{invite.company}</div>
-            <div className="au-invite-by">{invite.by} convidou você como <strong>{ROLE_LABELS[invite.role]}</strong></div>
+            <div className="au-invite-co">{invite.company.name}</div>
+            <div className="au-invite-by">Convite para entrar como <strong>{ROLE_LABELS[invite.role]}</strong></div>
           </div>
         </div>
       )}
 
       <form className="au-form" onSubmit={submit}>
-        <AuthErr>{err}</AuthErr>
+        <AuthErr>{err || inviteError}</AuthErr>
         <div>
           <div className="au-field-label"><span>Seu nome</span></div>
           <Input icon="user" value={name} onChange={(e) => setName(e.target.value)} placeholder="Como devemos te chamar?" autoComplete="name" />
@@ -264,12 +275,12 @@ function SignupScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
         <div>
           <div className="au-field-label"><span>E-mail</span></div>
           <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="voce@atelie.com.br" autoComplete="email" disabled={mode === "invite"} />
+            placeholder="voce@atelie.com.br" autoComplete="email" disabled={mode === "invite" && Boolean(invite)} />
           {mode === "invite" && <div className="ff-hint">Convite vinculado a este e-mail.</div>}
         </div>
-        <PwField label="Senha" value={pw} onChange={setPw} placeholder="Crie uma senha" autoComplete="new-password" hint="Mínimo de 8 caracteres." />
+        <PwField label="Senha" value={pw} onChange={setPw} placeholder="Crie uma senha" autoComplete="new-password" hint="Minimo de 8 caracteres." />
         <Button type="submit" variant="default" size="lg" className="au-submit" disabled={busy} iconRight={busy ? null : "arrowRight"}>
-          {busy ? "Criando…" : (mode === "create" ? "Criar ateliê" : "Aceitar convite e entrar")}
+          {busy ? "Criando..." : (mode === "invite" ? "Aceitar convite e entrar" : "Criar atelie")}
         </Button>
       </form>
 
@@ -284,98 +295,134 @@ function SignupScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
         </>
       )}
 
-      <div className="au-foot">Já tem uma conta? <button className="au-link" onClick={() => go("login")}>Entrar</button></div>
+      <div className="au-foot">Ja tem uma conta? <button className="au-link" onClick={() => go("login")}>Entrar</button></div>
     </div>
   );
 }
 
-/* ---------------- Magic link ---------------- */
-function MagicScreen({ email, setEmail, onAuthed, go, config }: ScreenProps) {
-  const [step, setStep] = React.useState<"email" | "code">("email");
+function MagicScreen({ email, setEmail, go, config, inviteToken }: ScreenProps) {
+  const [step, setStep] = React.useState<"email" | "sent">("email");
   const [err, setErr] = React.useState<string | null>(null);
-  const [code, setCode] = React.useState(["", "", "", "", "", ""]);
-  const refs = React.useRef<(HTMLInputElement | null)[]>([]);
+  const [busy, setBusy] = React.useState(false);
 
-  const sendCode = (e?: React.FormEvent) => {
+  const sendLink = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail válido.");
-    setErr("Link magico ainda precisa de um provedor de e-mail configurado.");
+    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail valido.");
+    setErr(null); setBusy(true);
+    try {
+      const callbackURL = inviteToken ? `/?invite=${encodeURIComponent(inviteToken)}` : "/";
+      const res = await fetch("/api/auth/sign-in/magic-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, callbackURL }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { message?: string; error?: string } | null;
+        throw new Error(payload?.message || payload?.error || "Nao foi possivel enviar o link.");
+      }
+      setStep("sent");
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Nao foi possivel enviar o link.");
+    } finally {
+      setBusy(false);
+    }
   };
-  const setDigit = (i: number, v: string) => {
-    v = v.replace(/\D/g, "").slice(-1);
-    setCode((c) => { const n = [...c]; n[i] = v; return n; });
-    if (v && i < 5) refs.current[i + 1]?.focus();
-  };
-  const onKey = (i: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !code[i] && i > 0) refs.current[i - 1]?.focus();
-  };
-  const onPaste = (e: React.ClipboardEvent) => {
-    const d = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6).split("");
-    if (d.length) { e.preventDefault(); const n = ["", "", "", "", "", ""]; d.forEach((x, i) => (n[i] = x)); setCode(n); refs.current[Math.min(d.length, 5)]?.focus(); }
-  };
-  const verify = React.useCallback(() => {
-    if (code.join("").length < 6) return setErr("Digite o código de 6 dígitos.");
-    setErr("Link magico ainda precisa de um provedor de e-mail configurado.");
-  }, [code]);
-  React.useEffect(() => { if (step === "code" && code.join("").length === 6) verify(); }, [code, step, verify]);
 
   if (step === "email") {
     return (
       <div className="au-card">
         <MobileBrand config={config} />
         <button className="au-link au-link--muted" onClick={() => go("login")} style={{ marginBottom: 18 }}>← Voltar para o login</button>
-        <h1 className="au-title">Entrar com link mágico</h1>
-        <p className="au-lede">Enviamos um código de 6 dígitos para o seu e-mail. Sem senha para lembrar.</p>
-        <form className="au-form" onSubmit={sendCode}>
+        <h1 className="au-title">Entrar com link magico</h1>
+        <p className="au-lede">Enviaremos um link seguro para seu e-mail. Ele expira em poucos minutos.</p>
+        <form className="au-form" onSubmit={sendLink}>
           <AuthErr>{err}</AuthErr>
           <div>
             <div className="au-field-label"><span>E-mail</span></div>
             <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@atelie.com.br" autoComplete="email" />
           </div>
-          <Button type="submit" variant="default" size="lg" className="au-submit" iconRight="arrowRight">Enviar código</Button>
+          <Button type="submit" variant="default" size="lg" className="au-submit" disabled={busy} iconRight={busy ? null : "arrowRight"}>{busy ? "Enviando..." : "Enviar link"}</Button>
         </form>
         <div className="au-foot"><button className="au-link" onClick={() => go("login")}>Usar senha</button></div>
       </div>
     );
   }
+
   return (
     <div className="au-card">
       <MobileBrand config={config} />
       <div className="au-sent-ico"><Icon name="inbox" size={24} /></div>
-      <h1 className="au-title">Digite o código</h1>
-      <p className="au-lede">Enviamos um código para <span className="au-sent-mail">{email}</span>. Ele expira em 10 minutos.</p>
+      <h1 className="au-title">Verifique seu e-mail</h1>
+      <p className="au-lede">Enviamos um link de acesso para <span className="au-sent-mail">{email}</span>. Abra o link neste navegador para entrar.</p>
       <div className="au-form">
         <AuthErr>{err}</AuthErr>
-        <div className="au-otp" onPaste={onPaste}>
-          {code.map((d, i) => (
-            <input key={i} ref={(el) => { refs.current[i] = el; }} value={d} inputMode="numeric" maxLength={1}
-              onChange={(e) => setDigit(i, e.target.value)} onKeyDown={(e) => onKey(i, e)} />
-          ))}
-        </div>
-        <div className="ff-hint" style={{ textAlign: "center" }}>Nesta demonstração, qualquer código de 6 dígitos funciona.</div>
-        <Button variant="default" size="lg" className="au-submit" onClick={verify}>Confirmar e entrar</Button>
+        <Button variant="default" size="lg" className="au-submit" onClick={() => go("login")}>Voltar para senha</Button>
       </div>
-      <div className="au-foot">Não recebeu? <button className="au-link" onClick={() => { setCode(["", "", "", "", "", ""]); toast("Novo código enviado.", "info"); }}>Reenviar código</button> · <button className="au-link au-link--muted" onClick={() => setStep("email")}>Trocar e-mail</button></div>
+      <div className="au-foot">Nao recebeu? <button className="au-link" onClick={() => setStep("email")}>Enviar novamente</button></div>
     </div>
   );
 }
 
-/* ---------------- Forgot / reset ---------------- */
-function ForgotScreen({ email, setEmail, go, config }: ScreenProps) {
-  const [step, setStep] = React.useState<"email" | "sent" | "reset">("email");
+function ForgotScreen({ email, setEmail, go, config, resetToken }: ScreenProps) {
+  const [step, setStep] = React.useState<"email" | "sent" | "reset">(resetToken ? "reset" : "email");
   const [err, setErr] = React.useState<string | null>(null);
-  const [pw, setPw] = React.useState(""); const [pw2, setPw2] = React.useState("");
+  const [pw, setPw] = React.useState("");
+  const [pw2, setPw2] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
 
-  const send = (e?: React.FormEvent) => {
+  React.useEffect(() => {
+    if (resetToken) setStep("reset");
+  }, [resetToken]);
+
+  const send = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail válido.");
-    setErr(null); setStep("sent");
+    if (!EMAIL_RE.test(email)) return setErr("Digite um e-mail valido.");
+    setErr(null); setBusy(true);
+    try {
+      const res = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, redirectTo: "/" }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { message?: string; error?: string } | null;
+        throw new Error(payload?.message || payload?.error || "Nao foi possivel enviar o link.");
+      }
+      setStep("sent");
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Nao foi possivel enviar o link.");
+    } finally {
+      setBusy(false);
+    }
   };
-  const reset = (e?: React.FormEvent) => {
+
+  const reset = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (pw.length < 8) return setErr("A senha deve ter ao menos 8 caracteres.");
-    if (pw !== pw2) return setErr("As senhas não coincidem.");
-    setErr("Recuperacao de senha ainda precisa de um provedor de e-mail configurado.");
+    if (pw !== pw2) return setErr("As senhas nao coincidem.");
+    if (!resetToken) return setErr("Link de recuperacao invalido ou expirado.");
+    setErr(null); setBusy(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ newPassword: pw, token: resetToken }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { message?: string; error?: string } | null;
+        throw new Error(payload?.message || payload?.error || "Nao foi possivel redefinir a senha.");
+      }
+      window.history.replaceState({}, "", "/");
+      toast("Senha redefinida. Entre com a nova senha.", "ok");
+      go("login");
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Nao foi possivel redefinir a senha.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (step === "email") {
@@ -391,54 +438,86 @@ function ForgotScreen({ email, setEmail, go, config }: ScreenProps) {
             <div className="au-field-label"><span>E-mail</span></div>
             <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@atelie.com.br" autoComplete="email" />
           </div>
-          <Button type="submit" variant="default" size="lg" className="au-submit" iconRight="arrowRight">Enviar link de recuperação</Button>
+          <Button type="submit" variant="default" size="lg" className="au-submit" disabled={busy} iconRight={busy ? null : "arrowRight"}>{busy ? "Enviando..." : "Enviar link de recuperacao"}</Button>
         </form>
       </div>
     );
   }
+
   if (step === "sent") {
     return (
       <div className="au-card">
         <MobileBrand config={config} />
         <div className="au-sent-ico"><Icon name="inbox" size={24} /></div>
         <h1 className="au-title">Verifique seu e-mail</h1>
-        <p className="au-lede">Enviamos um link de recuperação para <span className="au-sent-mail">{email}</span>. Abra o link para definir uma nova senha.</p>
+        <p className="au-lede">Enviamos um link de recuperacao para <span className="au-sent-mail">{email}</span>. Abra o link para definir uma nova senha.</p>
         <div className="au-form">
-          <Button variant="default" size="lg" className="au-submit" onClick={() => setStep("reset")} iconRight="arrowRight">Abrir link (demonstração)</Button>
+          <Button variant="default" size="lg" className="au-submit" onClick={() => go("login")} iconRight="arrowRight">Voltar para o login</Button>
           <button className="au-oauth-btn" onClick={() => setStep("email")}><Icon name="refresh" size={15} /> Reenviar para outro e-mail</button>
         </div>
-        <div className="au-foot"><button className="au-link" onClick={() => go("login")}>Voltar para o login</button></div>
       </div>
     );
   }
+
   return (
     <div className="au-card">
       <MobileBrand config={config} />
       <h1 className="au-title">Criar nova senha</h1>
-      <p className="au-lede">Escolha uma nova senha para <span className="au-sent-mail">{email}</span>.</p>
+      <p className="au-lede">Escolha uma nova senha para sua conta.</p>
       <form className="au-form" onSubmit={reset}>
         <AuthErr>{err}</AuthErr>
-        <PwField label="Nova senha" value={pw} onChange={setPw} placeholder="Mínimo de 8 caracteres" autoComplete="new-password" />
+        <PwField label="Nova senha" value={pw} onChange={setPw} placeholder="Minimo de 8 caracteres" autoComplete="new-password" />
         <PwField label="Confirmar senha" value={pw2} onChange={setPw2} placeholder="Repita a senha" autoComplete="new-password" />
-        <Button type="submit" variant="default" size="lg" className="au-submit">Redefinir senha</Button>
+        <Button type="submit" variant="default" size="lg" className="au-submit" disabled={busy}>{busy ? "Redefinindo..." : "Redefinir senha"}</Button>
       </form>
     </div>
   );
 }
 
-/* ---------------- Flow controller ---------------- */
 export function AuthFlow({ onAuthed, config }: { onAuthed: (s: Session) => void; config: AuthConfig }) {
   const [view, setView] = React.useState<AuthView>("login");
   const [email, setEmail] = React.useState("");
-  const go: Go = (v) => setView(config.allowSignup || v !== "signup" ? v : "login");
-  const props: ScreenProps = { email, setEmail, onAuthed, go, config };
+  const [inviteToken, setInviteToken] = React.useState<string | null>(null);
+  const [invite, setInvite] = React.useState<InvitePreview | null>(null);
+  const [inviteError, setInviteError] = React.useState<string | null>(null);
+  const [resetToken, setResetToken] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextInviteToken = params.get("invite");
+    const nextResetToken = params.get("token");
+    const authError = params.get("error");
+
+    if (authError) setInviteError(authError === "INVALID_TOKEN" ? "Link invalido ou expirado." : authError);
+
+    if (nextResetToken) {
+      setResetToken(nextResetToken);
+      setView("forgot");
+      return;
+    }
+
+    if (nextInviteToken) {
+      setInviteToken(nextInviteToken);
+      setView("signup");
+      fetch(`/api/invites/${encodeURIComponent(nextInviteToken)}`, { cache: "no-store" })
+        .then((res) => res.ok ? res.json() : Promise.reject(new Error("invite_not_found")))
+        .then((payload: InvitePreview) => {
+          setInvite(payload);
+          setEmail(payload.email);
+        })
+        .catch(() => setInviteError("Convite invalido ou expirado."));
+    }
+  }, []);
+
+  const go: Go = (v) => setView(config.allowSignup || inviteToken || v !== "signup" ? v : "login");
+  const props: ScreenProps = { email, setEmail, onAuthed, go, config, inviteToken, invite, inviteError, resetToken };
 
   return (
     <div className="au-wrap">
       <AuthAside config={config} />
       <div className="au-main">
         {view === "login" && <LoginScreen {...props} />}
-        {view === "signup" && config.allowSignup && <SignupScreen {...props} />}
+        {view === "signup" && (config.allowSignup || inviteToken) && <SignupScreen {...props} />}
         {view === "magic" && <MagicScreen {...props} />}
         {view === "forgot" && <ForgotScreen {...props} />}
       </div>

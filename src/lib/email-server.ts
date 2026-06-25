@@ -6,7 +6,11 @@ type SendEmailInput = {
 };
 
 function emailFrom() {
-  return process.env.RESEND_FROM_EMAIL || "Atelie OS <noreply@atelie-os.local>";
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
+  if (!from && process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_FROM_EMAIL is required when RESEND_API_KEY is configured.");
+  }
+  return from || "Atelie OS <noreply@atelie-os.local>";
 }
 
 export function resendConfigured() {
@@ -52,12 +56,22 @@ export async function sendPasswordResetEmail(input: { to: string; url: string })
   });
 }
 
-export async function sendTeamInviteEmail(input: { to: string; companyName: string; role: string; invitedBy?: string | null }) {
+export async function sendMagicLinkEmail(input: { to: string; url: string }) {
+  return sendEmail({
+    to: input.to,
+    subject: "Seu link de acesso ao Atelie OS",
+    html: `<p>Use este link para entrar no Atelie OS:</p><p><a href="${input.url}">Entrar agora</a></p><p>Se voce nao pediu isso, ignore este e-mail.</p>`,
+    text: `Use este link para entrar no Atelie OS: ${input.url}`,
+  });
+}
+
+export async function sendTeamInviteEmail(input: { to: string; companyName: string; role: string; invitedBy?: string | null; token?: string }) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "http://localhost:3000";
+  const url = input.token ? `${appUrl}/?invite=${encodeURIComponent(input.token)}` : appUrl;
   return sendEmail({
     to: input.to,
     subject: `Convite para ${input.companyName}`,
-    html: `<p>${input.invitedBy ?? "A equipe"} convidou voce para ${input.companyName} como ${input.role}.</p><p><a href="${appUrl}">Entrar no Atelie OS</a></p>`,
-    text: `${input.invitedBy ?? "A equipe"} convidou voce para ${input.companyName} como ${input.role}. Acesse: ${appUrl}`,
+    html: `<p>${input.invitedBy ?? "A equipe"} convidou voce para ${input.companyName} como ${input.role}.</p><p><a href="${url}">Aceitar convite</a></p>`,
+    text: `${input.invitedBy ?? "A equipe"} convidou voce para ${input.companyName} como ${input.role}. Acesse: ${url}`,
   });
 }
