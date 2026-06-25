@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, items, stockCountItems, stockCounts, stockMovements } from "@/db/schema";
+import { auditLogs, inventoryLocations, items, stockCountItems, stockCounts, stockMovements } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import { emptyStockBalance, getStockBalancesForCompany } from "@/lib/stock-balances";
 import { countSummary, stockCountAdjustments, type StockCountLine } from "@/lib/stock-count";
@@ -25,7 +24,21 @@ type CountItemRow = {
   name: string;
   expected: number;
   counted: number | null;
+  lossReason: string;
 };
+
+async function listActiveLocations(companyId: string) {
+  return db
+    .select({
+      id: inventoryLocations.id,
+      code: inventoryLocations.code,
+      name: inventoryLocations.name,
+      type: inventoryLocations.type,
+    })
+    .from(inventoryLocations)
+    .where(and(eq(inventoryLocations.companyId, companyId), eq(inventoryLocations.isActive, true)))
+    .orderBy(asc(inventoryLocations.name));
+}
 
 async function countDetail(companyId: string, countId: string) {
   const [count] = await db
@@ -42,6 +55,7 @@ async function countDetail(companyId: string, countId: string) {
       name: stockCountItems.name,
       expectedQty: stockCountItems.expectedQty,
       countedQty: stockCountItems.countedQty,
+      lossReason: stockCountItems.lossReason,
     })
     .from(stockCountItems)
     .where(eq(stockCountItems.countId, countId))
@@ -53,16 +67,32 @@ async function countDetail(companyId: string, countId: string) {
     name: row.name,
     expected: toNumber(row.expectedQty) ?? 0,
     counted: toNumber(row.countedQty),
+    lossReason: row.lossReason,
   }));
+
+  const [location] = count.locationId
+    ? await db
+        .select({
+          id: inventoryLocations.id,
+          code: inventoryLocations.code,
+          name: inventoryLocations.name,
+          type: inventoryLocations.type,
+        })
+        .from(inventoryLocations)
+        .where(and(eq(inventoryLocations.companyId, companyId), eq(inventoryLocations.id, count.locationId)))
+        .limit(1)
+    : [null];
 
   return {
     id: count.id,
     code: count.code,
     status: count.status,
     note: count.note,
+    locationId: count.locationId,
+    location,
     createdAt: count.createdAt ? count.createdAt.toISOString() : null,
     appliedAt: count.appliedAt ? count.appliedAt.toISOString() : null,
-    summary: countSummary(lines.map((line) => ({ itemId: line.itemId, sku: line.sku, expected: line.expected, counted: line.counted }))),
+    summary: countSummary(lines),
     items: lines,
   };
 }
@@ -80,8 +110,19 @@ export async function GET(request: Request) {
   }
 
   const counts = await db
-    .select()
+    .select({
+      id: stockCounts.id,
+      code: stockCounts.code,
+      status: stockCounts.status,
+      locationId: stockCounts.locationId,
+      createdAt: stockCounts.createdAt,
+      appliedAt: stockCounts.appliedAt,
+      locationName: inventoryLocations.name,
+      locationCode: inventoryLocations.code,
+      locationType: inventoryLocations.type,
+    })
     .from(stockCounts)
+    .leftJoin(inventoryLocations, eq(stockCounts.locationId, inventoryLocations.id))
     .where(eq(stockCounts.companyId, context.company.id))
     .orderBy(desc(stockCounts.createdAt));
 
@@ -101,10 +142,15 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
+    locations: await listActiveLocations(context.company.id),
     counts: counts.map((count) => ({
       id: count.id,
       code: count.code,
       status: count.status,
+      locationId: count.locationId,
+      location: count.locationId
+        ? { id: count.locationId, code: count.locationCode ?? "", name: count.locationName ?? "", type: count.locationType ?? "" }
+        : null,
       createdAt: count.createdAt ? count.createdAt.toISOString() : null,
       appliedAt: count.appliedAt ? count.appliedAt.toISOString() : null,
       summary: countSummary(byCount.get(count.id) ?? []),
@@ -117,7 +163,12 @@ export async function POST(request: Request) {
   if ("response" in contextResult) return contextResult.response;
 
   const { context } = contextResult;
-  const body = await request.json().catch(() => null) as { note?: unknown } | null;
+  const body = await request.json().catch(() => null) as { note?: unknown; locationId?: unknown } | null;
+  const requestedLocationId = cleanString(body?.locationId, 80);
+  const locations = await listActiveLocations(context.company.id);
+  const locationId = requestedLocationId && locations.some((location) => location.id === requestedLocationId)
+    ? requestedLocationId
+    : null;
 
   const [activeItems, balances, existing] = await Promise.all([
     db
@@ -125,7 +176,7 @@ export async function POST(request: Request) {
       .from(items)
       .where(and(eq(items.companyId, context.company.id), eq(items.status, "active")))
       .orderBy(items.name),
-    getStockBalancesForCompany(context.company.id),
+    getStockBalancesForCompany(context.company.id, locationId),
     db.select({ id: stockCounts.id }).from(stockCounts).where(eq(stockCounts.companyId, context.company.id)),
   ]);
 
@@ -139,6 +190,7 @@ export async function POST(request: Request) {
       .values({
         companyId: context.company.id,
         code,
+        locationId,
         note: cleanString(body?.note, 240),
         createdByUserId: context.user.id,
       })
@@ -158,7 +210,7 @@ export async function POST(request: Request) {
       action: "stock.adjust",
       entityType: "stock_count",
       entityId: created.id,
-      metadata: { code, operation: "count_create", items: activeItems.length },
+      metadata: { code, locationId, operation: "count_create", items: activeItems.length },
     });
 
     return created.id;
@@ -178,7 +230,7 @@ export async function PATCH(request: Request) {
   if (!countId) return NextResponse.json({ error: "invalid_count" }, { status: 400 });
 
   const [count] = await db
-    .select({ id: stockCounts.id, code: stockCounts.code, status: stockCounts.status })
+    .select({ id: stockCounts.id, code: stockCounts.code, status: stockCounts.status, locationId: stockCounts.locationId })
     .from(stockCounts)
     .where(and(eq(stockCounts.companyId, context.company.id), eq(stockCounts.id, countId)))
     .limit(1);
@@ -197,11 +249,17 @@ export async function PATCH(request: Request) {
         if (!entry || typeof entry !== "object") continue;
         const itemId = cleanString((entry as Record<string, unknown>).itemId, 80);
         if (!itemId) continue;
-        const countedRaw = (entry as Record<string, unknown>).countedQty;
+        const record = entry as Record<string, unknown>;
+        const countedRaw = record.countedQty;
         const counted = countedRaw == null || countedRaw === "" ? null : toNumber(countedRaw);
+        const lossReason = cleanString(record.lossReason, 40);
         await tx
           .update(stockCountItems)
-          .set({ countedQty: counted == null ? null : Math.max(0, counted).toString(), updatedAt: new Date() })
+          .set({
+            countedQty: counted == null ? null : Math.max(0, counted).toString(),
+            lossReason,
+            updatedAt: new Date(),
+          })
           .where(and(eq(stockCountItems.countId, countId), eq(stockCountItems.itemId, itemId)));
       }
     });
@@ -215,6 +273,7 @@ export async function PATCH(request: Request) {
       sku: stockCountItems.sku,
       expectedQty: stockCountItems.expectedQty,
       countedQty: stockCountItems.countedQty,
+      lossReason: stockCountItems.lossReason,
       defaultLocationId: items.defaultLocationId,
     })
     .from(stockCountItems)
@@ -227,11 +286,14 @@ export async function PATCH(request: Request) {
     sku: row.sku,
     expected: toNumber(row.expectedQty) ?? 0,
     counted: toNumber(row.countedQty),
+    lossReason: row.lossReason,
   })));
+  const missingLossReason = adjustments.find((adjustment) => adjustment.direction === "decrease" && !adjustment.lossReason);
+  if (missingLossReason) return NextResponse.json({ error: "loss_reason_required", sku: missingLossReason.sku }, { status: 409 });
 
   await db.transaction(async (tx) => {
     for (const adjustment of adjustments) {
-      const locationId = locationByItem.get(adjustment.itemId) ?? null;
+      const locationId = count.locationId ?? locationByItem.get(adjustment.itemId) ?? null;
       await tx.insert(stockMovements).values({
         companyId: context.company.id,
         itemId: adjustment.itemId,
@@ -239,11 +301,13 @@ export async function PATCH(request: Request) {
         quantity: adjustment.quantity.toString(),
         fromLocationId: adjustment.direction === "decrease" ? locationId : null,
         toLocationId: adjustment.direction === "increase" ? locationId : null,
-        reason: `Ajuste de contagem ${count.code}`,
+        reason: adjustment.direction === "decrease" && adjustment.lossReason
+          ? `Ajuste de contagem ${count.code} - ${adjustment.lossReason}`
+          : `Ajuste de contagem ${count.code}`,
         sourceType: "stock_count",
         sourceId: `${countId}:${adjustment.itemId}`,
         createdByUserId: context.user.id,
-        metadata: { countId, sku: adjustment.sku },
+        metadata: { countId, sku: adjustment.sku, locationId, lossReason: adjustment.lossReason || null },
       });
     }
 

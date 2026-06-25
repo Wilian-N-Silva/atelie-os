@@ -17,8 +17,18 @@ test("only counted, diverging lines become adjustments", () => {
     { itemId: "d", sku: "D", expected: 0, counted: 3 },
   ]);
   assert.deepEqual(adjustments, [
-    { itemId: "a", sku: "A", direction: "decrease", quantity: 2 },
-    { itemId: "d", sku: "D", direction: "increase", quantity: 3 },
+    { itemId: "a", sku: "A", direction: "decrease", quantity: 2, lossReason: "" },
+    { itemId: "d", sku: "D", direction: "increase", quantity: 3, lossReason: "" },
+  ]);
+});
+
+test("decrease adjustments carry loss reason", () => {
+  const adjustments = stockCountAdjustments([
+    { itemId: "a", sku: "A", expected: 10, counted: 8, lossReason: "breakage" },
+  ]);
+
+  assert.deepEqual(adjustments, [
+    { itemId: "a", sku: "A", direction: "decrease", quantity: 2, lossReason: "breakage" },
   ]);
 });
 

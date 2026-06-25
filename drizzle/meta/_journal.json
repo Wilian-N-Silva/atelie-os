@@ -92,6 +92,13 @@
       "when": 1781215200000,
       "tag": "0012_marketplace_imports",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781301600000,
+      "tag": "0013_stock_count_loss_reasons",
+      "breakpoints": true
     }
   ]
 }

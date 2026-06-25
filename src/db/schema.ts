@@ -814,6 +814,7 @@ export const stockCountItems = pgTable(
     name: text("name").notNull(),
     expectedQty: numeric("expected_qty", { precision: 12, scale: 3 }).notNull().default("0"),
     countedQty: numeric("counted_qty", { precision: 12, scale: 3 }),
+    lossReason: text("loss_reason").notNull().default(""),
     ...timestamps,
   },
   (table) => ({

@@ -4,9 +4,21 @@
  * adjustments only after explicit confirmation (PRD 7.22 / 10.10).
  */
 
-export type StockCountLine = { itemId: string; sku: string; expected: number; counted: number | null };
+export type StockCountLine = {
+  itemId: string;
+  sku: string;
+  expected: number;
+  counted: number | null;
+  lossReason?: string;
+};
 
-export type StockCountAdjustment = { itemId: string; sku: string; direction: "increase" | "decrease"; quantity: number };
+export type StockCountAdjustment = {
+  itemId: string;
+  sku: string;
+  direction: "increase" | "decrease";
+  quantity: number;
+  lossReason: string;
+};
 
 export function countDivergence(expected: number, counted: number | null): number | null {
   if (counted == null || !Number.isFinite(counted)) return null;
@@ -24,6 +36,7 @@ export function stockCountAdjustments(lines: StockCountLine[]): StockCountAdjust
       sku: line.sku,
       direction: divergence > 0 ? "increase" : "decrease",
       quantity: Math.abs(divergence),
+      lossReason: divergence < 0 ? (line.lossReason ?? "").trim() : "",
     });
   }
   return adjustments;

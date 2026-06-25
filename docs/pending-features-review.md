@@ -60,9 +60,9 @@ This document lists the product features that are still missing or only partiall
   - [x] Persisted per-channel fee rules in settings.
   - [x] Richer labor-cost model.
 
-- [ ] Stock count phase 2
-  - Per-location stock counts.
-  - Loss-reason categories for count adjustments.
+- [x] Stock count phase 2
+  - [x] Per-location stock counts.
+  - [x] Loss-reason categories for count adjustments.
 
 - [ ] Quality control and lots phase 2
   - Real `inventory_lots` model.
