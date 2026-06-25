@@ -99,6 +99,13 @@
       "when": 1781301600000,
       "tag": "0013_stock_count_loss_reasons",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1781388000000,
+      "tag": "0014_inventory_lots",
+      "breakpoints": true
     }
   ]
 }

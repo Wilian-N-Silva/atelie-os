@@ -138,7 +138,7 @@ export function QualityScreen(_props: { route: Route }) {
       <Card style={{ overflow: "hidden" }}>
         <table className="om-table">
           <thead>
-            <tr><th>Lote / OP</th><th>Produto</th><th className="om-td-right">Qtd</th><th>Cura</th><th>Status</th><th /></tr>
+            <tr><th>Lote / OP</th><th>Produto</th><th className="om-td-right">Qtd</th><th>Cura</th><th>Status</th><th>Lote estoque</th><th /></tr>
           </thead>
           <tbody>
             {lots.map((lot) => (
@@ -148,6 +148,14 @@ export function QualityScreen(_props: { route: Route }) {
                 <td className="om-td-right">{lot.planned}</td>
                 <td>{lot.cureUntil ? <span className="muted">ate {lot.cureUntil}{lot.cureDayLeft != null ? ` - ${lot.cureDayLeft}d` : ""}</span> : <span className="muted">-</span>}</td>
                 <td><Badge tone={lot.status === "aguardando_revisao" ? "warn" : "cure"} dot>{lot.status === "aguardando_revisao" ? "Revisar" : "Em cura"}</Badge></td>
+                <td>
+                  {lot.inventoryLot ? (
+                    <div>
+                      <div className="cell-title">{lot.inventoryLot.status}</div>
+                      <div className="cell-sub">{lot.inventoryLot.availableQty} disp. / {lot.inventoryLot.rejectedQty} perda</div>
+                    </div>
+                  ) : <span className="muted">-</span>}
+                </td>
                 <td className="om-td-right"><Icon name="chevronRight" size={16} className="muted" /></td>
               </tr>
             ))}

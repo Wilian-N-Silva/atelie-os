@@ -856,6 +856,40 @@ export const productionOrders = pgTable(
   }),
 );
 
+export const inventoryLots = pgTable(
+  "inventory_lots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "restrict" }),
+    code: text("code").notNull(),
+    lotType: text("lot_type").notNull().default("produced"),
+    status: text("status").notNull().default("em_cura"),
+    productionOrderId: uuid("production_order_id").references(() => productionOrders.id, { onDelete: "set null" }),
+    sourceType: text("source_type").notNull().default("production"),
+    sourceId: text("source_id"),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
+    initialQty: numeric("initial_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+    releasedQty: numeric("released_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+    availableQty: numeric("available_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+    rejectedQty: numeric("rejected_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+    qualityStatus: text("quality_status").notNull().default("pending"),
+    qualityReviewedAt: timestamp("quality_reviewed_at", { withTimezone: true }),
+    qualityReviewedByUserId: text("quality_reviewed_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    companyItemCodeIdx: uniqueIndex("inventory_lots_company_item_code_idx").on(table.companyId, table.itemId, table.code),
+    productionIdx: index("inventory_lots_production_idx").on(table.productionOrderId),
+    companyStatusIdx: index("inventory_lots_company_status_idx").on(table.companyId, table.status),
+  }),
+);
+
 export const workflows = pgTable(
   "workflows",
   {

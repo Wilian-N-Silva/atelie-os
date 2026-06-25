@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db/client";
 import { inventoryLocations, items, stockMovements } from "@/db/schema";
 import {
@@ -18,6 +19,9 @@ export {
 } from "@/lib/stock-balance-math";
 export type { StockBalance, StockMovementBalanceInput } from "@/lib/stock-balance-math";
 
+const fromLocations = alias(inventoryLocations, "stock_balance_from_locations");
+const toLocations = alias(inventoryLocations, "stock_balance_to_locations");
+
 export async function getStockBalancesForCompany(companyId: string, locationId?: string | null) {
   const movementRows = await db
     .select({
@@ -26,10 +30,12 @@ export async function getStockBalancesForCompany(companyId: string, locationId?:
       quantity: stockMovements.quantity,
       fromLocationId: stockMovements.fromLocationId,
       toLocationId: stockMovements.toLocationId,
-      toLocationType: inventoryLocations.type,
+      fromLocationType: fromLocations.type,
+      toLocationType: toLocations.type,
     })
     .from(stockMovements)
-    .leftJoin(inventoryLocations, eq(stockMovements.toLocationId, inventoryLocations.id))
+    .leftJoin(fromLocations, eq(stockMovements.fromLocationId, fromLocations.id))
+    .leftJoin(toLocations, eq(stockMovements.toLocationId, toLocations.id))
     .innerJoin(items, and(eq(stockMovements.itemId, items.id), eq(items.companyId, companyId)))
     .where(eq(stockMovements.companyId, companyId));
 

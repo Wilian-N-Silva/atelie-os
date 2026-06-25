@@ -64,13 +64,13 @@ This document lists the product features that are still missing or only partiall
   - [x] Per-location stock counts.
   - [x] Loss-reason categories for count adjustments.
 
-- [ ] Quality control and lots phase 2
-  - Real `inventory_lots` model.
+- [x] Quality control and lots phase 2
+  - [x] Real `inventory_lots` model.
   - [x] Partial lot approval/rejection.
   - [x] Required loss/approval reasons.
-  - Stronger block/release stock link to QC status.
+  - [x] Stronger block/release stock link to QC status.
   - First slices delivered: production drawer now shows lot trace, real cost, QC outcome, output/release/loss quantities, and consumed-material rows; quality review supports partial approval and reason enforcement.
-  - Material-lot selection delivered as a beta slice using purchase/stock movement lot metadata; the dedicated `inventory_lots` model remains pending.
+  - Material-lot selection delivered as a beta slice using purchase/stock movement lot metadata; produced-lot records now sync through `inventory_lots`.
 
 - [ ] Returns and exchanges phase 2
   - Enforce that shipped orders cannot be cancelled directly.

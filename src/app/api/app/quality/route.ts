@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, inventoryLocations, productionOrders, stockMovements } from "@/db/schema";
+import { auditLogs, inventoryLocations, inventoryLots, productionOrders, stockMovements } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import {
   QC_CHECKLIST,
@@ -33,11 +33,55 @@ function cleanChecklist(value: unknown): QcChecklistItem[] {
   return QC_CHECKLIST.map((item) => ({ key: item.key, label: item.label, checked: checked.has(item.key) }));
 }
 
+function lotStatusForDecision(decision: string) {
+  if (decision === "block") return "blocked";
+  if (decision === "loss") return "rejected";
+  if (decision === "partial") return "partial";
+  return "released";
+}
+
+function qualityStatusForDecision(decision: string) {
+  if (decision === "approve") return "approved";
+  if (decision === "approve_note") return "approved_with_note";
+  return decision;
+}
+
 async function listReviewLots(companyId: string) {
   const rows = await db.query.productionOrders.findMany({
     where: and(eq(productionOrders.companyId, companyId), inArray(productionOrders.status, REVIEW_STATUSES)),
     orderBy: (table, { desc: d }) => [d(table.createdAt)],
   });
+  await Promise.all(rows.map(async (row) => {
+    if (!row.productItemId) return;
+    const lotCode = row.lot ?? row.number;
+    await db.insert(inventoryLots).values({
+      companyId,
+      itemId: row.productItemId,
+      code: lotCode,
+      lotType: "produced",
+      status: row.status === "aguardando_revisao" ? "review" : "em_cura",
+      productionOrderId: row.id,
+      sourceType: "production",
+      sourceId: row.id,
+      initialQty: row.planned,
+      metadata: { productionId: row.id, productionNum: row.number, productSku: row.productSku },
+    }).onConflictDoUpdate({
+      target: [inventoryLots.companyId, inventoryLots.itemId, inventoryLots.code],
+      set: {
+        status: row.status === "aguardando_revisao" ? "review" : "em_cura",
+        productionOrderId: row.id,
+        sourceId: row.id,
+        initialQty: row.planned,
+        updatedAt: new Date(),
+      },
+    });
+  }));
+  const lotRows = rows.length
+    ? await db.query.inventoryLots.findMany({
+        where: and(eq(inventoryLots.companyId, companyId), inArray(inventoryLots.productionOrderId, rows.map((row) => row.id))),
+      })
+    : [];
+  const lotByProduction = new Map(lotRows.map((lot) => [lot.productionOrderId, lot]));
   return rows.map((row) => ({
     id: row.id,
     num: row.number,
@@ -48,6 +92,14 @@ async function listReviewLots(companyId: string) {
     cureUntil: row.cureUntil ?? null,
     cureDayLeft: row.cureDayLeft ?? null,
     quality: (row.metadata as Record<string, unknown>)?.quality ?? null,
+    inventoryLot: lotByProduction.get(row.id) ? {
+      id: lotByProduction.get(row.id)?.id,
+      status: lotByProduction.get(row.id)?.status,
+      releasedQty: Number(lotByProduction.get(row.id)?.releasedQty ?? 0),
+      availableQty: Number(lotByProduction.get(row.id)?.availableQty ?? 0),
+      rejectedQty: Number(lotByProduction.get(row.id)?.rejectedQty ?? 0),
+      qualityStatus: lotByProduction.get(row.id)?.qualityStatus,
+    } : null,
   }));
 }
 
@@ -99,6 +151,8 @@ export async function POST(request: Request) {
     reviewedByUserId: context.user.id,
     reviewedAt: new Date().toISOString(),
   };
+  const lotCode = production.lot ?? production.number;
+  const reviewedAt = new Date();
 
   await db.transaction(async (tx) => {
     await tx
@@ -132,6 +186,43 @@ export async function POST(request: Request) {
         sourceId: `${productionId}:loss`,
         createdByUserId: context.user.id,
         metadata: { productionId, lot: production.lot, lossQty, decision },
+      });
+    }
+
+    if (production.productItemId) {
+      await tx.insert(inventoryLots).values({
+        companyId: context.company.id,
+        itemId: production.productItemId,
+        code: lotCode,
+        lotType: "produced",
+        status: lotStatusForDecision(decision),
+        productionOrderId: production.id,
+        sourceType: "production",
+        sourceId: production.id,
+        initialQty: production.planned,
+        releasedQty: releaseQty.toString(),
+        availableQty: releaseQty.toString(),
+        rejectedQty: lossQty.toString(),
+        qualityStatus: qualityStatusForDecision(decision),
+        qualityReviewedAt: reviewedAt,
+        qualityReviewedByUserId: context.user.id,
+        metadata: { productionId, productionNum: production.number, productSku: production.productSku, quality },
+      }).onConflictDoUpdate({
+        target: [inventoryLots.companyId, inventoryLots.itemId, inventoryLots.code],
+        set: {
+          status: lotStatusForDecision(decision),
+          productionOrderId: production.id,
+          sourceId: production.id,
+          initialQty: production.planned,
+          releasedQty: releaseQty.toString(),
+          availableQty: releaseQty.toString(),
+          rejectedQty: lossQty.toString(),
+          qualityStatus: qualityStatusForDecision(decision),
+          qualityReviewedAt: reviewedAt,
+          qualityReviewedByUserId: context.user.id,
+          metadata: { productionId, productionNum: production.number, productSku: production.productSku, quality },
+          updatedAt: new Date(),
+        },
       });
     }
 

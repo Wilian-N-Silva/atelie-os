@@ -15,6 +15,7 @@ export type StockMovementBalanceInput = {
   quantity: string;
   fromLocationId: string | null;
   toLocationId: string | null;
+  fromLocationType: string | null;
   toLocationType: string | null;
 };
 
@@ -45,6 +46,7 @@ export function normalizeBalance(balance: StockBalance): StockBalance {
 export function applyStockMovement(balance: StockBalance, movement: {
   type: StockMovementType;
   quantity: string;
+  fromLocationType?: string | null;
   toLocationType: string | null;
 }) {
   const quantity = Number(movement.quantity);
@@ -57,6 +59,7 @@ export function applyStockMovement(balance: StockBalance, movement: {
       break;
     case "production_output":
       if (movement.toLocationType === "cure") {
+        balance.physical += quantity;
         balance.inCure += quantity;
       } else {
         balance.physical += quantity;
@@ -81,6 +84,11 @@ export function applyStockMovement(balance: StockBalance, movement: {
       balance.blocked -= quantity;
       break;
     case "transfer":
+      if (movement.fromLocationType === "cure" && movement.toLocationType !== "cure") {
+        balance.inCure -= quantity;
+      } else if (movement.fromLocationType !== "cure" && movement.toLocationType === "cure") {
+        balance.inCure += quantity;
+      }
       break;
   }
 }
@@ -99,6 +107,7 @@ export function applyLocationStockMovement(balance: StockBalance, movement: Stoc
     case "production_output":
       if (!toSelected) break;
       if (movement.toLocationType === "cure") {
+        balance.physical += quantity;
         balance.inCure += quantity;
       } else {
         balance.physical += quantity;
@@ -131,8 +140,18 @@ export function applyLocationStockMovement(balance: StockBalance, movement: Stoc
       if (toSelected) balance.physical += quantity;
       break;
     case "transfer":
-      if (fromSelected) balance.physical -= quantity;
-      if (toSelected) balance.physical += quantity;
+      if (fromSelected) {
+        balance.physical -= quantity;
+        if (movement.fromLocationType === "cure") {
+          balance.inCure -= quantity;
+        }
+      }
+      if (toSelected) {
+        balance.physical += quantity;
+        if (movement.toLocationType === "cure") {
+          balance.inCure += quantity;
+        }
+      }
       break;
   }
 }

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import {
   auditLogs,
   inventoryLocations,
+  inventoryLots,
   items,
   orderItems,
   productionOrders,
@@ -402,6 +403,33 @@ export async function applyProductionWorkflowAutomations(input: {
         metadata: { productionId, sku: production.productSku, lot: production.lot },
       });
       if (didInsert) inserted += 1;
+      await tx.insert(inventoryLots).values({
+        companyId,
+        itemId: production.productItemId,
+        code: production.lot ?? production.number,
+        lotType: "produced",
+        status: "em_cura",
+        productionOrderId: production.id,
+        sourceType: "production",
+        sourceId: production.id,
+        locationId: cureLocationId,
+        initialQty: quantityString(planned),
+        releasedQty: "0",
+        availableQty: "0",
+        rejectedQty: "0",
+        qualityStatus: "pending",
+        metadata: { productionId, productionNum: production.number, productSku: production.productSku },
+      }).onConflictDoUpdate({
+        target: [inventoryLots.companyId, inventoryLots.itemId, inventoryLots.code],
+        set: {
+          status: "em_cura",
+          productionOrderId: production.id,
+          sourceId: production.id,
+          locationId: cureLocationId,
+          initialQty: quantityString(planned),
+          updatedAt: new Date(),
+        },
+      });
     }
   }
 

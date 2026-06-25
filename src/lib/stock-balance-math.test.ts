@@ -45,6 +45,7 @@ test("applyLocationStockMovement moves blocked stock between normal and blocked 
     quantity: "4",
     fromLocationId: "loc-normal",
     toLocationId: "loc-blocked",
+    fromLocationType: "shelf",
     toLocationType: "blocked",
   } satisfies StockMovementBalanceInput;
 
@@ -71,6 +72,7 @@ test("applyLocationStockMovement moves blocked stock between normal and blocked 
     quantity: "1.5",
     fromLocationId: "loc-blocked",
     toLocationId: "loc-normal",
+    fromLocationType: "blocked",
     toLocationType: "shelf",
   } satisfies StockMovementBalanceInput;
 
@@ -90,5 +92,58 @@ test("applyLocationStockMovement moves blocked stock between normal and blocked 
     inCure: 0,
     blocked: 2.5,
     available: 0,
+  });
+});
+
+test("production release transfers cured stock into available physical stock", () => {
+  const aggregate = emptyStockBalance();
+
+  applyStockMovement(aggregate, { type: "production_output", quantity: "10", toLocationType: "cure" });
+  assert.deepEqual(normalizeBalance(aggregate), {
+    physical: 10,
+    reserved: 0,
+    inCure: 10,
+    blocked: 0,
+    available: 0,
+  });
+
+  applyStockMovement(aggregate, { type: "transfer", quantity: "7", fromLocationType: "cure", toLocationType: "shelf" });
+  assert.deepEqual(normalizeBalance(aggregate), {
+    physical: 10,
+    reserved: 0,
+    inCure: 3,
+    blocked: 0,
+    available: 7,
+  });
+
+  const cure = emptyStockBalance();
+  const shelf = emptyStockBalance();
+  const movement = {
+    type: "transfer",
+    quantity: "7",
+    fromLocationId: "cure",
+    toLocationId: "shelf",
+    fromLocationType: "cure",
+    toLocationType: "shelf",
+  } satisfies StockMovementBalanceInput;
+
+  cure.physical = 10;
+  cure.inCure = 10;
+  applyLocationStockMovement(cure, movement, "cure");
+  applyLocationStockMovement(shelf, movement, "shelf");
+
+  assert.deepEqual(normalizeBalance(cure), {
+    physical: 3,
+    reserved: 0,
+    inCure: 3,
+    blocked: 0,
+    available: 0,
+  });
+  assert.deepEqual(normalizeBalance(shelf), {
+    physical: 7,
+    reserved: 0,
+    inCure: 0,
+    blocked: 0,
+    available: 7,
   });
 });

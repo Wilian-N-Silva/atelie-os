@@ -12,6 +12,14 @@ export type QualityLot = {
   cureUntil: string | null;
   cureDayLeft: number | null;
   quality: { decision?: string; note?: string; releaseQty?: number; lossQty?: number; reviewedAt?: string } | null;
+  inventoryLot: {
+    id: string;
+    status: string;
+    releasedQty: number;
+    availableQty: number;
+    rejectedQty: number;
+    qualityStatus: string;
+  } | null;
 };
 
 async function parseLots(res: Response) {
