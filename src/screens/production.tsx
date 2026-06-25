@@ -26,8 +26,11 @@ import {
 } from "@/lib/domain";
 import { useItemDirectory } from "@/lib/item-directory";
 import { createProduction, loadProduction, updateProduction } from "@/lib/production-client";
+import type { ProductionPatch } from "@/lib/production-client";
 import { loadLotTrace } from "@/lib/lot-trace-client";
 import type { LotTrace } from "@/lib/lot-trace";
+import { loadMaterialLotOptions } from "@/lib/material-lots-client";
+import type { MaterialLotOption } from "@/lib/material-lots";
 import { loadRecipes } from "@/lib/recipes-client";
 import { type WorkflowStep, useWorkflows } from "@/lib/workflows";
 import { buildStatusMap, statusIcon, statusInfo, type StatusInfo } from "@/lib/workflow-status";
@@ -64,7 +67,7 @@ function materialRows(order: ProductionOrder, recipes: Recipe[], find: FindItem)
   return recipe.components.map((component) => {
     const item = find(component.sku);
     const need = Number((component.qty * order.planned * (1 + component.loss / 100)).toFixed(3));
-    return { ...component, need, available: item?.available ?? 0, short: (item?.available ?? 0) < need };
+    return { ...component, item, need, available: item?.available ?? 0, short: (item?.available ?? 0) < need };
   });
 }
 
@@ -270,14 +273,100 @@ function LotTracePanel({ trace, loading }: { trace: LotTrace | null; loading: bo
   );
 }
 
-function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint, onUpdate }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void; onUpdate: (productionId: string, patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>) => Promise<void> }) {
+function MaterialLotPanel({
+  order,
+  rows,
+  options,
+  lotByItemId,
+  onChange,
+}: {
+  order: ProductionOrder;
+  rows: ReturnType<typeof materialRows>;
+  options: MaterialLotOption[];
+  lotByItemId: Record<string, string>;
+  onChange: (itemId: string, lot: string) => void;
+}) {
+  if (order.status !== "aguardando_materiais") {
+    const selected = order.materialLots ?? [];
+    if (!selected.length) return null;
+    return (
+      <div style={{ marginBottom: 18 }}>
+        <div className="block-label">Lotes de materiais selecionados</div>
+        <table className="minitable">
+          <tbody>
+            {selected.map((allocation) => (
+              <tr key={`${allocation.itemId}:${allocation.lot}`}>
+                <td><div style={{ fontWeight: 550 }}>{allocation.sku}</div><div className="cell-sub sku">lote {allocation.lot}</div></td>
+                <td className="r muted">{formatQty(allocation.quantity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="block-label">Lotes dos materiais</div>
+      <table className="minitable">
+        <tbody>
+          {rows.map((row) => {
+            const itemId = row.item?.id;
+            const lotOptions = itemId ? options.filter((option) => option.itemId === itemId) : [];
+            const selected = itemId ? lotByItemId[itemId] ?? "" : "";
+            const selectedOption = lotOptions.find((option) => option.lot === selected);
+            return (
+              <tr key={row.sku}>
+                <td>
+                  <div style={{ fontWeight: 550 }}>{row.name}</div>
+                  <div className="cell-sub sku">{row.sku} - precisa {formatQty(row.need)} {row.unit}</div>
+                </td>
+                <td style={{ minWidth: 190 }}>
+                  {itemId && lotOptions.length > 0 ? (
+                    <Select
+                      value={selected}
+                      onChange={(lot) => onChange(itemId, lot)}
+                      options={[
+                        { value: "", label: "Selecionar lote" },
+                        ...lotOptions.map((option) => ({
+                          value: option.lot,
+                          label: `${option.lot} - ${formatQty(option.available)} disp.`,
+                        })),
+                      ]}
+                    />
+                  ) : (
+                    <span className="muted">Sem lote recebido</span>
+                  )}
+                </td>
+                <td className="r">
+                  {selectedOption && selectedOption.available < row.need
+                    ? <Badge tone="warn">saldo menor</Badge>
+                    : selected
+                      ? <Badge tone="ok" dot>selecionado</Badge>
+                      : <Badge tone="neutral">pendente</Badge>}
+                </td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 && <tr><td className="muted">Sem materiais para selecionar.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrint, onUpdate }: { order: ProductionOrder; recipes: Recipe[]; find: FindItem; statusMap: StatusMap; go: Go; onClose: () => void; onPrint: (orders: ProductionOrder[], title: string) => void; onUpdate: (productionId: string, patch: ProductionPatch) => Promise<void> }) {
   const status = statusInfo(statusMap, order.status);
   const recipe = recipeFor(order, recipes);
-  const rows = materialRows(order, recipes, find);
+  const rows = React.useMemo(() => materialRows(order, recipes, find), [order, recipes, find]);
+  const materialItemIds = React.useMemo(() => rows.flatMap((row) => row.item?.id ? [row.item.id] : []), [rows]);
   const anyShort = rows.some((row) => row.short);
   const [saving, setSaving] = React.useState(false);
   const [trace, setTrace] = React.useState<LotTrace | null>(null);
   const [traceLoading, setTraceLoading] = React.useState(false);
+  const [lotOptions, setLotOptions] = React.useState<MaterialLotOption[]>([]);
+  const [lotByItemId, setLotByItemId] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     let alive = true;
@@ -289,6 +378,20 @@ function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrin
     return () => { alive = false; };
   }, [order.id]);
 
+  React.useEffect(() => {
+    const initial: Record<string, string> = {};
+    for (const allocation of order.materialLots ?? []) initial[allocation.itemId] = allocation.lot;
+    setLotByItemId(initial);
+  }, [order.id, order.materialLots]);
+
+  React.useEffect(() => {
+    let alive = true;
+    loadMaterialLotOptions(materialItemIds)
+      .then((next) => { if (alive) setLotOptions(next); })
+      .catch(() => { if (alive) setLotOptions([]); });
+    return () => { alive = false; };
+  }, [materialItemIds]);
+
   const runUpdate = async (patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>, message: string) => {
     setSaving(true);
     try {
@@ -296,6 +399,29 @@ function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrin
       toast(message, "ok");
     } catch {
       toast("Nao foi possivel atualizar a OP.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const materialLotAllocations = React.useCallback(() => rows.flatMap((row) => {
+    const itemId = row.item?.id;
+    const lot = itemId ? lotByItemId[itemId] : "";
+    if (!itemId || !lot) return [];
+    return [{ itemId, sku: row.sku, lot, quantity: row.need }];
+  }), [lotByItemId, rows]);
+
+  const saveMaterialLots = async () => {
+    await onUpdate(order.id, { materialLots: materialLotAllocations() });
+  };
+
+  const openOperation = async () => {
+    setSaving(true);
+    try {
+      await saveMaterialLots();
+      go("operacao", { mode: "materiais", production: order.id });
+    } catch {
+      toast("Nao foi possivel salvar os lotes dos materiais.", "bad");
     } finally {
       setSaving(false);
     }
@@ -354,11 +480,29 @@ function ProductionDrawer({ order, recipes, find, statusMap, go, onClose, onPrin
           <div className="field"><span className="field-k">Responsavel</span><span className="field-v">{order.resp}</span></div>
           <div className="field"><span className="field-k">Data planejada</span><span className="field-v">{formatPlannedDate(order.date)}</span></div>
           <div className="field"><span className="field-k">Custo estimado</span><span className="field-v">{BRL(estimatedCost(order, recipes, find))}</span></div>
+          <MaterialLotPanel
+            order={order}
+            rows={rows}
+            options={lotOptions}
+            lotByItemId={lotByItemId}
+            onChange={(itemId, lot) => setLotByItemId((current) => ({ ...current, [itemId]: lot }))}
+          />
           <LotTracePanel trace={trace} loading={traceLoading} />
         </div>
 
         <div className="drawer-foot">
-          {order.status === "aguardando_materiais" && <Button variant="default" icon="scan" style={{ flex: 1 }} onClick={() => go("operacao", { mode: "materiais", production: order.id })}>Separar materiais</Button>}
+          {order.status === "aguardando_materiais" && <Button variant="outline" icon="check" disabled={saving} onClick={async () => {
+            setSaving(true);
+            try {
+              await saveMaterialLots();
+              toast("Lotes de materiais salvos.", "ok");
+            } catch {
+              toast("Nao foi possivel salvar os lotes.", "bad");
+            } finally {
+              setSaving(false);
+            }
+          }}>Salvar lotes</Button>}
+          {order.status === "aguardando_materiais" && <Button variant="default" icon="scan" style={{ flex: 1 }} disabled={saving} onClick={openOperation}>Separar materiais</Button>}
           {order.status === "em_producao" && <Button variant="default" icon="check" style={{ flex: 1 }} disabled={saving} onClick={() => runUpdate(productionCurePatch(order, recipe), "Producao finalizada e lote enviado para cura.")}>Finalizar producao</Button>}
           {order.status === "em_cura" && <Button variant="outline" icon="clock" style={{ flex: 1 }} disabled={saving} onClick={() => runUpdate({ cureDayLeft: (order.cureDayLeft ?? 0) + 1 }, "Cura estendida em 1 dia.")}>Estender cura</Button>}
           {order.status === "aguardando_revisao" && <Button variant="brand" icon="unlock" style={{ flex: 1 }} disabled={saving} onClick={() => runUpdate({ status: "liberada", cureDayLeft: 0 }, "Lote liberado para venda.")}>Liberar lote</Button>}
@@ -496,7 +640,7 @@ export function ProductionScreen({ go, route }: { go: Go; route: Route }) {
   const printableOrders = orders.filter((order) => order.status === "aguardando_materiais");
   const statusMap = React.useMemo(() => buildStatusMap(workflows.production), [workflows.production]);
   const columns = React.useMemo(() => productionColumnsFromWorkflow(workflows.production, orders), [workflows.production, orders]);
-  const updateOrder = React.useCallback(async (productionId: string, patch: Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>) => {
+  const updateOrder = React.useCallback(async (productionId: string, patch: ProductionPatch) => {
     const next = await updateProduction(productionId, patch);
     setOrders(next);
   }, []);

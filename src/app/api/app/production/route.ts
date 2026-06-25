@@ -4,11 +4,12 @@ import { db } from "@/db/client";
 import { auditLogs, productionOrders, recipeVersions, recipes } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import type { ProductionOrder } from "@/lib/domain";
+import { cleanMaterialLotAllocations, materialLotAllocationsFromMetadata } from "@/lib/material-lots";
 import { applyProductionWorkflowAutomations } from "@/lib/workflow-automations-server";
 
 export const runtime = "nodejs";
 
-type ProductionPatch = Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">>;
+type ProductionPatch = Partial<Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft" | "materialLots">>;
 
 function cleanString(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -47,6 +48,7 @@ function toRow(row: typeof productionOrders.$inferSelect): ProductionOrder {
     lot: row.lot ?? undefined,
     cureUntil: row.cureUntil ?? undefined,
     cureDayLeft: row.cureDayLeft ?? undefined,
+    materialLots: materialLotAllocationsFromMetadata(row.metadata),
   };
 }
 
@@ -177,6 +179,12 @@ export async function PATCH(request: Request) {
   if (patch.lot !== undefined) update.lot = cleanNullableString(patch.lot, 80);
   if (patch.cureUntil !== undefined) update.cureUntil = cleanNullableString(patch.cureUntil, 40);
   if (patch.cureDayLeft !== undefined) update.cureDayLeft = cleanOptionalInt(patch.cureDayLeft);
+  if (patch.materialLots !== undefined) {
+    update.metadata = {
+      ...(existing.metadata ?? {}),
+      materialLots: cleanMaterialLotAllocations(patch.materialLots),
+    };
+  }
 
   await db.transaction(async (tx) => {
     await tx

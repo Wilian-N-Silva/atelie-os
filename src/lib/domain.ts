@@ -167,6 +167,13 @@ export type Recipe = {
   tests: { date: string; qty: number; result: "aprovado" | "ajustar" | "reprovado"; note: string }[];
 };
 
+export type MaterialLotAllocation = {
+  itemId: string;
+  sku: string;
+  lot: string;
+  quantity: number;
+};
+
 export type RecipeTestResult = "pendente" | "aprovado" | "ajustar" | "reprovado";
 
 /** Fixed quality protocol (docs/protocolo.md). Keyed by stable technical key, not the label. */
@@ -238,6 +245,7 @@ export type ProductionOrder = {
   lot?: string;
   cureUntil?: string | null;
   cureDayLeft?: number;
+  materialLots?: MaterialLotAllocation[];
 };
 
 export type LabelSheetBase = {

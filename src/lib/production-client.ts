@@ -10,7 +10,7 @@ export type ProductionPlanInput = {
 };
 
 export type ProductionPatch = Partial<
-  Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft">
+  Pick<ProductionOrder, "status" | "progress" | "lot" | "cureUntil" | "cureDayLeft" | "materialLots">
 >;
 
 async function parseProductionResponse(res: Response) {

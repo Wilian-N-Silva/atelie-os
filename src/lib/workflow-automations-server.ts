@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { expandStockTargets } from "@/lib/kit-composition";
 import { movementLineCost } from "@/lib/lot-trace";
+import { materialLotAllocationsFromMetadata } from "@/lib/material-lots";
 
 type AutomationEntity = "order" | "production";
 type StockMovementInsert = typeof stockMovements.$inferInsert;
@@ -41,6 +42,30 @@ const PRODUCTION_RELEASE_AUTOMATIONS = ["release_stock_availability", "released"
 
 function quantityString(value: number) {
   return String(Math.round(value * 1000) / 1000);
+}
+
+function productionConsumptionTargets(input: {
+  itemId: string;
+  sku: string;
+  quantity: number;
+  metadata: Record<string, unknown>;
+}) {
+  const allocations = materialLotAllocationsFromMetadata(input.metadata)
+    .filter((allocation) => allocation.itemId === input.itemId && allocation.quantity > 0);
+  if (!allocations.length) {
+    return [{ quantity: input.quantity, lot: null, sourceKey: input.itemId }];
+  }
+
+  let remaining = input.quantity;
+  const targets = [];
+  for (const allocation of allocations) {
+    if (remaining <= 0) break;
+    const quantity = Math.min(allocation.quantity, remaining);
+    targets.push({ quantity, lot: allocation.lot, sourceKey: `${input.itemId}:${allocation.lot}` });
+    remaining = Math.round((remaining - quantity) * 1000) / 1000;
+  }
+  if (remaining > 0) targets.push({ quantity: remaining, lot: null, sourceKey: `${input.itemId}:unallocated` });
+  return targets;
 }
 
 function productionReleaseQuantity(production: typeof productionOrders.$inferSelect) {
@@ -314,28 +339,37 @@ export async function applyProductionWorkflowAutomations(input: {
       });
       const unitCost = Number(item?.averageCost ?? item?.estimatedCost);
       const normalizedUnitCost = Number.isFinite(unitCost) && unitCost >= 0 ? unitCost : null;
-      const didInsert = await insertMovementOnce(tx, {
-        companyId,
+      for (const target of productionConsumptionTargets({
         itemId: component.itemId,
-        movementType: "production_consumption",
-        quantity: quantityString(quantity),
-        fromLocationId: locationId,
-        reason: "Consumo automatico ao iniciar producao",
-        sourceType: "production.consumption",
-        sourceId: `${productionId}:${component.itemId}`,
-        createdByUserId: actorUserId,
-        metadata: {
-          productionId,
-          sku: component.sku,
-          planned,
-          yieldQty,
-          lot: production.lot,
-          materialLot: null,
-          unitCost: normalizedUnitCost,
-          lineCost: movementLineCost(quantity, normalizedUnitCost),
-        },
-      });
-      if (didInsert) inserted += 1;
+        sku: component.sku,
+        quantity,
+        metadata: production.metadata ?? {},
+      })) {
+        const didInsert = await insertMovementOnce(tx, {
+          companyId,
+          itemId: component.itemId,
+          movementType: "production_consumption",
+          quantity: quantityString(target.quantity),
+          fromLocationId: locationId,
+          reason: target.lot
+            ? `Consumo automatico do lote ${target.lot} ao iniciar producao`
+            : "Consumo automatico ao iniciar producao",
+          sourceType: "production.consumption",
+          sourceId: `${productionId}:${target.sourceKey}`,
+          createdByUserId: actorUserId,
+          metadata: {
+            productionId,
+            sku: component.sku,
+            planned,
+            yieldQty,
+            lot: production.lot,
+            materialLot: target.lot,
+            unitCost: normalizedUnitCost,
+            lineCost: movementLineCost(target.quantity, normalizedUnitCost),
+          },
+        });
+        if (didInsert) inserted += 1;
+      }
     }
   }
 
