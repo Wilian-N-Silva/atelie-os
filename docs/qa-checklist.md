@@ -58,7 +58,7 @@ Mark each item PASS/FAIL and note anything off. For the full delivered list see 
 
 ## 11. Rastreio público (site separado)
 - [ ] `http://localhost:3000/rastreio?token=demorastreio00000000000000000001` mostra pagamento + timeline + transportadora.
-- [ ] Consulta por nº `#9999` + e-mail funciona; token inválido = não encontrado.
+- [ ] Consulta por empresa + nº `#9999` + e-mail funciona; token inválido = não encontrado.
 
 ## Regressão rápida
 - [ ] `npm run lint` · `npm run test` · `npm run build` verdes.

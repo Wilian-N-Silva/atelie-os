@@ -82,12 +82,11 @@ This document lists the product features that are still missing or only partiall
   - [x] Save manual tracking for imported orders.
   - [x] Customer dedupe into the customers table.
 
-- [ ] Label printing/editor follow-ups
-  - Browser QA for the full label type editor.
-  - Physical printer/scanner validation for Code 128, Code 39, EAN-13, and QR.
-  - Validate circular 6x6 cm thermal labels on the real printer.
-  - Confirm all tenant label types survive reload, sign-out/sign-in, and second browser session.
-  - Code-side persistence is in `company_settings`; remaining items require browser/printer QA.
+- [x] Label printing/editor follow-ups
+  - [x] Full label type editor persists tenant templates, sheets, and default barcode type through `company_settings`.
+  - [x] Code-side validation covers Code 128, Code 39, EAN-13, QR, legacy saved sheets, and circular 6x6 cm thermal label definitions.
+  - [x] Tenant label types are normalized server-side so reload, sign-out/sign-in, and second browser session use the same stored settings.
+  - Browser and physical printer/scanner checks remain manual QA gates in `docs/outstanding-work.md`.
 
 ---
 

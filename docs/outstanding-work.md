@@ -11,18 +11,18 @@ Sections H (PRD coverage gaps) and I (channel/e-commerce integration roadmap) we
 ## A. Verification debt before merge
 
 - [ ] Manual click-through: Receitas (create + new version), Producao (plan OP, kanban, drawer actions), Pedidos (stepper/status/new order), Operacao (scan order + OP), Etiquetas (item/lote/op/local options), Compras, Financeiro, Relatorios, Incidentes, Auditoria, IA, Configuracoes > Envio.
-- [ ] Manual QA - Etiquetas: create sheet model; edit existing model dimensions; change default barcode type and confirm preview; add labels with different barcode types; skip used positions; remove queued label clears stale feedback; browser print renders only label pages.
+- [ ] Manual QA - Etiquetas: create sheet model; edit existing model dimensions; change default barcode type and confirm preview; add labels with different barcode types; skip used positions; remove queued label clears stale feedback; browser print renders only label pages. Code-side persistence and barcode normalization are covered by automated tests.
 - [ ] Manual QA - Workflows: load each production preset; rename steps; confirm records stay mapped by technical key; toggle flags/automations; move/archive steps; confirm Pedido drawer stepper reflects configured order flow.
 - [ ] Physical barcode validation: Code 128 / Code 39 / EAN-13 / QR on the real printer + scanner. If unreliable, replace the visual renderer with a standards-compliant encoder for print.
 - [ ] Regression QA: new order with overstock warning + custom price; payment confirmation; order pick-list barcode handoff into Operacao; production pick-list handoff; recipe version creation; inventory dialogs.
-- [ ] Confirm migrated data survives reload, sign-out/sign-in, and a second browser session.
+- [ ] Confirm migrated data survives reload, sign-out/sign-in, and a second browser session. Label settings now normalize legacy saved sheets server-side; this still needs browser confirmation.
 - [ ] Confirm critical writes produce audit rows and role restrictions hold for settings/workflow/label/admin-only writes.
 
 Latest automated verification:
 
-- [x] `npm.cmd run lint` passed on 2026-06-05.
-- [x] `npm.cmd run test` passed on 2026-06-05: 33 tests passed.
-- [x] `npm.cmd run build` passed on 2026-06-05.
+- [x] `npm.cmd run lint` passed on 2026-06-25.
+- [x] `npx.cmd tsc --noEmit` passed on 2026-06-25.
+- [x] `npm.cmd test` passed on 2026-06-25: 77 tests passed.
 
 ---
 
