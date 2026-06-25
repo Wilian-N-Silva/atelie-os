@@ -113,6 +113,13 @@
       "when": 1782421200000,
       "tag": "0015_invite_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782429000000,
+      "tag": "0016_auth_core_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -135,7 +135,7 @@ function AuthAside({ config }: { config: AuthConfig }) {
       </div>
 
       <div className="au-aside-foot">
-        <span className="mono">0.1.2 beta</span><span>·</span><span>© 2026 {config.brandName}</span>
+        <span className="mono">0.1.3 beta</span><span>·</span><span>© 2026 {config.brandName}</span>
       </div>
     </aside>
   );

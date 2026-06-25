@@ -2,6 +2,14 @@
 
 All notable changes to Atelie OS are documented here.
 
+## 0.1.3 - 2026-06-25
+
+Auth schema bootstrap hotfix.
+
+### Fixed
+
+- Added an idempotent migration guard for Better Auth core tables, including `verification`, so magic link and password reset work in dedicated environments created with a partial schema.
+
 ## 0.1.2 - 2026-06-25
 
 Standalone first-client bootstrap hotfix.
