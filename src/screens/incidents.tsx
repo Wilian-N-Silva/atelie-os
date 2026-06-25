@@ -106,12 +106,16 @@ export function IncidentsScreen() {
   const [reason, setReason] = React.useState("");
   const [resolveTarget, setResolveTarget] = React.useState<Incident | null>(null);
   const [stockImpact, setStockImpact] = React.useState("available");
+  const [resolutionType, setResolutionType] = React.useState("resolved");
+  const [replacementOrderId, setReplacementOrderId] = React.useState("");
   const [refundAmount, setRefundAmount] = React.useState("");
   const [resolutionText, setResolutionText] = React.useState("");
 
   const openResolve = (incident: Incident) => {
     setResolveTarget(incident);
     setStockImpact(incident.type === "loss" ? "loss" : "available");
+    setResolutionType(incident.type === "exchange" ? "replacement" : "resolved");
+    setReplacementOrderId("");
     setRefundAmount("");
     setResolutionText("");
   };
@@ -124,6 +128,8 @@ export function IncidentsScreen() {
         stockImpact: stockImpact as "available" | "blocked" | "loss" | "none",
         refundAmount: Number(refundAmount.replace(",", ".")) || 0,
         resolution: resolutionText.trim(),
+        resolutionType,
+        replacementOrderId: replacementOrderId || null,
       }));
       setResolveTarget(null);
       toast("Incidente resolvido.", "ok");
@@ -276,6 +282,29 @@ export function IncidentsScreen() {
               ]}
             />
           </Field>
+          <Field label="Tipo de resolucao" style={{ marginTop: 12 }}>
+            <Select
+              value={resolutionType}
+              onChange={setResolutionType}
+              options={[
+                { value: "resolved", label: "Resolvido sem troca" },
+                { value: "replacement", label: "Pedido de reposicao" },
+                { value: "refund", label: "Reembolso" },
+                { value: "coupon", label: "Cupom / credito" },
+                { value: "repair", label: "Reparo / retrabalho" },
+              ]}
+            />
+          </Field>
+          {resolutionType === "replacement" && (
+            <Field label="Pedido de reposicao" style={{ marginTop: 12 }}>
+              <Select
+                value={replacementOrderId}
+                onChange={setReplacementOrderId}
+                placeholder="Selecione o pedido"
+                options={orders.map((order) => ({ value: order.id, label: `${order.num} - ${order.customerName}` }))}
+              />
+            </Field>
+          )}
           {resolveTarget.itemSku ? (
             <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{resolveTarget.itemSku} · {resolveTarget.quantity ?? 0} un</div>
           ) : (

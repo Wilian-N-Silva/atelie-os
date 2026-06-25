@@ -9,6 +9,8 @@ export type ParsedImportOrder = {
   externalOrderId: string;
   buyerName: string;
   buyerEmail: string;
+  tracking: string;
+  labelPdfUrl: string;
   lines: ImportLine[];
   total: number;
 };
@@ -17,6 +19,8 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   order: ["pedido", "order", "order_id", "orderid", "numero", "numero_pedido", "n_pedido", "codigo_pedido"],
   buyer: ["cliente", "comprador", "buyer", "nome", "nome_cliente", "buyer_name"],
   email: ["email", "e_mail", "buyer_email"],
+  tracking: ["rastreio", "tracking", "tracking_code", "codigo_rastreio"],
+  label: ["etiqueta", "label", "label_pdf", "pdf_etiqueta", "url_etiqueta", "print_url"],
   sku: ["sku", "codigo", "cod", "sku_externo", "item_sku"],
   qty: ["quantidade", "qtd", "quantity", "qty", "unidades"],
   price: ["preco", "preco_unitario", "price", "unit_price", "valor", "valor_unitario"],
@@ -77,6 +81,8 @@ export function parseOrdersCsv(text: string): ParsedImportOrder[] {
     order: indexOf("order"),
     buyer: indexOf("buyer"),
     email: indexOf("email"),
+    tracking: indexOf("tracking"),
+    label: indexOf("label"),
     sku: indexOf("sku"),
     qty: indexOf("qty"),
     price: indexOf("price"),
@@ -99,6 +105,8 @@ export function parseOrdersCsv(text: string): ParsedImportOrder[] {
         externalOrderId,
         buyerName: cols.buyer >= 0 ? (row[cols.buyer] ?? "").trim() : "",
         buyerEmail: cols.email >= 0 ? (row[cols.email] ?? "").trim() : "",
+        tracking: cols.tracking >= 0 ? (row[cols.tracking] ?? "").trim() : "",
+        labelPdfUrl: cols.label >= 0 ? (row[cols.label] ?? "").trim() : "",
         lines: [],
         total: 0,
       };

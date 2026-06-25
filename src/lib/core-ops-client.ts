@@ -43,6 +43,9 @@ export type Incident = {
   quantity: number | null;
   reason: string;
   resolution: string | null;
+  resolutionType: string | null;
+  replacementOrderId: string | null;
+  replacementOrderNumber: string | null;
   createdAt: string;
   orderNumber: string | null;
   itemSku: string | null;
@@ -117,6 +120,8 @@ export async function resolveIncident(input: {
   stockImpact: "available" | "blocked" | "loss" | "none";
   refundAmount?: number;
   resolution?: string;
+  resolutionType?: string;
+  replacementOrderId?: string | null;
 }) {
   return parse<Incident[]>(await fetch("/api/app/incidents", {
     method: "PATCH",

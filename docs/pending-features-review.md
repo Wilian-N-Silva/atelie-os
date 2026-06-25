@@ -72,21 +72,22 @@ This document lists the product features that are still missing or only partiall
   - First slices delivered: production drawer now shows lot trace, real cost, QC outcome, output/release/loss quantities, and consumed-material rows; quality review supports partial approval and reason enforcement.
   - Material-lot selection delivered as a beta slice using purchase/stock movement lot metadata; produced-lot records now sync through `inventory_lots`.
 
-- [ ] Returns and exchanges phase 2
-  - Enforce that shipped orders cannot be cancelled directly.
-  - More explicit replacement flow.
-  - Stronger connection between incident resolution and customer/order history.
+- [x] Returns and exchanges phase 2
+  - [x] Enforce that shipped orders cannot be cancelled directly.
+  - [x] More explicit replacement flow.
+  - [x] Stronger connection between incident resolution and customer/order history.
 
-- [ ] Marketplace CSV import follow-ups
-  - Attach external label PDF to imported orders.
-  - Save manual tracking for imported orders.
-  - Customer dedupe into the customers table.
+- [x] Marketplace CSV import follow-ups
+  - [x] Attach external label PDF to imported orders.
+  - [x] Save manual tracking for imported orders.
+  - [x] Customer dedupe into the customers table.
 
 - [ ] Label printing/editor follow-ups
   - Browser QA for the full label type editor.
   - Physical printer/scanner validation for Code 128, Code 39, EAN-13, and QR.
   - Validate circular 6x6 cm thermal labels on the real printer.
   - Confirm all tenant label types survive reload, sign-out/sign-in, and second browser session.
+  - Code-side persistence is in `company_settings`; remaining items require browser/printer QA.
 
 ---
 

@@ -11,6 +11,8 @@ export type ImportOrderRow = {
   errorReason: string | null;
   total: number;
   lines: ImportOrderLine[];
+  tracking: string;
+  labelPdfUrl: string;
   createdOrderId: string | null;
 };
 export type ImportMapping = { id: string; channelKey: string; externalSku: string; itemId: string | null; itemSku: string | null; itemName: string | null };
@@ -63,4 +65,7 @@ export async function importAllReady() {
 }
 export async function discardImport(importId: string) {
   return patch({ action: "discard", importId });
+}
+export async function saveImportShipment(importId: string, tracking: string, labelPdfUrl: string) {
+  return patch({ action: "shipment", importId, tracking, labelPdfUrl });
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, channelSkuMappings, importOrders, items, orderItems, orders } from "@/db/schema";
+import { auditLogs, channelSkuMappings, customers, importOrders, items, orderItems, orders } from "@/db/schema";
 import { requireAppRouteContext } from "@/lib/app-route-context";
 import { parseOrdersCsv, type ImportLine } from "@/lib/import-orders";
 import { generateOrderTrackToken } from "@/lib/order-track-token";
@@ -39,6 +39,10 @@ function importLines(payload: Record<string, unknown>): ImportLine[] {
   });
 }
 
+function payloadString(payload: Record<string, unknown>, key: string, max: number) {
+  return cleanString(payload[key], max);
+}
+
 function unmappedSkus(lines: ImportLine[], mappings: Map<string, MappingInfo>) {
   return [...new Set(lines.map((line) => line.sku))].filter((sku) => !mappings.has(sku));
 }
@@ -66,6 +70,8 @@ async function listImports(companyId: string) {
       errorReason: row.errorReason,
       total: Number(row.total),
       lines: importLines(payload),
+      tracking: payloadString(payload, "tracking", 120),
+      labelPdfUrl: payloadString(payload, "labelPdfUrl", 500),
       createdOrderId: row.createdOrderId,
     };
   });
@@ -128,7 +134,13 @@ export async function POST(request: Request) {
       status: unmapped.length ? "pending" : "ready",
       errorReason: unmapped.length ? `SKU nao mapeado: ${unmapped.join(", ")}` : null,
       total: order.total.toString(),
-      rawPayload: { buyerName: order.buyerName, buyerEmail: order.buyerEmail, lines: order.lines },
+      rawPayload: {
+        buyerName: order.buyerName,
+        buyerEmail: order.buyerEmail,
+        tracking: order.tracking,
+        labelPdfUrl: order.labelPdfUrl,
+        lines: order.lines,
+      },
       createdByUserId: context.user.id,
     });
     created += 1;
@@ -173,8 +185,40 @@ async function importOne(companyId: string, actorUserId: string, importId: strin
 
   const code = await generateOrderCode(companyId);
   await db.transaction(async (tx) => {
+    const payload = row.rawPayload as Record<string, unknown>;
+    const buyerEmail = cleanString(row.buyerEmail, 120);
+    const tracking = payloadString(payload, "tracking", 120) || null;
+    const labelPdfUrl = payloadString(payload, "labelPdfUrl", 500) || null;
+    let customerId: string | null = null;
+    if (buyerEmail) {
+      const existingCustomer = await tx.query.customers.findFirst({
+        where: and(eq(customers.companyId, companyId), eq(customers.email, buyerEmail)),
+        columns: { id: true },
+      });
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
+        await tx.update(customers).set({
+          name: row.buyerName || "Cliente marketplace",
+          source: `import_${row.channelKey}`,
+          updatedAt: new Date(),
+        }).where(eq(customers.id, customerId));
+      }
+    }
+    if (!customerId) {
+      const [customer] = await tx.insert(customers).values({
+        companyId,
+        name: row.buyerName || "Cliente marketplace",
+        email: buyerEmail || null,
+        city: "-",
+        source: `import_${row.channelKey}`,
+        metadata: { externalOrderId: row.externalOrderId, channel: row.channelKey },
+      }).returning({ id: customers.id });
+      customerId = customer.id;
+    }
+
     const [order] = await tx.insert(orders).values({
       companyId,
+      customerId,
       code,
       number: `EXT-${row.externalOrderId}`.slice(0, 40),
       channelKey: row.channelKey,
@@ -182,8 +226,9 @@ async function importOne(companyId: string, actorUserId: string, importId: strin
       city: "-",
       status: "a_separar",
       paymentStatus: "pago",
+      labelKind: labelPdfUrl ? "pdf_attached" : "internal",
       total: row.total,
-      tracking: null,
+      tracking,
       trackToken: generateOrderTrackToken(),
       source: `import_${row.channelKey}`,
       createdByUserId: actorUserId,
@@ -192,6 +237,22 @@ async function importOne(companyId: string, actorUserId: string, importId: strin
         customerEmail: row.buyerEmail ?? null,
         externalOrderId: row.externalOrderId,
         channel: row.channelKey,
+        marketplaceLabelPdf: labelPdfUrl,
+        shippingLabel: labelPdfUrl ? {
+          provider: "marketplace_pdf",
+          externalId: row.externalOrderId,
+          protocol: null,
+          status: "attached",
+          serviceId: "external",
+          serviceName: "Etiqueta marketplace",
+          company: row.channelKey,
+          price: null,
+          tracking,
+          trackingUrl: null,
+          cartInsertedAt: new Date().toISOString(),
+          generatedAt: new Date().toISOString(),
+          printUrl: labelPdfUrl,
+        } : null,
       },
     }).returning({ id: orders.id });
 
@@ -245,6 +306,24 @@ export async function PATCH(request: Request) {
     if (!importId) return NextResponse.json({ error: "invalid_import" }, { status: 400 });
     await db.update(importOrders).set({ status: "discarded", updatedAt: new Date() })
       .where(and(eq(importOrders.companyId, context.company.id), eq(importOrders.id, importId)));
+    return NextResponse.json(await listImports(context.company.id));
+  }
+
+  if (action === "shipment") {
+    const importId = cleanString(body?.importId, 80);
+    if (!importId) return NextResponse.json({ error: "invalid_import" }, { status: 400 });
+    const [row] = await db.select().from(importOrders).where(and(eq(importOrders.companyId, context.company.id), eq(importOrders.id, importId))).limit(1);
+    if (!row) return NextResponse.json({ error: "import_not_found" }, { status: 404 });
+    if (row.status === "imported") return NextResponse.json({ error: "import_already_done" }, { status: 409 });
+    const payload = row.rawPayload as Record<string, unknown>;
+    await db.update(importOrders).set({
+      rawPayload: {
+        ...payload,
+        tracking: cleanString(body?.tracking, 120),
+        labelPdfUrl: cleanString(body?.labelPdfUrl, 500),
+      },
+      updatedAt: new Date(),
+    }).where(eq(importOrders.id, importId));
     return NextResponse.json(await listImports(context.company.id));
   }
 

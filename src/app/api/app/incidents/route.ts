@@ -50,12 +50,21 @@ async function listIncidents(companyId: string) {
     .orderBy(desc(incidents.createdAt))
     .limit(80);
   return rows.map((row) => {
-    const metadata = row.metadata as { orderTitle?: string; itemTitle?: string };
+    const metadata = row.metadata as {
+      orderTitle?: string;
+      itemTitle?: string;
+      resolutionType?: string;
+      replacementOrderId?: string | null;
+      replacementOrderNumber?: string | null;
+    };
     return {
       ...row,
       orderNumber: row.orderNumber ?? metadata.orderTitle ?? null,
       itemName: row.itemName ?? metadata.itemTitle ?? null,
       quantity: row.quantity == null ? null : Number(row.quantity),
+      resolutionType: metadata.resolutionType ?? null,
+      replacementOrderId: metadata.replacementOrderId ?? null,
+      replacementOrderNumber: metadata.replacementOrderNumber ?? null,
       createdAt: row.createdAt.toISOString(),
     };
   });
@@ -148,6 +157,8 @@ export async function PATCH(request: Request) {
   const incidentId = cleanString(body?.incidentId, 80);
   const stockImpact: StockImpact = STOCK_IMPACTS.includes(body?.stockImpact as StockImpact) ? (body!.stockImpact as StockImpact) : "none";
   const resolution = cleanString(body?.resolution, 500);
+  const resolutionType = cleanString(body?.resolutionType, 40) || "resolved";
+  const replacementOrderId = cleanString(body?.replacementOrderId, 80) || null;
   const refundRaw = Number(body?.refundAmount);
   const refundAmount = Number.isFinite(refundRaw) && refundRaw > 0 ? Math.round(refundRaw * 100) / 100 : 0;
   if (!incidentId) return NextResponse.json({ error: "invalid_incident" }, { status: 400 });
@@ -157,6 +168,15 @@ export async function PATCH(request: Request) {
   });
   if (!incident) return NextResponse.json({ error: "incident_not_found" }, { status: 404 });
   if (incident.status !== "open") return NextResponse.json({ error: "incident_not_open" }, { status: 409 });
+  let replacementOrder: { id: string; number: string } | null = null;
+  if (replacementOrderId) {
+    const found = await db.query.orders.findFirst({
+      where: and(eq(orders.companyId, context.company.id), eq(orders.id, replacementOrderId)),
+      columns: { id: true, number: true },
+    });
+    if (!found) return NextResponse.json({ error: "replacement_order_not_found" }, { status: 404 });
+    replacementOrder = found;
+  }
 
   const quantity = incident.quantity == null ? 0 : Number(incident.quantity);
 
@@ -207,12 +227,51 @@ export async function PATCH(request: Request) {
       });
     }
 
+    const incidentMetadata = {
+      ...(incident.metadata as Record<string, unknown>),
+      stockImpact,
+      refundAmount,
+      resolutionType,
+      replacementOrderId: replacementOrder?.id ?? null,
+      replacementOrderNumber: replacementOrder?.number ?? null,
+    };
+
     await tx.update(incidents).set({
       status: "resolved",
       resolution: resolution || incident.resolution,
-      metadata: { ...(incident.metadata as Record<string, unknown>), stockImpact, refundAmount },
+      metadata: incidentMetadata,
       updatedAt: new Date(),
     }).where(eq(incidents.id, incident.id));
+
+    if (incident.orderId) {
+      const order = await tx.query.orders.findFirst({
+        where: and(eq(orders.companyId, context.company.id), eq(orders.id, incident.orderId)),
+        columns: { id: true, metadata: true },
+      });
+      if (order) {
+        const metadata = order.metadata as Record<string, unknown>;
+        const history = Array.isArray(metadata.incidentHistory) ? metadata.incidentHistory : [];
+        await tx.update(orders).set({
+          metadata: {
+            ...metadata,
+            incidentHistory: [
+              ...history,
+              {
+                incidentId: incident.id,
+                type: incident.type,
+                resolutionType,
+                stockImpact,
+                refundAmount,
+                replacementOrderId: replacementOrder?.id ?? null,
+                replacementOrderNumber: replacementOrder?.number ?? null,
+                resolvedAt: new Date().toISOString(),
+              },
+            ],
+          },
+          updatedAt: new Date(),
+        }).where(eq(orders.id, order.id));
+      }
+    }
 
     await tx.insert(auditLogs).values({
       companyId: context.company.id,
@@ -220,7 +279,7 @@ export async function PATCH(request: Request) {
       action: "incident.update",
       entityType: "incident",
       entityId: incident.id,
-      metadata: { operation: "resolve", stockImpact, refundAmount },
+      metadata: { operation: "resolve", stockImpact, refundAmount, resolutionType, replacementOrderId: replacementOrder?.id ?? null },
     });
   });
 

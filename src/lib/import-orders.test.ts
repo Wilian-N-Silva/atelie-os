@@ -34,6 +34,16 @@ test("parses BR thousand+decimal with semicolon delimiter", () => {
   assert.equal(orders[0].total, 1234.56);
 });
 
+test("parses marketplace tracking and label columns", () => {
+  const orders = parseOrdersCsv([
+    "pedido;cliente;email;rastreio;etiqueta;sku;quantidade;preco",
+    "ML-4;Dora;dora@x.com;BR123;https://labels.example/ml-4.pdf;VEL-LAV-156;1;75,00",
+  ].join("\n"));
+
+  assert.equal(orders[0].tracking, "BR123");
+  assert.equal(orders[0].labelPdfUrl, "https://labels.example/ml-4.pdf");
+});
+
 test("returns empty without required columns", () => {
   assert.deepEqual(parseOrdersCsv("foo;bar\n1;2"), []);
   assert.deepEqual(parseOrdersCsv(""), []);

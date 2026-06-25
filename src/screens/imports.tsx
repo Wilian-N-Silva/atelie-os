@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Badge, Button, Card, Empty, Field, Icon, Select, Textarea, toast } from "@/components/ui";
+import { Badge, Button, Card, Empty, Field, Icon, Input, Select, Textarea, toast } from "@/components/ui";
 import { useItemDirectory } from "@/lib/item-directory";
 import {
   discardImport,
@@ -9,6 +9,7 @@ import {
   importOrder,
   loadImports,
   mapImportSku,
+  saveImportShipment,
   uploadImportCsv,
   type ImportsData,
 } from "@/lib/imports-client";
@@ -40,6 +41,7 @@ export function ImportsScreen({ go }: { go: Go; route: Route }) {
   const [data, setData] = React.useState<ImportsData>({ imports: [], mappings: [], summary: { pending: 0, ready: 0, imported: 0 } });
   const [channel, setChannel] = React.useState("mercado_livre");
   const [csv, setCsv] = React.useState("");
+  const [shipmentDrafts, setShipmentDrafts] = React.useState<Record<string, { tracking: string; labelPdfUrl: string }>>({});
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
@@ -130,10 +132,40 @@ export function ImportsScreen({ go }: { go: Go; route: Route }) {
             </table>
 
             {(imp.status === "pending" || imp.status === "ready") && (
-              <div className="row" style={{ gap: 8 }}>
-                <Button variant="default" size="sm" icon="check" disabled={busy || imp.status !== "ready"} onClick={() => run(() => importOrder(imp.id), "Pedido importado.")}>Importar pedido</Button>
-                <Button variant="ghost" size="sm" icon="x" disabled={busy} onClick={() => run(() => discardImport(imp.id), "Descartado.")}>Descartar</Button>
+              <div>
+                <div className="ff-grid" style={{ marginBottom: 10 }}>
+                  <Field label="Rastreio manual">
+                    <Input
+                      value={shipmentDrafts[imp.id]?.tracking ?? imp.tracking ?? ""}
+                      onChange={(event) => setShipmentDrafts((current) => ({ ...current, [imp.id]: { tracking: event.target.value, labelPdfUrl: current[imp.id]?.labelPdfUrl ?? imp.labelPdfUrl ?? "" } }))}
+                      placeholder="Codigo de rastreio"
+                    />
+                  </Field>
+                  <Field label="PDF etiqueta externa">
+                    <Input
+                      value={shipmentDrafts[imp.id]?.labelPdfUrl ?? imp.labelPdfUrl ?? ""}
+                      onChange={(event) => setShipmentDrafts((current) => ({ ...current, [imp.id]: { tracking: current[imp.id]?.tracking ?? imp.tracking ?? "", labelPdfUrl: event.target.value } }))}
+                      placeholder="https://..."
+                    />
+                  </Field>
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon="check"
+                    disabled={busy}
+                    onClick={() => {
+                      const draft = shipmentDrafts[imp.id] ?? { tracking: imp.tracking ?? "", labelPdfUrl: imp.labelPdfUrl ?? "" };
+                      void run(() => saveImportShipment(imp.id, draft.tracking, draft.labelPdfUrl), "Dados de envio salvos.");
+                    }}
+                  >
+                    Salvar envio
+                  </Button>
+                  <Button variant="default" size="sm" icon="check" disabled={busy || imp.status !== "ready"} onClick={() => run(() => importOrder(imp.id), "Pedido importado.")}>Importar pedido</Button>
+                  <Button variant="ghost" size="sm" icon="x" disabled={busy} onClick={() => run(() => discardImport(imp.id), "Descartado.")}>Descartar</Button>
                 {imp.errorReason && <span className="muted" style={{ fontSize: 12.5, alignSelf: "center" }}>{imp.errorReason}</span>}
+                </div>
               </div>
             )}
             {imp.status === "imported" && imp.createdOrderId && (

@@ -14,6 +14,8 @@ type OrderPatch = Partial<Pick<Order, "payment" | "status" | "freight" | "total"
 const CHANNELS = ["instagram", "whatsapp", "mercadolivre", "shopee", "feira", "direta"] as const;
 const PAYMENTS = ["pago", "aguardando"] as const;
 const LABEL_KINDS = ["internal", "pdf_attached"] as const;
+const SHIPPED_STATUSES = new Set(["enviado", "entregue", "em_transito"]);
+const CANCELLED_STATUSES = new Set(["cancelado", "cancelada", "canceled", "cancelled"]);
 
 // Status keys are company-configurable workflow step keys; accept any non-empty
 // technical key rather than validating against a hardcoded set.
@@ -31,6 +33,14 @@ function isChannel(value: unknown): value is Order["channel"] {
 
 function isLabelKind(value: unknown): value is NonNullable<Order["labelKind"]> {
   return LABEL_KINDS.includes(value as NonNullable<Order["labelKind"]>);
+}
+
+function isShippedStatus(status: string) {
+  return SHIPPED_STATUSES.has(status);
+}
+
+function isCancelStatus(status: string) {
+  return CANCELLED_STATUSES.has(status);
 }
 
 function cleanString(value: unknown, max: number) {
@@ -474,9 +484,15 @@ export async function PATCH(request: Request) {
 
   const existing = await db.query.orders.findFirst({
     where: and(eq(orders.companyId, context.company.id), eq(orders.id, orderId)),
-    columns: { id: true, status: true, paymentStatus: true, freight: true, discount: true, total: true, metadata: true },
+    columns: { id: true, status: true, paymentStatus: true, freight: true, discount: true, total: true, tracking: true, metadata: true },
   });
   if (!existing) return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+  const nextStatus = patch.status ?? existing.status;
+  const shippingLabel = metadataShippingLabel(existing.metadata);
+  const hasShipment = Boolean(existing.tracking || shippingLabel?.tracking || shippingLabel?.generatedAt || shippingLabel?.printUrl);
+  if ((isShippedStatus(existing.status) || hasShipment) && isCancelStatus(nextStatus)) {
+    return NextResponse.json({ error: "shipped_order_cannot_cancel_directly" }, { status: 409 });
+  }
   const previousFreight = Number(existing.freight);
   const previousTotal = Number(existing.total);
   const discount = Number(existing.discount);
@@ -487,7 +503,7 @@ export async function PATCH(request: Request) {
 
   await db.transaction(async (tx) => {
     const next = {
-      status: patch.status ?? existing.status,
+      status: nextStatus,
       paymentStatus: patch.payment ?? existing.paymentStatus,
     };
     const updates: Partial<typeof orders.$inferInsert> = {
