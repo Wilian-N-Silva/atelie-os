@@ -1,12 +1,24 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, items, priceHistory, recipeComponents, recipeVersions, recipes, units } from "@/db/schema";
+import { auditLogs, companySettings, items, priceHistory, recipeComponents, recipeVersions, recipes, units } from "@/db/schema";
 import { clampFraction, computePricing, type PricingResult } from "@/lib/pricing";
 import { convertQuantityOrSame } from "@/lib/unit-conversion";
 
 const DEFAULT_MIN_MARGIN = 0.5;
 
-export type PricingConfig = { minMargin: number; laborCost: number; extraCost: number };
+export type ChannelFeeRule = { key: string; label: string; feePct: number };
+export type PricingSettings = {
+  channelFeeRules: ChannelFeeRule[];
+  laborDefaults: { hourlyRate: number };
+};
+export type PricingConfig = {
+  minMargin: number;
+  laborCost: number;
+  laborMinutes: number;
+  laborHourlyRate: number | null;
+  extraCost: number;
+  channelKey: string;
+};
 
 export type PricingProduct = PricingResult & {
   itemId: string;
@@ -19,6 +31,8 @@ export type PricingProduct = PricingResult & {
   currentPrice: number | null;
   suggestedStored: number | null;
   config: PricingConfig;
+  channelFee: number;
+  settings: PricingSettings;
 };
 
 function toNumber(value: unknown): number | null {
@@ -31,8 +45,70 @@ function readPricingConfig(metadata: Record<string, unknown> | null | undefined)
   const raw = metadata && typeof metadata === "object" ? (metadata.pricing as Record<string, unknown> | undefined) : undefined;
   const minMargin = raw && Number.isFinite(Number(raw.minMargin)) ? clampFraction(Number(raw.minMargin)) : DEFAULT_MIN_MARGIN;
   const laborCost = raw && Number.isFinite(Number(raw.laborCost)) && Number(raw.laborCost) >= 0 ? Number(raw.laborCost) : 0;
+  const laborMinutes = raw && Number.isFinite(Number(raw.laborMinutes)) && Number(raw.laborMinutes) >= 0 ? Number(raw.laborMinutes) : 0;
+  const laborHourlyRate = raw && Number.isFinite(Number(raw.laborHourlyRate)) && Number(raw.laborHourlyRate) >= 0 ? Number(raw.laborHourlyRate) : null;
   const extraCost = raw && Number.isFinite(Number(raw.extraCost)) && Number(raw.extraCost) >= 0 ? Number(raw.extraCost) : 0;
-  return { minMargin, laborCost, extraCost };
+  const channelKey = raw && typeof raw.channelKey === "string" && raw.channelKey.trim() ? raw.channelKey.trim().slice(0, 40) : "direct";
+  return { minMargin, laborCost, laborMinutes, laborHourlyRate, extraCost, channelKey };
+}
+
+function laborCostFromConfig(config: PricingConfig, settings: PricingSettings) {
+  const hourlyRate = config.laborHourlyRate ?? settings.laborDefaults.hourlyRate;
+  const timeCost = config.laborMinutes > 0 && hourlyRate > 0 ? (config.laborMinutes / 60) * hourlyRate : 0;
+  return Math.round((config.laborCost + timeCost) * 100) / 100;
+}
+
+function cleanChannelFeeRules(value: unknown): ChannelFeeRule[] {
+  const fallback: ChannelFeeRule[] = [
+    { key: "direct", label: "Venda direta", feePct: 0 },
+    { key: "instagram", label: "Instagram", feePct: 0 },
+    { key: "marketplace", label: "Marketplace", feePct: 0.16 },
+  ];
+  if (!Array.isArray(value)) return fallback;
+  const rules = value.map((entry) => {
+    if (!entry || typeof entry !== "object") return null;
+    const raw = entry as Record<string, unknown>;
+    const key = typeof raw.key === "string" ? raw.key.trim().toLowerCase().slice(0, 40) : "";
+    const label = typeof raw.label === "string" ? raw.label.trim().slice(0, 80) : "";
+    const feePct = clampFraction(Number(raw.feePct));
+    if (!key || !label) return null;
+    return { key, label, feePct };
+  }).filter((rule): rule is ChannelFeeRule => Boolean(rule));
+  return rules.length ? rules.slice(0, 20) : fallback;
+}
+
+function cleanPricingSettings(value: unknown): PricingSettings {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const laborDefaults = raw.laborDefaults && typeof raw.laborDefaults === "object" ? raw.laborDefaults as Record<string, unknown> : {};
+  const hourlyRate = Number(laborDefaults.hourlyRate);
+  return {
+    channelFeeRules: cleanChannelFeeRules(raw.channelFeeRules),
+    laborDefaults: { hourlyRate: Number.isFinite(hourlyRate) && hourlyRate >= 0 ? Math.min(100000, hourlyRate) : 0 },
+  };
+}
+
+async function loadPricingSettings(companyId: string): Promise<PricingSettings> {
+  const row = await db.query.companySettings.findFirst({
+    where: eq(companySettings.companyId, companyId),
+    columns: { settings: true },
+  });
+  return cleanPricingSettings(row?.settings?.pricing);
+}
+
+export async function savePricingSettings(companyId: string, settings: PricingSettings) {
+  const current = await db.query.companySettings.findFirst({
+    where: eq(companySettings.companyId, companyId),
+    columns: { settings: true },
+  });
+  const clean = cleanPricingSettings(settings);
+  const nextSettings = { ...(current?.settings ?? {}), pricing: clean };
+  await db.insert(companySettings)
+    .values({ companyId, settings: nextSettings })
+    .onConflictDoUpdate({
+      target: companySettings.companyId,
+      set: { settings: nextSettings, updatedAt: new Date() },
+    });
+  return clean;
 }
 
 async function itemCostMap(companyId: string) {
@@ -106,7 +182,7 @@ async function recipeCostBySku(companyId: string, costBySku: Map<string, { cost:
 }
 
 export async function listPricing(companyId: string): Promise<PricingProduct[]> {
-  const costBySku = await itemCostMap(companyId);
+  const [costBySku, settings] = await Promise.all([itemCostMap(companyId), loadPricingSettings(companyId)]);
   const recipeCosts = await recipeCostBySku(companyId, costBySku);
 
   const sellable = await db
@@ -127,6 +203,7 @@ export async function listPricing(companyId: string): Promise<PricingProduct[]> 
 
   return sellable.map((item) => {
     const config = readPricingConfig(item.metadata);
+    const channelFee = settings.channelFeeRules.find((rule) => rule.key === config.channelKey)?.feePct ?? 0;
     const recipeCost = recipeCosts.get(item.sku) ?? null;
     const averageCost = toNumber(item.averageCost);
     const estimatedCost = toNumber(item.estimatedCost);
@@ -135,10 +212,10 @@ export async function listPricing(companyId: string): Promise<PricingProduct[]> 
       recipeCost,
       averageCost,
       estimatedCost,
-      laborCost: config.laborCost,
+      laborCost: laborCostFromConfig(config, settings),
       extraCost: config.extraCost,
       minMargin: config.minMargin,
-      channelFee: 0,
+      channelFee,
       practicedPrice: currentPrice,
     });
     return {
@@ -153,6 +230,8 @@ export async function listPricing(companyId: string): Promise<PricingProduct[]> 
       currentPrice,
       suggestedStored: toNumber(item.suggestedPrice),
       config,
+      channelFee,
+      settings,
     };
   });
 }
@@ -162,7 +241,10 @@ export type SavePricingInput = {
   practicedPrice: number;
   minMargin: number;
   laborCost: number;
+  laborMinutes: number;
+  laborHourlyRate: number | null;
   extraCost: number;
+  channelKey: string;
 };
 
 export async function savePricing(companyId: string, actorUserId: string, input: SavePricingInput) {
@@ -173,7 +255,7 @@ export async function savePricing(companyId: string, actorUserId: string, input:
     .limit(1);
   if (!item) return { ok: false as const };
 
-  const costBySku = await itemCostMap(companyId);
+  const [costBySku, settings] = await Promise.all([itemCostMap(companyId), loadPricingSettings(companyId)]);
   const recipeCosts = await recipeCostBySku(companyId, costBySku);
   const [self] = await db
     .select({ sku: items.sku, averageCost: items.averageCost, estimatedCost: items.estimatedCost })
@@ -184,16 +266,20 @@ export async function savePricing(companyId: string, actorUserId: string, input:
   const config: PricingConfig = {
     minMargin: clampFraction(input.minMargin),
     laborCost: Math.max(0, input.laborCost),
+    laborMinutes: Math.max(0, input.laborMinutes),
+    laborHourlyRate: input.laborHourlyRate == null ? null : Math.max(0, input.laborHourlyRate),
     extraCost: Math.max(0, input.extraCost),
+    channelKey: input.channelKey.trim() || "direct",
   };
+  const channelFee = settings.channelFeeRules.find((rule) => rule.key === config.channelKey)?.feePct ?? 0;
   const result = computePricing({
     recipeCost: self ? recipeCosts.get(self.sku) ?? null : null,
     averageCost: self ? toNumber(self.averageCost) : null,
     estimatedCost: self ? toNumber(self.estimatedCost) : null,
-    laborCost: config.laborCost,
+    laborCost: laborCostFromConfig(config, settings),
     extraCost: config.extraCost,
     minMargin: config.minMargin,
-    channelFee: 0,
+    channelFee,
     practicedPrice: input.practicedPrice,
   });
 
@@ -218,6 +304,7 @@ export async function savePricing(companyId: string, actorUserId: string, input:
       previousPrice: previousPrice == null ? null : previousPrice.toString(),
       cost: result.totalCost.toString(),
       marginPct: result.currentMargin == null ? null : (result.currentMargin * 100).toFixed(2),
+      channelKey: config.channelKey,
       actorUserId,
     });
 
@@ -227,7 +314,7 @@ export async function savePricing(companyId: string, actorUserId: string, input:
       action: "price.update",
       entityType: "item",
       entityId: input.itemId,
-      metadata: { price, previousPrice, totalCost: result.totalCost, minMargin: config.minMargin, belowMin: result.belowMin },
+      metadata: { price, previousPrice, totalCost: result.totalCost, minMargin: config.minMargin, channelKey: config.channelKey, channelFee, belowMin: result.belowMin },
     });
   });
 

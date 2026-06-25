@@ -56,9 +56,9 @@ This document lists the product features that are still missing or only partiall
 
 ## Partial Features Needing Product Completion
 
-- [ ] Pricing and margin phase 2
-  - Persisted per-channel fee rules in settings.
-  - Richer labor-cost model.
+- [x] Pricing and margin phase 2
+  - [x] Persisted per-channel fee rules in settings.
+  - [x] Richer labor-cost model.
 
 - [ ] Stock count phase 2
   - Per-location stock counts.

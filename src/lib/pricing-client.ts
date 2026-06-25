@@ -27,13 +27,26 @@ export async function savePricing(input: {
   practicedPrice: number;
   minMargin: number;
   laborCost: number;
+  laborMinutes: number;
+  laborHourlyRate: number | null;
   extraCost: number;
+  channelKey: string;
 }) {
   const res = await fetch("/api/app/pricing", {
     method: "POST",
     headers: { "content-type": "application/json" },
     credentials: "include",
     body: JSON.stringify(input),
+  });
+  return parseProducts(res);
+}
+
+export async function savePricingSettings(settings: PricingProduct["settings"]) {
+  const res = await fetch("/api/app/pricing", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ mode: "settings", settings }),
   });
   return parseProducts(res);
 }

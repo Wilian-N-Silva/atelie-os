@@ -9,12 +9,13 @@ import {
   Field,
   Icon,
   Input,
+  Select,
   Stat,
   toast,
 } from "@/components/ui";
 import { BRL } from "@/lib/domain";
 import { computePricing } from "@/lib/pricing";
-import { loadPricing, loadPriceHistory, savePricing, type PriceHistoryEntry, type PricingProduct } from "@/lib/pricing-client";
+import { loadPricing, loadPriceHistory, savePricing, savePricingSettings, type PriceHistoryEntry, type PricingProduct } from "@/lib/pricing-client";
 import type { Go, Route } from "@/lib/types";
 
 function parseMoney(value: string) {
@@ -35,9 +36,11 @@ function PricingDrawer({ product, go, onClose, onSaved }: {
 }) {
   const [minMargin, setMinMargin] = React.useState(String(Math.round(product.config.minMargin * 100)));
   const [labor, setLabor] = React.useState(product.config.laborCost ? String(product.config.laborCost) : "");
+  const [laborMinutes, setLaborMinutes] = React.useState(product.config.laborMinutes ? String(product.config.laborMinutes) : "");
+  const [laborHourlyRate, setLaborHourlyRate] = React.useState(product.config.laborHourlyRate != null ? String(product.config.laborHourlyRate) : "");
   const [extra, setExtra] = React.useState(product.config.extraCost ? String(product.config.extraCost) : "");
   const [practiced, setPracticed] = React.useState(product.currentPrice ? String(product.currentPrice).replace(".", ",") : "");
-  const [channelFee, setChannelFee] = React.useState("0");
+  const [channelKey, setChannelKey] = React.useState(product.config.channelKey);
   const [history, setHistory] = React.useState<PriceHistoryEntry[]>([]);
   const [saving, setSaving] = React.useState(false);
 
@@ -47,14 +50,19 @@ function PricingDrawer({ product, go, onClose, onSaved }: {
     return () => { alive = false; };
   }, [product.itemId]);
 
+  const effectiveHourlyRate = laborHourlyRate.trim() ? parseMoney(laborHourlyRate) : product.settings.laborDefaults.hourlyRate;
+  const timeLaborCost = parseMoney(laborMinutes) > 0 && effectiveHourlyRate > 0 ? (parseMoney(laborMinutes) / 60) * effectiveHourlyRate : 0;
+  const totalLaborCost = Math.round((parseMoney(labor) + timeLaborCost) * 100) / 100;
+  const channelFee = product.settings.channelFeeRules.find((rule) => rule.key === channelKey)?.feePct ?? 0;
+
   const sim = computePricing({
     recipeCost: product.recipeCost,
     averageCost: product.averageCost,
     estimatedCost: product.estimatedCost,
-    laborCost: parseMoney(labor),
+    laborCost: totalLaborCost,
     extraCost: parseMoney(extra),
     minMargin: (Number(minMargin) || 0) / 100,
-    channelFee: (Number(channelFee) || 0) / 100,
+    channelFee,
     practicedPrice: parseMoney(practiced),
   });
 
@@ -66,7 +74,10 @@ function PricingDrawer({ product, go, onClose, onSaved }: {
         practicedPrice: parseMoney(practiced),
         minMargin: (Number(minMargin) || 0) / 100,
         laborCost: parseMoney(labor),
+        laborMinutes: parseMoney(laborMinutes),
+        laborHourlyRate: laborHourlyRate.trim() ? parseMoney(laborHourlyRate) : null,
         extraCost: parseMoney(extra),
+        channelKey,
       });
       onSaved(next);
       setHistory(await loadPriceHistory(product.itemId));
@@ -111,7 +122,9 @@ function PricingDrawer({ product, go, onClose, onSaved }: {
             <tbody>
               <tr><td>Receita ativa (materiais + embalagem)</td><td className="om-td-right">{product.recipeCost == null ? "-" : BRL(product.recipeCost)}</td></tr>
               <tr><td>Custo médio real</td><td className="om-td-right">{product.averageCost == null ? "-" : BRL(product.averageCost)}</td></tr>
-              <tr><td>Mão de obra</td><td className="om-td-right">{BRL(parseMoney(labor))}</td></tr>
+              <tr><td>Mão de obra fixa</td><td className="om-td-right">{BRL(parseMoney(labor))}</td></tr>
+              <tr><td>Mão de obra por tempo</td><td className="om-td-right">{BRL(timeLaborCost)}</td></tr>
+              <tr><td>Taxa de canal</td><td className="om-td-right">{Math.round(channelFee * 100)}%</td></tr>
               <tr><td>Outros custos</td><td className="om-td-right">{BRL(parseMoney(extra))}</td></tr>
               <tr style={{ fontWeight: 700 }}><td>Custo total</td><td className="om-td-right">{BRL(sim.totalCost)}</td></tr>
             </tbody>
@@ -119,8 +132,10 @@ function PricingDrawer({ product, go, onClose, onSaved }: {
 
           <div className="ff-grid">
             <Field label="Margem mínima (%)"><Input inputMode="numeric" value={minMargin} onChange={(e) => setMinMargin(e.target.value.replace(/\D/g, ""))} /></Field>
-            <Field label="Taxa de canal (%) — simulação"><Input inputMode="numeric" value={channelFee} onChange={(e) => setChannelFee(e.target.value.replace(/\D/g, ""))} /></Field>
-            <Field label="Mão de obra (R$)"><Input inputMode="decimal" value={labor} onChange={(e) => setLabor(e.target.value)} placeholder="0,00" /></Field>
+            <Field label="Canal"><Select value={channelKey} onChange={setChannelKey} options={product.settings.channelFeeRules.map((rule) => ({ value: rule.key, label: `${rule.label} (${Math.round(rule.feePct * 100)}%)` }))} /></Field>
+            <Field label="Mão de obra fixa (R$)"><Input inputMode="decimal" value={labor} onChange={(e) => setLabor(e.target.value)} placeholder="0,00" /></Field>
+            <Field label="Tempo de mão de obra (min)"><Input inputMode="decimal" value={laborMinutes} onChange={(e) => setLaborMinutes(e.target.value)} placeholder="0" /></Field>
+            <Field label="Valor/hora customizado"><Input inputMode="decimal" value={laborHourlyRate} onChange={(e) => setLaborHourlyRate(e.target.value)} placeholder={product.settings.laborDefaults.hourlyRate ? String(product.settings.laborDefaults.hourlyRate) : "0,00"} /></Field>
             <Field label="Outros custos (R$)"><Input inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="0,00" /></Field>
           </div>
 
@@ -154,6 +169,8 @@ export function PricingScreen({ go }: { go: Go; route: Route }) {
   const [products, setProducts] = React.useState<PricingProduct[]>([]);
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
+  const [savingSettings, setSavingSettings] = React.useState(false);
+  const settings = products[0]?.settings;
 
   React.useEffect(() => {
     let alive = true;
@@ -163,6 +180,49 @@ export function PricingScreen({ go }: { go: Go; route: Route }) {
 
   const rows = products.filter((p) => !query.trim() || `${p.name} ${p.variant ?? ""} ${p.sku}`.toLowerCase().includes(query.trim().toLowerCase()));
   const open = products.find((p) => p.itemId === openId) ?? null;
+
+  const updateChannelRule = (key: string, patch: Partial<{ label: string; feePct: number }>) => {
+    if (!settings) return;
+    setProducts((current) => current.map((product) => ({
+      ...product,
+      settings: {
+        ...product.settings,
+        channelFeeRules: product.settings.channelFeeRules.map((rule) => rule.key === key ? { ...rule, ...patch } : rule),
+      },
+    })));
+  };
+  const addChannelRule = () => {
+    const key = `canal-${Date.now()}`;
+    setProducts((current) => current.map((product) => ({
+      ...product,
+      settings: {
+        ...product.settings,
+        channelFeeRules: [...product.settings.channelFeeRules, { key, label: "Novo canal", feePct: 0 }],
+      },
+    })));
+  };
+  const updateDefaultHourlyRate = (value: string) => {
+    setProducts((current) => current.map((product) => ({
+      ...product,
+      settings: {
+        ...product.settings,
+        laborDefaults: { hourlyRate: parseMoney(value) },
+      },
+    })));
+  };
+  const persistSettings = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const next = await savePricingSettings(settings);
+      setProducts(next);
+      toast("Regras de precificação salvas.", "ok");
+    } catch {
+      toast("Não foi possível salvar as regras de precificação.", "bad");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   return (
     <div className="page page--wide fade-in">
@@ -176,6 +236,43 @@ export function PricingScreen({ go }: { go: Go; route: Route }) {
       <div className="toolbar">
         <div style={{ width: 280 }}><Input icon="search" placeholder="Buscar produto..." value={query} onChange={(e) => setQuery(e.target.value)} /></div>
       </div>
+
+      {settings && (
+        <Card style={{ marginBottom: 14 }}>
+          <div style={{ padding: 14 }}>
+            <div className="row between" style={{ marginBottom: 12, gap: 12 }}>
+              <div>
+                <div className="block-label" style={{ margin: 0 }}>Regras de margem por canal</div>
+                <div className="section-hint" style={{ marginTop: 2 }}>Taxas salvas entram no preço sugerido e no histórico.</div>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <Button variant="outline" icon="plus" onClick={addChannelRule}>Canal</Button>
+                <Button variant="default" icon="check" disabled={savingSettings} onClick={persistSettings}>Salvar regras</Button>
+              </div>
+            </div>
+            <div className="grid cols-4" style={{ gap: 10, alignItems: "end" }}>
+              <Field label="Valor/hora padrão">
+                <Input
+                  inputMode="decimal"
+                  value={settings.laborDefaults.hourlyRate ? String(settings.laborDefaults.hourlyRate).replace(".", ",") : ""}
+                  onChange={(event) => updateDefaultHourlyRate(event.target.value)}
+                  placeholder="0,00"
+                />
+              </Field>
+              {settings.channelFeeRules.map((rule) => (
+                <React.Fragment key={rule.key}>
+                  <Field label="Canal">
+                    <Input value={rule.label} onChange={(event) => updateChannelRule(rule.key, { label: event.target.value })} />
+                  </Field>
+                  <Field label="Taxa (%)">
+                    <Input inputMode="decimal" value={String(Math.round(rule.feePct * 100))} onChange={(event) => updateChannelRule(rule.key, { feePct: (Number(event.target.value.replace(/\D/g, "")) || 0) / 100 })} />
+                  </Field>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card style={{ overflow: "hidden" }}>
         <table className="om-table">
