@@ -37,6 +37,7 @@ export interface Session {
   deployment?: {
     deploymentMode: "saas" | "standalone";
     allowSignup: boolean;
+    needsOwnerBootstrap?: boolean;
     brandName: string;
     loginHeadline: string;
     loginSubheading: string;

@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/db/client";
-import { pendingInvites } from "@/db/schema";
-import { isStandaloneDeployment } from "@/lib/deployment";
+import { companies, pendingInvites } from "@/db/schema";
+import { isStandaloneDeployment, ownerEmail } from "@/lib/deployment";
 import { hashInviteToken } from "@/lib/invite-tokens";
 import { toNextJsHandler } from "better-auth/next-js";
 import { eq } from "drizzle-orm";
@@ -25,9 +25,16 @@ async function hasValidInviteToken(request: Request) {
   return Boolean(invite && invite.status === "invited" && (!invite.expiresAt || invite.expiresAt > new Date()));
 }
 
+async function canUseStandaloneSignup() {
+  if (!isStandaloneDeployment()) return true;
+  if (ownerEmail()) return false;
+  const firstCompany = await db.select({ id: companies.id }).from(companies).limit(1);
+  return firstCompany.length === 0;
+}
+
 export async function POST(request: Request) {
   if (isStandaloneDeployment() && new URL(request.url).pathname.endsWith("/sign-up/email")) {
-    if (!(await hasValidInviteToken(request))) {
+    if (!(await canUseStandaloneSignup()) && !(await hasValidInviteToken(request))) {
       return Response.json({ error: "signup_disabled" }, { status: 403 });
     }
   }

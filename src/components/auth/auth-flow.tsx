@@ -135,7 +135,7 @@ function AuthAside({ config }: { config: AuthConfig }) {
       </div>
 
       <div className="au-aside-foot">
-        <span className="mono">0.1.1 beta</span><span>·</span><span>© 2026 {config.brandName}</span>
+        <span className="mono">0.1.2 beta</span><span>·</span><span>© 2026 {config.brandName}</span>
       </div>
     </aside>
   );
@@ -170,12 +170,20 @@ function LoginScreen({ email, setEmail, onAuthed, go, config, inviteToken, invit
     }
   };
 
+  const isOwnerBootstrap = config.deploymentMode === "standalone" && Boolean(config.needsOwnerBootstrap) && !config.allowSignup;
+
   return (
     <div className="au-card">
       <MobileBrand config={config} />
-      <div className="au-eyebrow">Bem-vinda de volta</div>
-      <h1 className="au-title">Entrar no {config.brandName}</h1>
-      <p className="au-lede">{invite ? `Entre com ${invite.email} para aceitar o convite de ${invite.company.name}.` : config.loginSubheading}</p>
+      <div className="au-eyebrow">{isOwnerBootstrap ? "Primeiro acesso" : "Bem-vinda de volta"}</div>
+      <h1 className="au-title">{isOwnerBootstrap ? `Ativar ${config.brandName}` : `Entrar no ${config.brandName}`}</h1>
+      <p className="au-lede">
+        {invite
+          ? `Entre com ${invite.email} para aceitar o convite de ${invite.company.name}.`
+          : isOwnerBootstrap
+            ? "Envie um link magico para o e-mail configurado em OWNER_EMAIL e conclua o onboarding inicial."
+            : config.loginSubheading}
+      </p>
 
       <form className="au-form" onSubmit={submit}>
         <AuthErr>{err || inviteError}</AuthErr>
@@ -189,21 +197,23 @@ function LoginScreen({ email, setEmail, onAuthed, go, config, inviteToken, invit
         </Button>
       </form>
 
-      {config.deploymentMode !== "standalone" && (
+      <div className="au-div">ou continue com</div>
+      <div className="au-oauth">
+        {config.deploymentMode !== "standalone" && (
+          <button className="au-oauth-btn" onClick={() => toast("Google ainda nao esta configurado neste ambiente.", "info")}>
+            <GoogleG className="au-g" /> Continuar com Google
+          </button>
+        )}
+        <button className="au-oauth-btn" onClick={() => go("magic")}>
+          <Icon name="wand" size={16} /> {isOwnerBootstrap ? "Enviar link de primeiro acesso" : "Entrar com link magico"}
+        </button>
+      </div>
+
+      {config.allowSignup && (
         <>
-          <div className="au-div">ou continue com</div>
-          <div className="au-oauth">
-            <button className="au-oauth-btn" onClick={() => toast("Google ainda nao esta configurado neste ambiente.", "info")}>
-              <GoogleG className="au-g" /> Continuar com Google
-            </button>
-            <button className="au-oauth-btn" onClick={() => go("magic")}>
-              <Icon name="wand" size={16} /> Entrar com link magico
-            </button>
-          </div>
+          <div className="au-foot">Ainda nao tem conta? <button className="au-link" onClick={() => go("signup")}>Criar conta</button></div>
         </>
       )}
-
-      {config.allowSignup && <div className="au-foot">Ainda nao tem conta? <button className="au-link" onClick={() => go("signup")}>Criar conta</button></div>}
     </div>
   );
 }
@@ -328,19 +338,24 @@ function MagicScreen({ email, setEmail, go, config, inviteToken }: ScreenProps) 
       setBusy(false);
     }
   };
+  const isOwnerBootstrap = config.deploymentMode === "standalone" && Boolean(config.needsOwnerBootstrap) && !config.allowSignup;
 
   if (step === "email") {
     return (
       <div className="au-card">
         <MobileBrand config={config} />
         <button className="au-link au-link--muted" onClick={() => go("login")} style={{ marginBottom: 18 }}>← Voltar para o login</button>
-        <h1 className="au-title">Entrar com link magico</h1>
-        <p className="au-lede">Enviaremos um link seguro para seu e-mail. Ele expira em poucos minutos.</p>
+        <h1 className="au-title">{isOwnerBootstrap ? "Primeiro acesso" : "Entrar com link magico"}</h1>
+        <p className="au-lede">
+          {isOwnerBootstrap
+            ? "Digite o e-mail definido em OWNER_EMAIL. O link abre uma sessao segura e leva ao onboarding."
+            : "Enviaremos um link seguro para seu e-mail. Ele expira em poucos minutos."}
+        </p>
         <form className="au-form" onSubmit={sendLink}>
           <AuthErr>{err}</AuthErr>
           <div>
             <div className="au-field-label"><span>E-mail</span></div>
-            <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@atelie.com.br" autoComplete="email" />
+            <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={isOwnerBootstrap ? "OWNER_EMAIL" : "voce@atelie.com.br"} autoComplete="email" />
           </div>
           <Button type="submit" variant="default" size="lg" className="au-submit" disabled={busy} iconRight={busy ? null : "arrowRight"}>{busy ? "Enviando..." : "Enviar link"}</Button>
         </form>

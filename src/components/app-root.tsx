@@ -57,6 +57,7 @@ type PublicAppConfig = NonNullable<Session["deployment"]>;
 const DEFAULT_PUBLIC_CONFIG: PublicAppConfig = {
   deploymentMode: "saas",
   allowSignup: true,
+  needsOwnerBootstrap: false,
   brandName: "Atelie OS",
   loginHeadline: "Acesse seu backoffice",
   loginSubheading: "Entre para gerenciar operacao, estoque, pedidos e producao.",

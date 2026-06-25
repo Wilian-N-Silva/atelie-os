@@ -79,7 +79,7 @@ function AuthAside() {
       </div>
 
       <div className="au-aside-foot">
-        <span className="mono">v0.1.1 beta</span><span>·</span><span>© 2026 Ateliê OS</span>
+        <span className="mono">v0.1.2 beta</span><span>·</span><span>© 2026 Ateliê OS</span>
       </div>
     </aside>
   );

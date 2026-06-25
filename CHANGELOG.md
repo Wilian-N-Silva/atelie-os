@@ -2,6 +2,17 @@
 
 All notable changes to Atelie OS are documented here.
 
+## 0.1.2 - 2026-06-25
+
+Standalone first-client bootstrap hotfix.
+
+### Changed
+
+- Standalone login now shows magic link access.
+- If `OWNER_EMAIL` is set and no company exists, only that email can receive the first magic link and complete onboarding.
+- If `OWNER_EMAIL` is empty and no company exists, the first visitor can sign up and complete onboarding.
+- Standalone onboarding stays blocked after the first company exists.
+
 ## 0.1.1 - 2026-06-25
 
 Beta patch for first-client transactional email.

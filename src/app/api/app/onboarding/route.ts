@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
+import { db } from "@/db/client";
 import { createCompanyForUser } from "@/db/bootstrap";
+import { companies } from "@/db/schema";
 import { ACTIVE_COMPANY_COOKIE, requireAuthenticatedUser } from "@/lib/app-route-context";
-import { isStandaloneDeployment } from "@/lib/deployment";
+import { isOwnerEmail, isStandaloneDeployment, ownerEmail } from "@/lib/deployment";
 import type { OnboardingInvite } from "@/lib/seed-defaults";
 
 export const runtime = "nodejs";
+
+async function canRunStandaloneOwnerOnboarding(email: string) {
+  if (!isStandaloneDeployment()) return true;
+  const firstCompany = await db.select({ id: companies.id }).from(companies).limit(1);
+  if (firstCompany.length > 0) return false;
+  const configuredOwner = ownerEmail();
+  return configuredOwner ? isOwnerEmail(email) : true;
+}
 
 function parseLogoUrl(value: unknown) {
   if (value == null || value === "") return null;
@@ -18,12 +28,12 @@ function parseLogoUrl(value: unknown) {
 }
 
 export async function POST(request: Request) {
-  if (isStandaloneDeployment()) {
-    return NextResponse.json({ error: "onboarding_disabled" }, { status: 403 });
-  }
-
   const authResult = await requireAuthenticatedUser(request);
   if ("response" in authResult) return authResult.response;
+
+  if (!(await canRunStandaloneOwnerOnboarding(authResult.user.email))) {
+    return NextResponse.json({ error: "onboarding_disabled" }, { status: 403 });
+  }
 
   const body = (await request.json().catch(() => null)) as {
     companyName?: string;

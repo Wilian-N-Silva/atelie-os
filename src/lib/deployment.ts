@@ -10,6 +10,15 @@ export function isStandaloneDeployment() {
   return deploymentMode() === "standalone";
 }
 
+export function ownerEmail() {
+  return (process.env.OWNER_EMAIL || "").trim().toLowerCase() || null;
+}
+
+export function isOwnerEmail(email: string | null | undefined) {
+  const owner = ownerEmail();
+  return Boolean(owner && email && email.trim().toLowerCase() === owner);
+}
+
 export function standaloneCompanySlug() {
   return (process.env.ATELIE_STANDALONE_COMPANY_SLUG || process.env.ATELIE_TENANT_SLUG || "").trim().toLowerCase() || null;
 }

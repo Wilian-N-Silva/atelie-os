@@ -2,9 +2,11 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins/magic-link";
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { account, session, user, verification } from "@/db/schema";
+import { account, companies, session, user, verification } from "@/db/schema";
 import { sendMagicLinkEmail, sendPasswordResetEmail } from "@/lib/email-server";
+import { isOwnerEmail, isStandaloneDeployment, ownerEmail } from "@/lib/deployment";
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
 
@@ -49,8 +51,20 @@ export const auth = betterAuth({
   trustedOrigins,
   plugins: [
     magicLink({
-      disableSignUp: true,
+      disableSignUp: false,
       sendMagicLink: async ({ email, url }) => {
+        const normalizedEmail = email.trim().toLowerCase();
+        const [existingUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, normalizedEmail)).limit(1);
+        if (!existingUser) {
+          const [existingCompany] = await db.select({ id: companies.id }).from(companies).limit(1);
+          const configuredOwner = ownerEmail();
+          const canBootstrapOwner = isStandaloneDeployment()
+            && !existingCompany
+            && (configuredOwner ? isOwnerEmail(normalizedEmail) : true);
+          if (!canBootstrapOwner) {
+            throw new Error("magic_link_signup_disabled");
+          }
+        }
         await sendMagicLinkEmail({ to: email, url });
       },
     }),
