@@ -39,6 +39,7 @@ import {
   ITEM_TYPE_TONES,
   type ItemMovementType,
 } from "@/lib/items";
+import { InitialInventoryModal } from "@/components/initial-inventory-modal";
 import { canManageInventory } from "@/lib/permissions";
 import type { Go, Route, Session } from "@/lib/types";
 
@@ -908,6 +909,7 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
   const [actionItemId, setActionItemId] = React.useState<string | null>(null);
   const [countItemId, setCountItemId] = React.useState<string | null>(null);
   const [adjustItemId, setAdjustItemId] = React.useState<string | null>(null);
+  const [initialInventoryOpen, setInitialInventoryOpen] = React.useState(false);
   const [movementModal, setMovementModal] = React.useState<{
     open: boolean;
     itemId: string | null;
@@ -932,6 +934,12 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
   React.useEffect(() => {
     void load(locationId);
   }, [load, locationId]);
+
+  React.useEffect(() => {
+    if (localStorage.getItem("atelie-open-initial-inventory") !== "true") return;
+    localStorage.removeItem("atelie-open-initial-inventory");
+    setInitialInventoryOpen(true);
+  }, []);
 
   React.useEffect(() => {
     if (!data || !locationId) return;
@@ -995,6 +1003,11 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
               disabled={loading || !data || data.items.length === 0 || data.locations.every((location) => !location.isActive)}
             >
               Novo movimento
+            </Button>
+          )}
+          {canCreateMovement && (
+            <Button variant="outline" icon="listChecks" onClick={() => setInitialInventoryOpen(true)}>
+              Entrada inicial
             </Button>
           )}
           <Button variant="outline" icon="listChecks" onClick={() => go("contagem")}>Contagem completa</Button>
@@ -1197,6 +1210,14 @@ export function InventoryScreen({ go, route, session }: { go: Go; route: Route; 
           initialItemId={adjustItemId}
           onClose={() => setAdjustItemId(null)}
           onCreated={() => void load(locationId)}
+        />
+      )}
+
+      {canCreateMovement && (
+        <InitialInventoryModal
+          open={initialInventoryOpen}
+          onClose={() => setInitialInventoryOpen(false)}
+          onDone={() => void load(locationId)}
         />
       )}
 

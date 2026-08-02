@@ -77,7 +77,11 @@ export async function ensureSeedAuditLog(input: {
   });
 }
 
-export async function seedCompanyDefaults(companyId: string, actorUserId?: string | null) {
+export async function seedCompanyDefaults(
+  companyId: string,
+  actorUserId?: string | null,
+  options: { audit?: boolean } = {},
+) {
   await db.insert(companySettings).values({ companyId }).onConflictDoNothing();
 
   const [insertedTheme] = await db
@@ -235,13 +239,15 @@ export async function seedCompanyDefaults(companyId: string, actorUserId?: strin
     )
     .onConflictDoNothing();
 
-  await ensureSeedAuditLog({
-    companyId,
-    actorUserId: actorUserId ?? null,
-    entityType: "company",
-    entityId: companyId,
-    metadata: { scope: "company_defaults" },
-  });
+  if (options.audit !== false) {
+    await ensureSeedAuditLog({
+      companyId,
+      actorUserId: actorUserId ?? null,
+      entityType: "company",
+      entityId: companyId,
+      metadata: { scope: "company_defaults" },
+    });
+  }
 }
 
 export async function createCompanyForUser(input: {

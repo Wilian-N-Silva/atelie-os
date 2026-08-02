@@ -15,6 +15,7 @@ export interface OnboardingDonePayload {
   teamSize: string;
   logoUrl?: string | null;
   invites: OnboardingInvite[];
+  openInitialInventory?: boolean;
 }
 
 const ROLE_OPTS = [
@@ -34,6 +35,7 @@ const TEAM_SIZES = [
 ];
 const STEPS = [
   { t: "Sobre o ateliê", d: "Nome, segmento e marca" },
+  { t: "Estoque inicial", d: "Itens que ja existem" },
   { t: "Convide a equipe", d: "Opcional — adicione depois" },
   { t: "Tudo pronto", d: "Entrar no sistema" },
 ];
@@ -66,6 +68,7 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
   const [logo, setLogo] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [invites, setInvites] = React.useState([{ email: "", role: "operator" }]);
+  const [openInitialInventory, setOpenInitialInventory] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
   const firstName = user?.name ? user.name.split(" ")[0] : "";
@@ -98,6 +101,7 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
         segment,
         teamSize: size,
         logoUrl: logo,
+        openInitialInventory,
         invites: validInvites.map((invite) => ({
           email: invite.email.trim().toLowerCase(),
           role: invite.role === "admin" ? "admin" : "operator",
@@ -118,7 +122,7 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
 
           {step === 0 && (
             <div>
-              <div className="ob-eyebrow">{firstName ? `Olá, ${firstName}` : "Vamos começar"} · Passo 1 de 3</div>
+              <div className="ob-eyebrow">{firstName ? `Olá, ${firstName}` : "Vamos começar"} · Passo 1 de 4</div>
               <h1 className="ob-title">Crie seu ateliê</h1>
               <p className="ob-lede">Esse é o espaço da sua marca dentro do Ateliê OS. Cada ateliê tem seus próprios produtos, estoque e equipe.</p>
 
@@ -181,7 +185,48 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
 
           {step === 1 && (
             <div>
-              <div className="ob-eyebrow">Passo 2 de 3 · Opcional</div>
+              <div className="ob-eyebrow">Passo 2 de 4</div>
+              <h1 className="ob-title">Prepare o estoque inicial</h1>
+              <p className="ob-lede">Depois de criar o atelie, voce pode cadastrar materias-primas, embalagens e produtos que ja estao na prateleira com quantidade e custo.</p>
+
+              <div className="ob-body">
+                <Card>
+                  <CardContent style={{ display: "grid", gap: 14 }}>
+                    <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
+                      <div className="chip chip--brand chip--lg"><Icon name="estoque" size={20} /></div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>Abrir assistente de entrada inicial</div>
+                        <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>Inclui presets como cera, essencia, pavio e vidro com tampa. Voce pode informar o total pago e o sistema calcula o custo unitario.</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={openInitialInventory}
+                        onChange={(event) => setOpenInitialInventory(event.target.checked)}
+                        aria-label="Abrir assistente de entrada inicial"
+                      />
+                    </div>
+                    <Sep />
+                    <div className="row" style={{ gap: 12 }}>
+                      <div className="chip chip--brand chip--lg"><Icon name="receitas" size={20} /></div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>Receitas podem ser cadastradas junto</div>
+                        <div className="muted" style={{ fontSize: 12.5 }}>Os SKUs dos itens iniciais ja podem ser usados na composicao para acelerar a precificacao.</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="ob-foot">
+                <Button variant="default" size="lg" onClick={() => setStep(2)} iconRight="arrowRight">Continuar</Button>
+                <button className="au-link au-link--muted" onClick={() => { setOpenInitialInventory(false); setStep(2); }}>Fazer depois</button>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <div className="ob-eyebrow">Passo 3 de 4 · Opcional</div>
               <h1 className="ob-title">Convide sua equipe</h1>
               <p className="ob-lede">Traga quem trabalha na bancada com você. Vamos enviar um convite por e-mail para cada pessoa — você pode pular e fazer isso depois.</p>
 
@@ -199,15 +244,15 @@ export function Onboarding({ user, onDone }: { user?: SessionUser; onDone: (p: O
               </div>
 
               <div className="ob-foot">
-                <Button variant="default" size="lg" onClick={() => setStep(2)} iconRight="arrowRight">
+                <Button variant="default" size="lg" onClick={() => setStep(3)} iconRight="arrowRight">
                   {validInvites.length ? `Enviar ${validInvites.length} convite${validInvites.length > 1 ? "s" : ""}` : "Continuar"}
                 </Button>
-                <button className="au-link au-link--muted" onClick={() => { setInvites([{ email: "", role: "operator" }]); setStep(2); }}>Pular por enquanto</button>
+                <button className="au-link au-link--muted" onClick={() => { setInvites([{ email: "", role: "operator" }]); setStep(3); }}>Pular por enquanto</button>
               </div>
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div>
               <div className="ob-done-ico"><Icon name="check" size={28} strokeWidth={2.4} /></div>
               <h1 className="ob-title">Tudo pronto, {firstName || "bem-vinda"}!</h1>
