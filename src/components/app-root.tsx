@@ -272,7 +272,7 @@ export function AppRoot() {
       .finally(() => setAcceptingInvite(false));
   }, [acceptingInvite, failedInviteToken, ready, session]);
 
-  const finishOnboarding = async ({ companyName, segment, teamSize, logoUrl, invites }: OnboardingDonePayload) => {
+  const finishOnboarding = async ({ companyName, segment, teamSize, logoUrl, invites, openInitialInventory }: OnboardingDonePayload) => {
     const res = await fetch("/api/app/onboarding", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -281,6 +281,10 @@ export function AppRoot() {
     });
 
     if (!res.ok) throw new Error("Nao foi possivel concluir a configuracao inicial.");
+    if (openInitialInventory) {
+      localStorage.setItem("atelie-route", JSON.stringify({ screen: "estoque" }));
+      localStorage.setItem("atelie-open-initial-inventory", "true");
+    }
     setBackendSession(await fetchAppSession());
   };
 

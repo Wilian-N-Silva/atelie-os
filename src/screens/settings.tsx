@@ -9,6 +9,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Empty,
   Field,
   Icon,
   Input,
@@ -47,7 +48,7 @@ import { CatalogTab } from "@/screens/settings-catalog";
 import { ExportPanel } from "@/screens/exports";
 import type { Go, Route, Session } from "@/lib/types";
 
-type SettingsTab = "branding" | "users" | "workflows" | "labels" | "shipping" | "catalog" | "export";
+type SettingsTab = "branding" | "users" | "workflows" | "labels" | "shipping" | "catalog" | "export" | "security";
 type SheetEditForm = {
   name: string;
   brand: string;
@@ -74,6 +75,7 @@ const NAV: { id: SettingsTab; label: string; sub: string; icon: string }[] = [
   { id: "shipping", label: "Envio", sub: "Melhor Envio e fallback manual", icon: "truck" },
   { id: "catalog", label: "Catalogo", sub: "Unidades e categorias", icon: "estoque" },
   { id: "export", label: "Exportar dados", sub: "Baixar CSV", icon: "fileText" },
+  { id: "security", label: "Seguranca", sub: "Hard reset da conta", icon: "lock" },
 ];
 
 type ShippingSettings = {
@@ -1717,6 +1719,88 @@ function ShippingTab() {
   );
 }
 
+function SecurityTab({ session }: { session: Session }) {
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [confirmation, setConfirmation] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const isOwner = session.user.role === "owner";
+  const canReset = isOwner && confirmation === "RESETAR" && !saving;
+
+  const runReset = async () => {
+    if (!canReset) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/app/account-reset", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ confirmation }),
+      });
+      const payload = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) throw new Error(payload?.error ?? "Nao foi possivel resetar a conta.");
+      toast("Conta resetada. Recarregando dados.", "ok");
+      localStorage.removeItem("atelie-route");
+      setTimeout(() => window.location.reload(), 500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nao foi possivel resetar a conta.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Seguranca</CardTitle>
+            <div className="section-hint" style={{ marginTop: 2 }}>Acoes destrutivas da conta do atelie.</div>
+          </div>
+        </CardHeader>
+        <CardContent style={{ display: "grid", gap: 14 }}>
+          {!isOwner ? (
+            <Empty icon="lock" title="Apenas proprietaria" hint="Somente a dona da conta pode executar hard reset." />
+          ) : (
+            <div className="row between" style={{ gap: 14, alignItems: "flex-start" }}>
+              <div style={{ maxWidth: 680 }}>
+                <div className="cell-title">Hard reset da conta</div>
+                <div className="cell-sub" style={{ marginTop: 4 }}>
+                  Apaga cadastros, movimentos, pedidos, compras, receitas, logs e configuracoes operacionais. Usuarios e vinculos de acesso permanecem.
+                </div>
+              </div>
+              <Button variant="destructive" icon="trash" onClick={() => { setConfirmation(""); setError(null); setConfirmOpen(true); }}>
+                Hard reset
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Modal
+        open={confirmOpen}
+        onClose={() => !saving && setConfirmOpen(false)}
+        title="Confirmar hard reset"
+        subtitle="Esta acao apaga os dados operacionais do atelie e mantem apenas usuarios e acessos."
+        icon="alertCircle"
+        width={560}
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button variant="destructive" icon="trash" onClick={runReset} disabled={!canReset}>
+              {saving ? "Resetando..." : "Resetar conta"}
+            </Button>
+          </>
+        )}
+      >
+        <Field label='Digite "RESETAR" para confirmar' required error={error ?? undefined}>
+          <Input value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setError(null); }} autoFocus />
+        </Field>
+      </Modal>
+    </>
+  );
+}
+
 export function SettingsScreen({
   go,
   route,
@@ -1758,6 +1842,7 @@ export function SettingsScreen({
           {tab === "shipping" && <ShippingTab />}
           {tab === "catalog" && <CatalogTab />}
           {tab === "export" && <ExportPanel />}
+          {tab === "security" && <SecurityTab session={session} />}
         </div>
       </div>
     </div>
