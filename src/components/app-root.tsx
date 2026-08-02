@@ -34,7 +34,7 @@ import { FinanceScreen } from "@/screens/finance";
 import { ReportsScreen } from "@/screens/reports";
 import { IncidentsScreen } from "@/screens/incidents";
 import { ExportsScreen } from "@/screens/exports";
-import { Empty } from "@/components/ui";
+import { Empty, toast } from "@/components/ui";
 import { Theme } from "@/lib/theme";
 import { fetchAppSession } from "@/lib/app-session";
 import type { Session, Route, Go } from "@/lib/types";
@@ -215,6 +215,7 @@ export function AppRoot() {
   const [publicConfig, setPublicConfig] = React.useState<PublicAppConfig>(DEFAULT_PUBLIC_CONFIG);
   const [ready, setReady] = React.useState(false);
   const [acceptingInvite, setAcceptingInvite] = React.useState(false);
+  const [failedInviteToken, setFailedInviteToken] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     // apply saved local display preferences so auth/onboarding match the app skin
@@ -242,23 +243,34 @@ export function AppRoot() {
   React.useEffect(() => {
     if (!ready || !session || acceptingInvite) return;
     const token = new URLSearchParams(window.location.search).get("invite");
-    if (!token) return;
+    if (!token || token === failedInviteToken) return;
 
     setAcceptingInvite(true);
     fetch(`/api/invites/${encodeURIComponent(token)}`, {
       method: "POST",
       credentials: "include",
     })
-      .then((res) => res.ok ? res.json() : Promise.reject(new Error("invite_accept_failed")))
+      .then(async (res) => {
+        if (res.ok) return res.json();
+        const payload = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "invite_accept_failed");
+      })
       .then((nextSession: Session) => {
         window.history.replaceState({}, "", "/");
         setBackendSession(nextSession);
       })
-      .catch(() => {
+      .catch((error) => {
+        const code = error instanceof Error ? error.message : "";
+        if (code === "invite_email_mismatch") {
+          setFailedInviteToken(token);
+          toast("Este convite pertence a outro e-mail. Saia da conta atual e abra o link novamente.", "bad");
+          return;
+        }
         window.history.replaceState({}, "", "/");
+        toast("Convite invalido ou expirado.", "bad");
       })
       .finally(() => setAcceptingInvite(false));
-  }, [acceptingInvite, ready, session]);
+  }, [acceptingInvite, failedInviteToken, ready, session]);
 
   const finishOnboarding = async ({ companyName, segment, teamSize, logoUrl, invites }: OnboardingDonePayload) => {
     const res = await fetch("/api/app/onboarding", {

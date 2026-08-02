@@ -5,6 +5,36 @@ type SendEmailInput = {
   text?: string;
 };
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function appBaseUrl(requestUrl?: string) {
+  const configured =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.BETTER_AUTH_URL?.trim() ||
+    requestUrl ||
+    "http://localhost:3000";
+
+  try {
+    const url = new URL(configured);
+    return url.origin;
+  } catch {
+    if (requestUrl) return new URL(requestUrl).origin;
+    return "http://localhost:3000";
+  }
+}
+
+export function teamInviteUrl(token: string, requestUrl?: string) {
+  const url = new URL("/", appBaseUrl(requestUrl));
+  url.searchParams.set("invite", token);
+  return url.toString();
+}
+
 function emailFrom() {
   const from = process.env.RESEND_FROM_EMAIL?.trim();
   if (!from && process.env.RESEND_API_KEY) {
@@ -65,13 +95,15 @@ export async function sendMagicLinkEmail(input: { to: string; url: string }) {
   });
 }
 
-export async function sendTeamInviteEmail(input: { to: string; companyName: string; role: string; invitedBy?: string | null; token?: string }) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "http://localhost:3000";
-  const url = input.token ? `${appUrl}/?invite=${encodeURIComponent(input.token)}` : appUrl;
+export async function sendTeamInviteEmail(input: { to: string; companyName: string; role: string; invitedBy?: string | null; token?: string; requestUrl?: string }) {
+  const url = input.token ? teamInviteUrl(input.token, input.requestUrl) : appBaseUrl(input.requestUrl);
+  const invitedBy = escapeHtml(input.invitedBy ?? "A equipe");
+  const companyName = escapeHtml(input.companyName);
+  const role = escapeHtml(input.role);
   return sendEmail({
     to: input.to,
     subject: `Convite para ${input.companyName}`,
-    html: `<p>${input.invitedBy ?? "A equipe"} convidou voce para ${input.companyName} como ${input.role}.</p><p><a href="${url}">Aceitar convite</a></p>`,
+    html: `<p>${invitedBy} convidou voce para ${companyName} como ${role}.</p><p><a href="${escapeHtml(url)}">Aceitar convite</a></p>`,
     text: `${input.invitedBy ?? "A equipe"} convidou voce para ${input.companyName} como ${input.role}. Acesse: ${url}`,
   });
 }

@@ -419,12 +419,58 @@ function UsersTab({ session }: { session: Session }) {
         credentials: "include",
         body: JSON.stringify({ email, role }),
       });
-      if (!res.ok) throw new Error("team_invite_failed");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "team_invite_failed");
+      }
       setTeam(await res.json() as TeamPayload);
       setEmail("");
-      toast("Convite registrado.", "ok");
+      toast("Convite enviado.", "ok");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      toast(code === "invite_email_send_failed" ? "Convite salvo, mas o e-mail nao foi enviado. Verifique Resend e tente reenviar." : "Nao foi possivel registrar o convite.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resendInvite = async (item: TeamUser) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/app/team", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: item.id, action: "resend" }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "team_invite_resend_failed");
+      }
+      setTeam(await res.json() as TeamPayload);
+      toast("Convite reenviado.", "ok");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      toast(code === "invite_email_send_failed" ? "Nao foi possivel enviar o e-mail. Verifique Resend e tente novamente." : "Nao foi possivel reenviar o convite.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelInvite = async (item: TeamUser) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/app/team", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: item.id }),
+      });
+      if (!res.ok) throw new Error("team_invite_cancel_failed");
+      setTeam(await res.json() as TeamPayload);
+      toast("Convite cancelado.", "ok");
     } catch {
-      toast("Nao foi possivel registrar o convite.", "bad");
+      toast("Nao foi possivel cancelar o convite.", "bad");
     } finally {
       setSaving(false);
     }
@@ -466,12 +512,21 @@ function UsersTab({ session }: { session: Session }) {
           {users.length === 0 && (
             <tr><td colSpan={4}><div className="cell-sub">Nenhum membro neste tenant.</div></td></tr>
           )}
-          {users.map((user) => (
-            <tr key={`${user.status}-${user.email}`}>
-              <td><div className="item-cell"><Avatar name={user.name} size={32} /><div><div className="cell-title">{user.name}</div><div className="cell-sub">{user.email}</div></div></div></td>
-              <td><Badge tone={user.role === "owner" ? "ok" : user.role === "admin" ? "info" : "neutral"}>{user.role}</Badge></td>
-              <td><Badge tone={user.status === "ativo" ? "ok" : "warn"} dot>{user.status}</Badge></td>
-              <td className="om-td-right"><Button variant="ghost" size="sm" icon="settings">Permissoes</Button></td>
+          {users.map((item) => (
+            <tr key={`${item.status}-${item.email}`}>
+              <td><div className="item-cell"><Avatar name={item.name} size={32} /><div><div className="cell-title">{item.name}</div><div className="cell-sub">{item.email}</div></div></div></td>
+              <td><Badge tone={item.role === "owner" ? "ok" : item.role === "admin" ? "info" : "neutral"}>{item.role}</Badge></td>
+              <td><Badge tone={item.status === "ativo" ? "ok" : "warn"} dot>{item.status}</Badge></td>
+              <td className="om-td-right">
+                {item.status === "convite pendente" ? (
+                  <div className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
+                    <Button variant="ghost" size="sm" icon="refresh" disabled={saving} onClick={() => resendInvite(item)}>Reenviar</Button>
+                    <Button variant="ghost" size="sm" icon="trash" disabled={saving} onClick={() => cancelInvite(item)}>Cancelar</Button>
+                  </div>
+                ) : (
+                  <Button variant="ghost" size="sm" icon="settings">Permissoes</Button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
